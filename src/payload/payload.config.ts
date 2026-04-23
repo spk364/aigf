@@ -11,6 +11,7 @@ import { OAuth2Plugin } from 'payload-oauth2'
 import { Users } from './collections/users'
 import { AgeVerifications } from './collections/age-verifications'
 import { Characters } from './collections/characters'
+import { MediaAssets } from './collections/media-assets'
 import { Conversations } from './collections/conversations'
 import { Messages } from './collections/messages'
 import { Subscriptions } from './collections/subscriptions'
@@ -127,6 +128,7 @@ export default buildConfig({
     Users,
     AgeVerifications,
     Characters,
+    MediaAssets,
     Conversations,
     Messages,
     Subscriptions,

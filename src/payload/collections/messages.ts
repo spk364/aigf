@@ -1,5 +1,4 @@
 // TODO(phase-3-auth): tighten access control
-// TODO(phase-3): convert imageAssetId and videoAssetId to relationship once media_assets collection exists
 import type { CollectionConfig } from 'payload'
 
 export const Messages: CollectionConfig = {
@@ -52,14 +51,14 @@ export const Messages: CollectionConfig = {
       type: 'textarea',
     },
     {
-      // TODO(phase-3): convert to relationship once media_assets collection exists
       name: 'imageAssetId',
-      type: 'json',
+      type: 'relationship',
+      relationTo: 'media-assets',
     },
     {
-      // TODO(phase-3): convert to relationship once media_assets collection exists
       name: 'videoAssetId',
-      type: 'json',
+      type: 'relationship',
+      relationTo: 'media-assets',
     },
     {
       name: 'generationMetadata',

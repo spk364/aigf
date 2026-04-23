@@ -1,5 +1,5 @@
 // TODO(phase-3-auth): tighten access control
-// TODO(phase-3): add appearance, imageModel, primaryImageId, galleryImageIds, userContentPreferences
+// TODO(phase-3-task-N): appearance jsonb, imageModel jsonb, userContentPreferences jsonb
 import type { CollectionConfig } from 'payload'
 
 export const Characters: CollectionConfig = {
@@ -66,6 +66,17 @@ export const Characters: CollectionConfig = {
     {
       name: 'shortBio',
       type: 'textarea',
+    },
+    {
+      name: 'primaryImageId',
+      type: 'relationship',
+      relationTo: 'media-assets',
+    },
+    {
+      name: 'galleryImageIds',
+      type: 'relationship',
+      relationTo: 'media-assets',
+      hasMany: true,
     },
     {
       name: 'artStyle',
