@@ -1,0 +1,132 @@
+{
+  "common": {
+    "hello": "Hello"
+  },
+  "dashboard": {
+    "quotaToday": "Today: {used} / {cap} messages",
+    "upgrade": "Upgrade"
+  },
+  "chat": {
+    "title": "Chat",
+    "noCharactersYet": "No characters available yet.",
+    "startChat": "Start chat",
+    "inputPlaceholder": "Type a message...",
+    "send": "Send",
+    "typing": "is typing...",
+    "regenerate": "Regenerate",
+    "copy": "Copy",
+    "errorGeneric": "Something went wrong. Please try again.",
+    "errorQuota": "You have reached your daily message limit. Your quota resets at midnight UTC.",
+    "yourConversations": "Your conversations",
+    "startNewChat": "Start a new chat"
+  },
+  "billing": {
+    "plans": {
+      "premium_monthly": {
+        "name": "Premium",
+        "description": "Unlock advanced features and monthly tokens.",
+        "priceLabel": "{price} / month"
+      },
+      "premium_yearly": {
+        "name": "Premium Yearly",
+        "description": "Same great features at a discounted annual rate.",
+        "priceLabel": "{price} / year",
+        "badge": "Save 36%"
+      },
+      "premium_plus_monthly": {
+        "name": "Premium Plus",
+        "description": "Maximum tokens, premium AI, and video generation.",
+        "priceLabel": "{price} / month"
+      }
+    },
+    "features": {
+      "monthlyTokens": "{count} tokens per month",
+      "llmTier": "AI model: {tier}",
+      "customCharacters": "Unlimited custom characters",
+      "priorityQueue": "Priority response queue",
+      "videoEnabled": "Video generation ({count} videos / month)"
+    },
+    "upgrade": {
+      "title": "Choose your plan",
+      "subtitle": "Upgrade to unlock more tokens, better AI, and exclusive features.",
+      "cta": "Get started",
+      "currentPlan": "Current plan:",
+      "manage": "Manage subscription"
+    },
+    "return": {
+      "processing": "Processing your payment...",
+      "success": "Subscription activated!",
+      "declined": "Payment declined",
+      "tryAgain": "Try again",
+      "backToChat": "Back to dashboard"
+    },
+    "manage": {
+      "title": "Manage subscription",
+      "currentPlan": "Current plan",
+      "nextRenewal": "Next renewal",
+      "cancelTitle": "Cancel subscription",
+      "cancelConfirm": "Are you sure? Your subscription will remain active until the end of the current billing period.",
+      "cancelSuccess": "Your subscription has been canceled.",
+      "cancelAtPeriodEnd": "Your subscription will not renew at the end of the current period."
+    }
+  },
+  "errors": {
+    "somethingWentWrong": "Something went wrong. Please try again.",
+    "goToDashboard": "Go to dashboard",
+    "tryAgain": "Try again"
+  },
+  "completeProfile": {
+    "title": "Almost done",
+    "subtitle": "To comply with age verification requirements, we need to confirm you are 18 or older before you can access the app.",
+    "dateOfBirth": "Date of birth",
+    "over18": "I am 18 or older and agree to the Terms of Service, Privacy Policy, and 2257 Statement",
+    "submit": "Continue",
+    "errors": {
+      "underage": "You must be 18 or older to use this service.",
+      "mustAgree": "You must confirm you are 18 or older and agree to the terms."
+    }
+  },
+  "auth": {
+    "continueWithGoogle": "Continue with Google",
+    "or": "or",
+    "oauthError": "Could not sign in with Google. Please try again or use email.",
+    "login": {
+      "title": "Sign in",
+      "email": "Email address",
+      "password": "Password",
+      "submit": "Sign in",
+      "noAccount": "Don't have an account?",
+      "createAccount": "Create one",
+      "invalidCredentials": "Invalid email or password."
+    },
+    "signup": {
+      "title": "Create account",
+      "email": "Email address",
+      "password": "Password (min 10 characters)",
+      "confirmPassword": "Confirm password",
+      "displayName": "Display name (optional)",
+      "dateOfBirth": "Date of birth",
+      "over18": "I am 18 or older and agree to the Terms of Service, Privacy Policy, and 2257 Statement",
+      "subscribeNewsletter": "Subscribe to product updates",
+      "submit": "Create account",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in",
+      "errors": {
+        "underage": "You must be 18 or older to register.",
+        "mustAgree": "You must confirm you are 18 or older and agree to the terms.",
+        "passwordMismatch": "Passwords do not match.",
+        "emailTaken": "An account with this email already exists."
+      }
+    },
+    "verifyEmail": {
+      "success": "Email verified successfully.",
+      "failure": "This verification link is invalid or has expired.",
+      "checkInbox": "Check your inbox for a verification link."
+    },
+    "dashboard": {
+      "welcome": "Hello, {name}!",
+      "emailNotVerified": "Please verify your email address. Check your inbox for a verification link.",
+      "logout": "Sign out"
+    }
+  }
+}

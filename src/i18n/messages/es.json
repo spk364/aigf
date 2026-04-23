@@ -1,0 +1,132 @@
+{
+  "common": {
+    "hello": "Hola"
+  },
+  "dashboard": {
+    "quotaToday": "Hoy: {used} / {cap} mensajes",
+    "upgrade": "Mejorar plan"
+  },
+  "chat": {
+    "title": "Chat",
+    "noCharactersYet": "No hay personajes disponibles todavia.",
+    "startChat": "Iniciar chat",
+    "inputPlaceholder": "Escribe un mensaje...",
+    "send": "Enviar",
+    "typing": "esta escribiendo...",
+    "regenerate": "Regenerar",
+    "copy": "Copiar",
+    "errorGeneric": "Algo salio mal. Por favor, intentalo de nuevo.",
+    "errorQuota": "Has alcanzado tu limite diario de mensajes. Tu cuota se restablece a medianoche UTC.",
+    "yourConversations": "Tus conversaciones",
+    "startNewChat": "Iniciar un nuevo chat"
+  },
+  "billing": {
+    "plans": {
+      "premium_monthly": {
+        "name": "Premium",
+        "description": "Desbloquea funciones avanzadas y tokens mensuales.",
+        "priceLabel": "{price} / mes"
+      },
+      "premium_yearly": {
+        "name": "Premium Anual",
+        "description": "Las mismas funciones a una tarifa anual con descuento.",
+        "priceLabel": "{price} / ano",
+        "badge": "Ahorra 36%"
+      },
+      "premium_plus_monthly": {
+        "name": "Premium Plus",
+        "description": "Maximos tokens, IA premium y generacion de video.",
+        "priceLabel": "{price} / mes"
+      }
+    },
+    "features": {
+      "monthlyTokens": "{count} tokens por mes",
+      "llmTier": "Modelo de IA: {tier}",
+      "customCharacters": "Personajes personalizados ilimitados",
+      "priorityQueue": "Cola de respuesta prioritaria",
+      "videoEnabled": "Generacion de video ({count} videos / mes)"
+    },
+    "upgrade": {
+      "title": "Elige tu plan",
+      "subtitle": "Actualiza para desbloquear mas tokens, mejor IA y funciones exclusivas.",
+      "cta": "Comenzar",
+      "currentPlan": "Plan actual:",
+      "manage": "Gestionar suscripcion"
+    },
+    "return": {
+      "processing": "Procesando tu pago...",
+      "success": "Suscripcion activada!",
+      "declined": "Pago rechazado",
+      "tryAgain": "Intentar de nuevo",
+      "backToChat": "Volver al panel"
+    },
+    "manage": {
+      "title": "Gestionar suscripcion",
+      "currentPlan": "Plan actual",
+      "nextRenewal": "Proxima renovacion",
+      "cancelTitle": "Cancelar suscripcion",
+      "cancelConfirm": "Esta seguro? Su suscripcion permanecera activa hasta el final del periodo de facturacion actual.",
+      "cancelSuccess": "Su suscripcion ha sido cancelada.",
+      "cancelAtPeriodEnd": "Su suscripcion no se renovara al final del periodo actual."
+    }
+  },
+  "errors": {
+    "somethingWentWrong": "Algo salio mal. Por favor, intentalo de nuevo.",
+    "goToDashboard": "Ir al panel",
+    "tryAgain": "Intentar de nuevo"
+  },
+  "completeProfile": {
+    "title": "Casi listo",
+    "subtitle": "Para cumplir con los requisitos de verificacion de edad, necesitamos confirmar que tienes 18 anos o mas antes de que puedas acceder a la aplicacion.",
+    "dateOfBirth": "Fecha de nacimiento",
+    "over18": "Tengo 18 anos o mas y acepto los Terminos de servicio, la Politica de privacidad y la Declaracion 2257",
+    "submit": "Continuar",
+    "errors": {
+      "underage": "Debes tener 18 anos o mas para utilizar este servicio.",
+      "mustAgree": "Debes confirmar que tienes 18 anos o mas y aceptar los terminos."
+    }
+  },
+  "auth": {
+    "continueWithGoogle": "Continuar con Google",
+    "or": "o",
+    "oauthError": "No se pudo iniciar sesion con Google. Intentalo de nuevo o usa tu correo electronico.",
+    "login": {
+      "title": "Iniciar sesion",
+      "email": "Correo electronico",
+      "password": "Contrasena",
+      "submit": "Iniciar sesion",
+      "noAccount": "No tienes cuenta?",
+      "createAccount": "Crear una",
+      "invalidCredentials": "Correo electronico o contrasena incorrectos."
+    },
+    "signup": {
+      "title": "Crear cuenta",
+      "email": "Correo electronico",
+      "password": "Contrasena (minimo 10 caracteres)",
+      "confirmPassword": "Confirmar contrasena",
+      "displayName": "Nombre de usuario (opcional)",
+      "dateOfBirth": "Fecha de nacimiento",
+      "over18": "Tengo 18 anos o mas y acepto los Terminos de servicio, la Politica de privacidad y la Declaracion 2257",
+      "subscribeNewsletter": "Suscribirse a las novedades del producto",
+      "submit": "Crear cuenta",
+      "haveAccount": "Ya tienes una cuenta?",
+      "signIn": "Iniciar sesion",
+      "errors": {
+        "underage": "Debes tener 18 anos o mas para registrarte.",
+        "mustAgree": "Debes confirmar que tienes 18 anos o mas y aceptar los terminos.",
+        "passwordMismatch": "Las contrasenas no coinciden.",
+        "emailTaken": "Ya existe una cuenta con este correo electronico."
+      }
+    },
+    "verifyEmail": {
+      "success": "Correo electronico verificado correctamente.",
+      "failure": "Este enlace de verificacion no es valido o ha expirado.",
+      "checkInbox": "Revisa tu bandeja de entrada para encontrar el enlace de verificacion."
+    },
+    "dashboard": {
+      "welcome": "Hola, {name}!",
+      "emailNotVerified": "Verifica tu correo electronico. Revisa tu bandeja de entrada para encontrar el enlace de verificacion.",
+      "logout": "Cerrar sesion"
+    }
+  }
+}
