@@ -7,6 +7,11 @@ type Message = {
   id: string
   role: 'user' | 'assistant'
   content: string
+  type?: 'text' | 'image'
+  imageUrl?: string
+  imageWidth?: number
+  imageHeight?: number
+  mediaAssetId?: string | number
 }
 
 type StreamingState = 'idle' | 'pending' | 'streaming'
@@ -228,15 +233,38 @@ export function ChatInterface({
               const parsed = JSON.parse(data) as { text: string }
               draftContent += parsed.text
               setDraft(draftContent)
-            } else if (event === 'done') {
-              const committedMsg: Message = {
+            } else if (event === 'image') {
+              const parsed = JSON.parse(data) as {
+                mediaAssetId: string | number
+                url: string
+                width: number
+                height: number
+              }
+              const imageMsg: Message = {
                 id: finalMsgId ?? `assistant-${Date.now()}`,
                 role: 'assistant',
-                content: draftContent,
+                content: '',
+                type: 'image',
+                imageUrl: parsed.url,
+                imageWidth: parsed.width,
+                imageHeight: parsed.height,
+                mediaAssetId: parsed.mediaAssetId,
               }
-              setMessages((prev) => [...prev, committedMsg])
+              setMessages((prev) => [...prev, imageMsg])
               setDraft('')
               setCurrentMsgId(null)
+            } else if (event === 'done') {
+              const finishReason = (JSON.parse(data) as { finishReason?: string }).finishReason
+              if (finishReason !== 'image_generated') {
+                const committedMsg: Message = {
+                  id: finalMsgId ?? `assistant-${Date.now()}`,
+                  role: 'assistant',
+                  content: draftContent,
+                }
+                setMessages((prev) => [...prev, committedMsg])
+                setDraft('')
+                setCurrentMsgId(null)
+              }
               setStreamingState('idle')
             } else if (event === 'error') {
               const parsed = JSON.parse(data) as { message: string }
@@ -358,7 +386,7 @@ export function ChatInterface({
     }
   }, [])
 
-  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant')
+  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant' && m.type !== 'image')
   const isStreaming = streamingState !== 'idle'
   const showTyping = isStreaming && !draft
 
@@ -403,38 +431,52 @@ export function ChatInterface({
                 </div>
               )}
 
-              <div
-                className={`group relative max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'rounded-br-sm bg-[var(--color-accent-strong)] text-[var(--color-bg)]'
-                    : 'rounded-bl-sm bg-[var(--color-surface-2)] text-[var(--color-text)]'
-                }`}
-              >
-                <span className="whitespace-pre-wrap">{msg.content}</span>
+              {msg.type === 'image' && msg.imageUrl ? (
+                <div className="group relative max-w-[320px]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={msg.imageUrl}
+                    alt={`Photo from ${characterName}`}
+                    width={msg.imageWidth}
+                    height={msg.imageHeight}
+                    loading="eager"
+                    className="rounded-2xl shadow-md h-auto w-full max-w-[320px] object-cover"
+                  />
+                </div>
+              ) : (
+                <div
+                  className={`group relative max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'rounded-br-sm bg-[var(--color-accent-strong)] text-[var(--color-bg)]'
+                      : 'rounded-bl-sm bg-[var(--color-surface-2)] text-[var(--color-text)]'
+                  }`}
+                >
+                  <span className="whitespace-pre-wrap">{msg.content}</span>
 
-                {msg.role === 'assistant' && (
-                  <div className="mt-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button
-                      onClick={() => handleCopy(msg.id, msg.content)}
-                      aria-label={copiedId === msg.id ? s.copied : s.copy}
-                      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)]"
-                    >
-                      <IconClipboard />
-                      {copiedId === msg.id ? s.copied : s.copy}
-                    </button>
-                    {msg.id === lastAssistantMsg?.id && !isStreaming && (
+                  {msg.role === 'assistant' && (
+                    <div className="mt-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
-                        onClick={handleRegenerate}
-                        aria-label={s.regenerate}
+                        onClick={() => handleCopy(msg.id, msg.content)}
+                        aria-label={copiedId === msg.id ? s.copied : s.copy}
                         className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)]"
                       >
-                        <IconArrowPath />
-                        {s.regenerate}
+                        <IconClipboard />
+                        {copiedId === msg.id ? s.copied : s.copy}
                       </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                      {msg.id === lastAssistantMsg?.id && !isStreaming && (
+                        <button
+                          onClick={handleRegenerate}
+                          aria-label={s.regenerate}
+                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)]"
+                        >
+                          <IconArrowPath />
+                          {s.regenerate}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
 

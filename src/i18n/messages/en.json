@@ -18,7 +18,14 @@
     "errorGeneric": "Something went wrong. Please try again.",
     "errorQuota": "You have reached your daily message limit. Your quota resets at midnight UTC.",
     "yourConversations": "Your conversations",
-    "startNewChat": "Start a new chat"
+    "startNewChat": "Start a new chat",
+    "image": {
+      "upgradeRequired": "Photos are a Premium feature. {link} to unlock.",
+      "tokensRequired": "You're out of tokens this month. {link} to top up.",
+      "linkText": "Upgrade",
+      "failed": "Failed to generate image. Please try again.",
+      "alt": "Photo from {name}"
+    }
   },
   "billing": {
     "plans": {

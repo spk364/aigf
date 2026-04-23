@@ -18,7 +18,14 @@
     "errorGeneric": "Algo salio mal. Por favor, intentalo de nuevo.",
     "errorQuota": "Has alcanzado tu limite diario de mensajes. Tu cuota se restablece a medianoche UTC.",
     "yourConversations": "Tus conversaciones",
-    "startNewChat": "Iniciar un nuevo chat"
+    "startNewChat": "Iniciar un nuevo chat",
+    "image": {
+      "upgradeRequired": "Las fotos son una funcion Premium. {link} para desbloquear.",
+      "tokensRequired": "Te has quedado sin tokens este mes. {link} para recargar.",
+      "linkText": "Mejorar",
+      "failed": "No se pudo generar la foto. Intentalo de nuevo.",
+      "alt": "Foto de {name}"
+    }
   },
   "billing": {
     "plans": {

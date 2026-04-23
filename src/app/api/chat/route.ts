@@ -10,10 +10,17 @@ import { getDailyMessageCap, checkAndIncrementQuota } from '@/features/quota/mes
 import { getRequestContext } from '@/shared/lib/request-context'
 import { createLogger } from '@/shared/lib/logger'
 import { track } from '@/shared/analytics/posthog'
+import { detectImageIntent } from '@/features/chat/intent-detection'
+import { buildImagePrompt } from '@/features/chat/image-prompt'
+import { generateImage } from '@/shared/ai/fal'
+import { persistGeneratedImage } from '@/features/media/persist-generated-image'
+import { getBalance, spend } from '@/features/tokens/ledger'
 
 const LLM_MODEL = OPENROUTER_MODEL
 const LLM_TEMPERATURE = 1.3
 const LLM_MAX_TOKENS = 600
+
+const IMAGE_TOKEN_COST = 2
 
 const bodySchema = z.object({
   conversationId: z.string().optional(),
@@ -27,6 +34,38 @@ function sseEvent(event: string, data: unknown): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function lastMessagePreviewForLocale(locale: string): string {
+  if (locale === 'ru') return '[фото]'
+  if (locale === 'es') return '[foto]'
+  return '[image]'
+}
+
+function upgradeMessageForLocale(locale: string, upgradeUrl: string): string {
+  if (locale === 'ru') {
+    return `Фотографии доступны только на Premium-плане. [Улучшить](${upgradeUrl})`
+  }
+  if (locale === 'es') {
+    return `Las fotos son una funcion Premium. [Mejorar](${upgradeUrl})`
+  }
+  return `Photos are a Premium feature. [Upgrade](${upgradeUrl})`
+}
+
+function tokensRequiredMessageForLocale(locale: string, upgradeUrl: string): string {
+  if (locale === 'ru') {
+    return `У тебя закончились токены в этом месяце. [Пополнить или улучшить план](${upgradeUrl})`
+  }
+  if (locale === 'es') {
+    return `Te has quedado sin tokens este mes. [Recargar o mejorar](${upgradeUrl})`
+  }
+  return `You've run out of tokens this month. [Upgrade or buy more](${upgradeUrl})`
+}
+
+function imageFailedMessageForLocale(locale: string): string {
+  if (locale === 'ru') return 'Не удалось создать фото. Попробуй ещё раз.'
+  if (locale === 'es') return 'No se pudo generar la foto. Intentalo de nuevo.'
+  return 'Failed to generate image. Please try again.'
 }
 
 export async function POST(req: NextRequest) {
@@ -153,6 +192,295 @@ export async function POST(req: NextRequest) {
   }
 
   log.info({ msg: 'chat.message.user_saved', conversationId, isNewConversation })
+
+  const convLanguage = (conversation.language as string | null | undefined) ?? 'en'
+  const isImageRequest = detectImageIntent(message, convLanguage)
+
+  // ---------------------------------------------------------------------------
+  // IMAGE path
+  // ---------------------------------------------------------------------------
+  if (isImageRequest) {
+    const stream = new ReadableStream({
+      async start(controller) {
+        const enc = (s: string) => new TextEncoder().encode(s)
+        const send = (event: string, data: unknown) => {
+          controller.enqueue(enc(sseEvent(event, data)))
+        }
+
+        if (isNewConversation) {
+          send('conversation', { conversationId })
+        }
+
+        const upgradeUrl = `/${convLanguage}/upgrade`
+
+        // 1. Check subscription entitlement
+        const subResult = await payload.find({
+          collection: 'subscriptions',
+          where: {
+            and: [
+              { userId: { equals: user.id } },
+              { status: { equals: 'active' } },
+            ],
+          },
+          limit: 1,
+          overrideAccess: true,
+        })
+
+        const activeSub = subResult.docs[0]
+        const isPremium = activeSub && (
+          activeSub.plan === 'premium_monthly' ||
+          activeSub.plan === 'premium_yearly' ||
+          activeSub.plan === 'premium_plus_monthly'
+        )
+
+        if (!isPremium) {
+          const upgradeMsg = upgradeMessageForLocale(convLanguage, upgradeUrl)
+          const deniedMsg = await payload.create({
+            collection: 'messages',
+            data: {
+              conversationId: conversationId,
+              role: 'assistant',
+              type: 'text',
+              status: 'completed',
+              content: upgradeMsg,
+              completedAt: new Date().toISOString(),
+            },
+          })
+          const currentCount = (conversation.messageCount as number | null) ?? 0
+          await payload.update({
+            collection: 'conversations',
+            id: conversationId,
+            data: {
+              messageCount: currentCount + 2,
+              lastMessageAt: new Date().toISOString(),
+              lastMessagePreview: upgradeMsg.slice(0, 120),
+            },
+          })
+          send('message', { messageId: String(deniedMsg.id) })
+          send('delta', { text: upgradeMsg })
+          send('done', { finishReason: 'entitlement_denied' })
+          controller.close()
+          return
+        }
+
+        // 2. Check token balance
+        const balance = await getBalance(payload, user.id)
+        if (balance < IMAGE_TOKEN_COST) {
+          const tokenMsg = tokensRequiredMessageForLocale(convLanguage, upgradeUrl)
+          const tokenDeniedMsg = await payload.create({
+            collection: 'messages',
+            data: {
+              conversationId: conversationId,
+              role: 'assistant',
+              type: 'text',
+              status: 'completed',
+              content: tokenMsg,
+              completedAt: new Date().toISOString(),
+            },
+          })
+          const currentCount = (conversation.messageCount as number | null) ?? 0
+          await payload.update({
+            collection: 'conversations',
+            id: conversationId,
+            data: {
+              messageCount: currentCount + 2,
+              lastMessageAt: new Date().toISOString(),
+              lastMessagePreview: tokenMsg.slice(0, 120),
+            },
+          })
+          send('message', { messageId: String(tokenDeniedMsg.id) })
+          send('delta', { text: tokenMsg })
+          send('done', { finishReason: 'insufficient_tokens' })
+          controller.close()
+          return
+        }
+
+        // 3. Generate image
+        const characterSnapshot = (conversation.characterSnapshot ?? {}) as {
+          name?: string
+          backstory?: { occupation?: string; location?: string }
+        }
+
+        const { prompt, negativePrompt } = buildImagePrompt({
+          characterSnapshot,
+          userMessage: message,
+          language: convLanguage,
+        })
+
+        let imageResult: Awaited<ReturnType<typeof generateImage>>
+        const imageStart = Date.now()
+
+        try {
+          imageResult = await generateImage({
+            prompt,
+            negativePrompt,
+            imageSize: 'portrait_4_3',
+          })
+        } catch (genErr) {
+          const errMsg = genErr instanceof Error ? genErr.message : 'Image generation failed'
+          log.error({ msg: 'chat.image.gen_failed', conversationId, err: errMsg })
+
+          const failedMsg = await payload.create({
+            collection: 'messages',
+            data: {
+              conversationId: conversationId,
+              role: 'assistant',
+              type: 'image',
+              status: 'failed',
+              errorReason: errMsg,
+              completedAt: new Date().toISOString(),
+            },
+          })
+          send('message', { messageId: String(failedMsg.id) })
+          send('error', { message: imageFailedMessageForLocale(convLanguage) })
+          controller.close()
+          return
+        }
+
+        const latencyMs = Date.now() - imageStart
+        const firstImage = imageResult.images[0]!
+
+        // 4–5. Create assistant message, persist image, spend tokens — in order
+        const assistantImageMsg = await payload.create({
+          collection: 'messages',
+          data: {
+            conversationId: conversationId,
+            role: 'assistant',
+            type: 'image',
+            status: 'pending',
+          },
+        })
+        const assistantImageMsgId = String(assistantImageMsg.id)
+
+        send('message', { messageId: assistantImageMsgId })
+
+        let persistResult: Awaited<ReturnType<typeof persistGeneratedImage>>
+        try {
+          persistResult = await persistGeneratedImage({
+            payload,
+            fromUrl: firstImage.url,
+            width: firstImage.width,
+            height: firstImage.height,
+            contentType: firstImage.contentType,
+            kind: 'message-image',
+            ownerUserId: user.id,
+            relatedMessageId: assistantImageMsgId,
+          })
+        } catch (persistErr) {
+          const errMsg = persistErr instanceof Error ? persistErr.message : 'Persist failed'
+          log.error({ msg: 'chat.image.persist_failed', conversationId, err: errMsg })
+          await payload.update({
+            collection: 'messages',
+            id: assistantImageMsgId,
+            data: { status: 'failed', errorReason: errMsg, completedAt: new Date().toISOString() },
+          })
+          send('error', { message: imageFailedMessageForLocale(convLanguage) })
+          controller.close()
+          return
+        }
+
+        await payload.update({
+          collection: 'messages',
+          id: assistantImageMsgId,
+          data: {
+            imageAssetId: persistResult.mediaAssetId as string,
+            status: 'completed',
+            completedAt: new Date().toISOString(),
+            userTokensSpent: IMAGE_TOKEN_COST,
+            spendType: 'image',
+            generationMetadata: {
+              model: imageResult.modelName,
+              endpoint: imageResult.endpoint,
+              requestId: imageResult.requestId,
+              seed: imageResult.seed,
+              prompt,
+              negativePrompt,
+              latencyMs,
+            },
+          },
+        })
+
+        const spendResult = await spend(payload, {
+          userId: user.id,
+          type: 'spend_image',
+          amount: IMAGE_TOKEN_COST,
+          relatedMessageId: assistantImageMsgId,
+          reason: 'on-request image',
+        })
+
+        if (!spendResult.ok) {
+          // Race condition — balance drained between check and spend
+          log.warn({ msg: 'chat.image.spend_race', conversationId, userId: String(user.id) })
+          await payload.update({
+            collection: 'messages',
+            id: assistantImageMsgId,
+            data: { status: 'failed', errorReason: 'insufficient_tokens_race' },
+          })
+          await payload.update({
+            collection: 'media-assets',
+            id: String(persistResult.mediaAssetId),
+            data: { deletedAt: new Date().toISOString() },
+          }).catch(() => {})
+          send('error', { message: tokensRequiredMessageForLocale(convLanguage, upgradeUrl) })
+          controller.close()
+          return
+        }
+
+        // Update conversation
+        const currentCount = (conversation.messageCount as number | null) ?? 0
+        await payload.update({
+          collection: 'conversations',
+          id: conversationId,
+          data: {
+            messageCount: currentCount + 2,
+            lastMessageAt: new Date().toISOString(),
+            lastMessagePreview: lastMessagePreviewForLocale(convLanguage),
+          },
+        })
+
+        // 6. Stream image event
+        send('image', {
+          mediaAssetId: persistResult.mediaAssetId,
+          url: persistResult.publicUrl,
+          width: firstImage.width,
+          height: firstImage.height,
+        })
+        send('done', { finishReason: 'image_generated' })
+
+        // 7. PostHog
+        track({
+          userId: String(user.id),
+          event: 'chat.image_generated',
+          properties: {
+            model: imageResult.modelName,
+            seed: imageResult.seed,
+            latencyMs,
+            requestId: imageResult.requestId,
+            characterId: typeof conversation.characterId === 'object'
+              ? (conversation.characterId as { id: string | number }).id
+              : conversation.characterId,
+            tokensSpent: IMAGE_TOKEN_COST,
+          },
+        })
+
+        log.info({ msg: 'chat.image.done', conversationId, latencyMs: Date.now() - handlerStart })
+        controller.close()
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    })
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEXT path (unchanged)
+  // ---------------------------------------------------------------------------
 
   const historyResult = await payload.find({
     collection: 'messages',
