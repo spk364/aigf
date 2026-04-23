@@ -17,6 +17,7 @@
     "tokens:validate": "tsx src/features/tokens/validate-cli.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1035.0",
     "@fal-ai/client": "^1.9.6",
     "@payloadcms/db-postgres": "^3.83.0",
     "@payloadcms/email-resend": "^3.83.0",

@@ -1,7 +1,8 @@
-# Phase 2 — Backbone — Progress
+# Phase 2 + Phase 3 (in progress) — Progress
 
-**Status:** completed
-**Date:** 2026-04-21
+**Phase 2:** completed (2026-04-21)
+**Phase 3:** in progress (started 2026-04-23)
+**Last update:** 2026-04-23
 **Repo:** `C:/Users/User/projects/gfai`
 **Verification:** `pnpm typecheck` and `pnpm lint` both pass cleanly on 71 TypeScript files.
 
@@ -150,17 +151,25 @@ First-visit flow:
 
 Build features first, layer safety on at the end (before any production launch).
 
-1. Full `characters` schema: `appearance` jsonb, `imageModel`, `primaryImageId`, `galleryImageIds`, `userContentPreferences`.
-2. `media_assets` collection + Cloudflare R2 integration.
-3. Image generation pipeline via fal.ai — model: `fal-ai/realistic-vision` (selected). Wired via `src/shared/ai/fal.ts`. Persistence to `media_assets` + R2 upload still TODO.
-4. Intent detection (LLM decides when to send a photo) — also handles "send me a photo" requests.
-5. Memory system: `memory_entries` with pgvector HNSW index, extraction job every 30 messages, top-5 retrieval.
-6. Character builder — 4-step wizard with `character_drafts` TTL collection.
-7. Catalog page with filters, tags, content rating.
-8. `character_appearance_presets` catalog managed via admin.
-9. Admin panel enhancements: moderation queue, analytics dashboard.
-10. Relationship score computation on message send.
-11. **Safety pipeline (last, before production launch)** — input/output filters, scoring system, hard-coded negative prompts in image gen, apparent-age classifier (NSFW requires `apparentAge > 25`), `content_flags` + `safety_incidents` collections, escalation cron (3-strike ban). Must be in place before public launch — current dev environment has no filters.
+1. ✅ **`media_assets` collection** — done (commit `4156c49`). 18 fields per spec, indexed, wired into messages (`imageAssetId`/`videoAssetId` are now relationships, not json) and characters (`primaryImageId` single + `galleryImageIds` hasMany, both optional). Supabase `media_assets` table created via Payload push.
+2. ✅ **Cloudflare R2 storage + fal CDN mirroring** — done. New files: `src/shared/storage/r2.ts` (S3-compatible client wrapper with `uploadBuffer`, `mirrorFromUrl`, `deleteObject`, `buildR2Key`), `src/features/media/persist-generated-image.ts` (helper that mirrors a fal CDN URL to R2 and creates a `media-assets` row in one call). Dev test endpoint `POST /api/dev/generate-image` accepts `persist: true` to exercise the full flow. Requires R2 env vars (see "R2 setup" section below); without them, `persist: false` still returns raw fal URLs.
+3. ⏳ Image generation pipeline + intent detection in chat — wire fal generation into chat when user requests a photo, persist via the helper above, save assistant message of type `image` with `imageAssetId`.
+4. ⏳ Full `characters` schema: `appearance` jsonb, `imageModel`, `userContentPreferences`.
+5. ⏳ Memory system: `memory_entries` with pgvector HNSW index, extraction job every 30 messages, top-5 retrieval.
+6. ⏳ Character builder — 4-step wizard with `character_drafts` TTL collection. Step 1 generates 4 preview images via fal.
+7. ⏳ Catalog page with filters, tags, content rating.
+8. ⏳ `character_appearance_presets` catalog managed via admin.
+9. ⏳ Admin panel enhancements: moderation queue, analytics dashboard.
+10. ⏳ Relationship score computation on message send.
+11. ⏳ **Safety pipeline (last, before production launch)** — input/output filters, scoring system, hard-coded negative prompts in image gen, apparent-age classifier (NSFW requires `apparentAge > 25`), `content_flags` + `safety_incidents` collections, escalation cron (3-strike ban). Must be in place before public launch — current dev environment has no filters.
+
+### R2 setup (required before testing image persistence)
+
+1. Cloudflare dashboard → R2 → create a bucket (any name; put in `R2_BUCKET`).
+2. Bucket → Settings → enable public access. Either toggle the free `pub-<id>.r2.dev` subdomain OR connect a custom domain. Copy the resulting base URL into `R2_PUBLIC_URL` (no trailing slash).
+3. R2 → Manage API tokens → create token with "Object Read & Write" on the bucket. Set `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`.
+4. `R2_ACCOUNT_ID` is the Cloudflare Account ID visible in the right sidebar of any dashboard page.
+5. Restart `pnpm dev` after editing `.env.local`.
 
 ### UX polish
 

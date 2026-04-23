@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { getPayload } from 'payload'
+import config from '@payload-config'
 import { generateImage } from '@/shared/ai/fal'
 import { getCurrentUser } from '@/shared/auth/current-user'
+import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 
 const bodySchema = z.object({
   prompt: z.string().min(1).max(1000),
@@ -11,6 +14,8 @@ const bodySchema = z.object({
     .optional(),
   numImages: z.number().int().min(1).max(4).optional(),
   seed: z.number().int().optional(),
+  // When true, each generated image is mirrored to R2 and a media-assets row is created.
+  persist: z.boolean().default(false),
 })
 
 export async function POST(req: Request) {
@@ -39,7 +44,53 @@ export async function POST(req: Request) {
 
   try {
     const result = await generateImage(body)
-    return NextResponse.json({ ok: true, ...result })
+
+    if (!body.persist) {
+      // Raw fal URLs returned without persistence — no R2 env vars required.
+      return NextResponse.json({ ok: true, ...result })
+    }
+
+    // Mirror each image to R2 and create media-assets rows.
+    const payload = await getPayload({ config })
+
+    const persistedImages = await Promise.all(
+      result.images.map(async (img) => {
+        const persisted = await persistGeneratedImage({
+          payload,
+          fromUrl: img.url,
+          width: img.width,
+          height: img.height,
+          contentType: img.contentType,
+          kind: 'message-image',
+          ownerUserId: user.id,
+          generationMetadata: {
+            modelName: result.modelName,
+            endpoint: result.endpoint,
+            requestId: result.requestId,
+            seed: result.seed,
+            prompt: body.prompt,
+            negativePrompt: body.negativePrompt,
+          },
+        })
+        return {
+          url: persisted.publicUrl,
+          width: img.width,
+          height: img.height,
+          contentType: img.contentType,
+          mediaAssetId: persisted.mediaAssetId,
+        }
+      }),
+    )
+
+    return NextResponse.json({
+      ok: true,
+      endpoint: result.endpoint,
+      modelName: result.modelName,
+      seed: result.seed,
+      requestId: result.requestId,
+      latencyMs: result.latencyMs,
+      images: persistedImages,
+    })
   } catch (err) {
     return NextResponse.json(
       {
