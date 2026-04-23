@@ -93,6 +93,146 @@
       "mustAgree": "Debes confirmar que tienes 18 anos o mas y aceptar los terminos."
     }
   },
+  "builder": {
+    "title": "Crea tu companion",
+    "startNew": "Nuevo",
+    "upgradeLink": "Mejorar",
+    "draftsHeading": "Tus borradores",
+    "upgradeRequired": "Has alcanzado el limite del plan gratuito: 1 personaje.",
+    "previewsRemaining": "{used} / {max} conjuntos de preview usados",
+    "steps": {
+      "appearance": "Apariencia",
+      "identity": "Identidad",
+      "backstory": "Historia",
+      "review": "Revision"
+    },
+    "fields": {
+      "artStyle": "Estilo de arte",
+      "ethnicity": "Etnicidad",
+      "ageRange": "Rango de edad",
+      "ageDisplay": "Edad mostrada",
+      "bodyType": "Tipo de cuerpo",
+      "hairColor": "Color de cabello",
+      "hairLength": "Largo de cabello",
+      "hairStyle": "Estilo de cabello",
+      "eyeColor": "Color de ojos",
+      "features": "Caracteristicas faciales",
+      "name": "Nombre",
+      "occupation": "Ocupacion",
+      "archetype": "Arquetipo de personalidad",
+      "personalityTraits": "Rasgos de personalidad",
+      "bio": "Historia",
+      "interests": "Intereses",
+      "howYouMet": "Como se conocieron",
+      "relationshipStage": "Etapa de la relacion"
+    },
+    "options": {
+      "artStyle": {
+        "realistic": "Realista",
+        "anime": "Anime",
+        "3d_render": "Render 3D",
+        "stylized": "Estilizado"
+      },
+      "ethnicity": {
+        "european": "Europea",
+        "east_asian": "Asiatica oriental",
+        "southeast_asian": "Asiatica del sureste",
+        "latina": "Latina",
+        "african": "Africana",
+        "middle_eastern": "Oriente Medio",
+        "mixed": "Mixta"
+      },
+      "ageRange": {
+        "young_adult": "Adulto joven",
+        "adult": "Adulto",
+        "mature": "Maduro",
+        "experienced": "Experimentado"
+      },
+      "bodyType": {
+        "slender": "Esbelta",
+        "average": "Promedio",
+        "curvy": "Con curvas",
+        "voluptuous": "Voluptuosa"
+      },
+      "hairColor": {
+        "blonde": "Rubia",
+        "brunette": "Morena",
+        "redhead": "Pelirroja",
+        "black": "Negro",
+        "brown": "Marron",
+        "auburn": "Castaño rojizo",
+        "platinum": "Platino",
+        "copper": "Cobre"
+      },
+      "hairLength": {
+        "short": "Corto",
+        "medium": "Mediano",
+        "long": "Largo"
+      },
+      "hairStyle": {
+        "straight": "Liso",
+        "wavy": "Ondulado",
+        "curly": "Rizado"
+      },
+      "eyeColor": {
+        "blue": "Azul",
+        "brown": "Marron",
+        "green": "Verde",
+        "hazel": "Avellana",
+        "amber": "Ambar",
+        "gray": "Gris"
+      },
+      "features": {
+        "freckles": "Pecas",
+        "dimples": "Hoyuelos",
+        "glasses": "Gafas",
+        "tattoos": "Tatuajes",
+        "beauty_mark": "Lunar",
+        "piercings": "Piercings"
+      },
+      "archetype": {
+        "sweet_girlfriend": "Novia dulce",
+        "adventurous_spirit": "Espiritu aventurero",
+        "mysterious_one": "La misteriosa",
+        "confident_leader": "Lider segura",
+        "shy_romantic": "Romantica timida",
+        "intellectual": "Intelectual",
+        "free_spirit": "Espiritu libre",
+        "caretaker": "Cuidadora"
+      },
+      "meetScenario": {
+        "coffee_shop": "Cafeteria",
+        "mutual_friends": "Amigos en comun",
+        "dating_app": "App de citas",
+        "neighbors": "Vecinos",
+        "colleagues": "Compañeros de trabajo",
+        "custom": "Historia propia"
+      },
+      "relationshipStage": {
+        "just_met": "Recien conocidos",
+        "dating": "Saliendo",
+        "relationship": "En una relacion",
+        "long_term": "Largo plazo"
+      }
+    },
+    "actions": {
+      "generatePreviews": "Generar vistas previas",
+      "regenerate": "Regenerar",
+      "selectReference": "Seleccionado",
+      "saveDraft": "Guardando",
+      "prev": "Atras",
+      "next": "Siguiente",
+      "finalize": "Finalizar",
+      "meetHer": "Conocerla"
+    },
+    "errors": {
+      "nameChildlike": "Este nombre no esta permitido.",
+      "nameCelebrity": "Los nombres de celebridades no estan permitidos.",
+      "nameTooShort": "El nombre debe tener al menos 2 caracteres.",
+      "previewLimitReached": "Has alcanzado el limite de 5 conjuntos de preview para este borrador.",
+      "validationFailed": "Por favor revisa tus datos e intentalo de nuevo."
+    }
+  },
   "auth": {
     "continueWithGoogle": "Continuar con Google",
     "or": "o",

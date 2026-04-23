@@ -93,6 +93,146 @@
       "mustAgree": "Необходимо подтвердить, что тебе 18 лет или больше, и принять условия."
     }
   },
+  "builder": {
+    "title": "Создай свою подругу",
+    "startNew": "Начать",
+    "upgradeLink": "Улучшить план",
+    "draftsHeading": "Ваши черновики",
+    "upgradeRequired": "Вы достигли лимита бесплатного тарифа: 1 персонаж.",
+    "previewsRemaining": "Использовано {used} / {max} наборов превью",
+    "steps": {
+      "appearance": "Внешность",
+      "identity": "Личность",
+      "backstory": "Предыстория",
+      "review": "Просмотр"
+    },
+    "fields": {
+      "artStyle": "Стиль арта",
+      "ethnicity": "Этническая принадлежность",
+      "ageRange": "Возрастной диапазон",
+      "ageDisplay": "Отображаемый возраст",
+      "bodyType": "Тип телосложения",
+      "hairColor": "Цвет волос",
+      "hairLength": "Длина волос",
+      "hairStyle": "Стиль волос",
+      "eyeColor": "Цвет глаз",
+      "features": "Особенности лица",
+      "name": "Имя",
+      "occupation": "Профессия",
+      "archetype": "Архетип личности",
+      "personalityTraits": "Черты характера",
+      "bio": "Предыстория",
+      "interests": "Интересы",
+      "howYouMet": "Как вы познакомились",
+      "relationshipStage": "Стадия отношений"
+    },
+    "options": {
+      "artStyle": {
+        "realistic": "Реалистичный",
+        "anime": "Аниме",
+        "3d_render": "3D-рендер",
+        "stylized": "Стилизованный"
+      },
+      "ethnicity": {
+        "european": "Европейский",
+        "east_asian": "Восточноазиатский",
+        "southeast_asian": "Юго-восточноазиатский",
+        "latina": "Латинская",
+        "african": "Африканский",
+        "middle_eastern": "Ближневосточный",
+        "mixed": "Смешанный"
+      },
+      "ageRange": {
+        "young_adult": "Молодой взрослый",
+        "adult": "Взрослый",
+        "mature": "Зрелый",
+        "experienced": "Опытный"
+      },
+      "bodyType": {
+        "slender": "Стройное",
+        "average": "Среднее",
+        "curvy": "Пышное",
+        "voluptuous": "Соблазнительное"
+      },
+      "hairColor": {
+        "blonde": "Блондинка",
+        "brunette": "Брюнетка",
+        "redhead": "Рыжая",
+        "black": "Чёрный",
+        "brown": "Коричневый",
+        "auburn": "Каштановый",
+        "platinum": "Платиновый",
+        "copper": "Медный"
+      },
+      "hairLength": {
+        "short": "Короткие",
+        "medium": "Средние",
+        "long": "Длинные"
+      },
+      "hairStyle": {
+        "straight": "Прямые",
+        "wavy": "Волнистые",
+        "curly": "Кудрявые"
+      },
+      "eyeColor": {
+        "blue": "Голубые",
+        "brown": "Карие",
+        "green": "Зелёные",
+        "hazel": "Ореховые",
+        "amber": "Янтарные",
+        "gray": "Серые"
+      },
+      "features": {
+        "freckles": "Веснушки",
+        "dimples": "Ямочки",
+        "glasses": "Очки",
+        "tattoos": "Татуировки",
+        "beauty_mark": "Родинка",
+        "piercings": "Пирсинг"
+      },
+      "archetype": {
+        "sweet_girlfriend": "Нежная подруга",
+        "adventurous_spirit": "Авантюрный дух",
+        "mysterious_one": "Таинственная",
+        "confident_leader": "Уверенный лидер",
+        "shy_romantic": "Застенчивая романтик",
+        "intellectual": "Интеллектуал",
+        "free_spirit": "Свободный дух",
+        "caretaker": "Заботливая"
+      },
+      "meetScenario": {
+        "coffee_shop": "Кофейня",
+        "mutual_friends": "Общие друзья",
+        "dating_app": "Приложение для знакомств",
+        "neighbors": "Соседи",
+        "colleagues": "Коллеги",
+        "custom": "Своя история"
+      },
+      "relationshipStage": {
+        "just_met": "Только познакомились",
+        "dating": "Встречаемся",
+        "relationship": "В отношениях",
+        "long_term": "Долгосрочные"
+      }
+    },
+    "actions": {
+      "generatePreviews": "Сгенерировать превью",
+      "regenerate": "Regenerate",
+      "selectReference": "Выбрано",
+      "saveDraft": "Сохранение",
+      "prev": "Назад",
+      "next": "Далее",
+      "finalize": "Завершить",
+      "meetHer": "Познакомиться"
+    },
+    "errors": {
+      "nameChildlike": "Это имя не разрешено.",
+      "nameCelebrity": "Имена знаменитостей не разрешены.",
+      "nameTooShort": "Имя должно содержать минимум 2 символа.",
+      "previewLimitReached": "Вы достигли лимита в 5 наборов превью для этого черновика.",
+      "validationFailed": "Пожалуйста, проверьте введённые данные и попробуйте снова."
+    }
+  },
   "auth": {
     "continueWithGoogle": "Продолжить через Google",
     "or": "или",

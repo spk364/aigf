@@ -23,6 +23,7 @@ import { PaymentWebhooks } from './collections/payment-webhooks'
 import { SystemPrompts } from './collections/system-prompts'
 import { FeatureFlags } from './collections/feature-flags'
 import { AuditLogs } from './collections/audit-logs'
+import { CharacterDrafts } from './collections/character-drafts'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -128,6 +129,7 @@ export default buildConfig({
     Users,
     AgeVerifications,
     Characters,
+    CharacterDrafts,
     MediaAssets,
     Conversations,
     Messages,

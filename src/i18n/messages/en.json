@@ -93,6 +93,146 @@
       "mustAgree": "You must confirm you are 18 or older and agree to the terms."
     }
   },
+  "builder": {
+    "title": "Create your companion",
+    "startNew": "Start new",
+    "upgradeLink": "Upgrade",
+    "draftsHeading": "Your drafts",
+    "upgradeRequired": "You have reached the free tier limit of 1 custom character.",
+    "previewsRemaining": "{used} / {max} preview sets used",
+    "steps": {
+      "appearance": "Appearance",
+      "identity": "Identity",
+      "backstory": "Backstory",
+      "review": "Review"
+    },
+    "fields": {
+      "artStyle": "Art style",
+      "ethnicity": "Ethnicity",
+      "ageRange": "Age range",
+      "ageDisplay": "Displayed age",
+      "bodyType": "Body type",
+      "hairColor": "Hair color",
+      "hairLength": "Hair length",
+      "hairStyle": "Hair style",
+      "eyeColor": "Eye color",
+      "features": "Facial features",
+      "name": "Name",
+      "occupation": "Occupation",
+      "archetype": "Personality archetype",
+      "personalityTraits": "Personality sliders",
+      "bio": "Backstory",
+      "interests": "Interests",
+      "howYouMet": "How you met",
+      "relationshipStage": "Relationship stage"
+    },
+    "options": {
+      "artStyle": {
+        "realistic": "Realistic",
+        "anime": "Anime",
+        "3d_render": "3D Render",
+        "stylized": "Stylized"
+      },
+      "ethnicity": {
+        "european": "European",
+        "east_asian": "East Asian",
+        "southeast_asian": "Southeast Asian",
+        "latina": "Latina",
+        "african": "African",
+        "middle_eastern": "Middle Eastern",
+        "mixed": "Mixed"
+      },
+      "ageRange": {
+        "young_adult": "Young Adult",
+        "adult": "Adult",
+        "mature": "Mature",
+        "experienced": "Experienced"
+      },
+      "bodyType": {
+        "slender": "Slender",
+        "average": "Average",
+        "curvy": "Curvy",
+        "voluptuous": "Voluptuous"
+      },
+      "hairColor": {
+        "blonde": "Blonde",
+        "brunette": "Brunette",
+        "redhead": "Redhead",
+        "black": "Black",
+        "brown": "Brown",
+        "auburn": "Auburn",
+        "platinum": "Platinum",
+        "copper": "Copper"
+      },
+      "hairLength": {
+        "short": "Short",
+        "medium": "Medium",
+        "long": "Long"
+      },
+      "hairStyle": {
+        "straight": "Straight",
+        "wavy": "Wavy",
+        "curly": "Curly"
+      },
+      "eyeColor": {
+        "blue": "Blue",
+        "brown": "Brown",
+        "green": "Green",
+        "hazel": "Hazel",
+        "amber": "Amber",
+        "gray": "Gray"
+      },
+      "features": {
+        "freckles": "Freckles",
+        "dimples": "Dimples",
+        "glasses": "Glasses",
+        "tattoos": "Tattoos",
+        "beauty_mark": "Beauty mark",
+        "piercings": "Piercings"
+      },
+      "archetype": {
+        "sweet_girlfriend": "Sweet girlfriend",
+        "adventurous_spirit": "Adventurous spirit",
+        "mysterious_one": "Mysterious one",
+        "confident_leader": "Confident leader",
+        "shy_romantic": "Shy romantic",
+        "intellectual": "Intellectual",
+        "free_spirit": "Free spirit",
+        "caretaker": "Caretaker"
+      },
+      "meetScenario": {
+        "coffee_shop": "Coffee shop",
+        "mutual_friends": "Mutual friends",
+        "dating_app": "Dating app",
+        "neighbors": "Neighbors",
+        "colleagues": "Colleagues",
+        "custom": "Custom story"
+      },
+      "relationshipStage": {
+        "just_met": "Just met",
+        "dating": "Dating",
+        "relationship": "In a relationship",
+        "long_term": "Long-term"
+      }
+    },
+    "actions": {
+      "generatePreviews": "Generate previews",
+      "regenerate": "Regenerate",
+      "selectReference": "Selected",
+      "saveDraft": "Saving",
+      "prev": "Back",
+      "next": "Next",
+      "finalize": "Finalize",
+      "meetHer": "Meet her"
+    },
+    "errors": {
+      "nameChildlike": "This name is not allowed.",
+      "nameCelebrity": "Celebrity names are not allowed.",
+      "nameTooShort": "Name must be at least 2 characters.",
+      "previewLimitReached": "You have reached the 5 preview sets limit for this draft.",
+      "validationFailed": "Please check your inputs and try again."
+    }
+  },
   "auth": {
     "continueWithGoogle": "Continue with Google",
     "or": "or",
