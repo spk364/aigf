@@ -22,9 +22,18 @@ const LLM_MAX_TOKENS = 600
 
 const IMAGE_TOKEN_COST = 2
 
+// IDs come over the wire as strings (JSON body) or numbers (Postgres int ids).
+// Accept both and coerce to number when possible — the relationship fields in
+// integer-id Postgres collections reject string ids.
+const idSchema = z.union([z.string(), z.number()]).transform((v) => {
+  if (typeof v === 'number') return v
+  const n = Number(v)
+  return Number.isFinite(n) && /^\d+$/.test(v) ? n : v
+})
+
 const bodySchema = z.object({
-  conversationId: z.string().optional(),
-  characterId: z.string().optional(),
+  conversationId: idSchema.optional(),
+  characterId: idSchema.optional(),
   message: z.string().min(1).max(2000),
 })
 
@@ -99,7 +108,7 @@ export async function POST(req: NextRequest) {
   }
   // TODO(phase-2-task-5): consider refunding quota on LLM error (currently one "try" per count per spec)
 
-  let conversationId = incomingConversationId
+  let conversationId: string | number | undefined = incomingConversationId
   let isNewConversation = false
 
   if (!conversationId) {
@@ -138,7 +147,10 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    conversationId = String(conversation.id)
+    // Postgres collections use integer ids — keep the original numeric/string id
+    // returned by Payload, do NOT coerce to String. Relationship fields in v3
+    // reject string ids on integer-id collections with a ValidationError.
+    conversationId = conversation.id
     isNewConversation = true
   }
 

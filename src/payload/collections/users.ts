@@ -29,6 +29,12 @@ const VERIFY_GREETINGS: Record<string, string> = {
 export const Users: CollectionConfig = {
   slug: 'users',
   auth: {
+    // Payload v3.83 enables session-based auth by default which requires a row in
+    // `users_sessions` for every JWT. The OAuth plugin signs a JWT but does not
+    // create that session row, so subsequent requests fail to authenticate.
+    // Falling back to JWT-only auth (stateless) keeps OAuth + email login both working.
+    // TODO(phase-3-auth): re-enable sessions and add an OAuth-side session creation hook.
+    useSessions: false,
     verify: {
       generateEmailSubject: ({ user }) => {
         const locale = (user as { locale?: string }).locale ?? 'en'

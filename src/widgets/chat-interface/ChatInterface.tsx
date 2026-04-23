@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 type Message = {
   id: string
@@ -143,7 +142,6 @@ export function ChatInterface({
   strings: stringsProp,
 }: Props) {
   const s = { ...defaultStrings, ...stringsProp }
-  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
   const [streamingState, setStreamingState] = useState<StreamingState>('idle')
@@ -222,9 +220,13 @@ export function ChatInterface({
           const events = parseSseChunk(toProcess)
           for (const { event, data } of events) {
             if (event === 'conversation') {
-              const parsed = JSON.parse(data) as { conversationId: string }
-              conversationIdRef.current = parsed.conversationId
-              router.replace(`/${locale}/chat/${parsed.conversationId}`)
+              const parsed = JSON.parse(data) as { conversationId: string | number }
+              conversationIdRef.current = String(parsed.conversationId)
+              // history.replaceState updates the URL without remounting the route,
+              // so the ongoing SSE stream (delta / done events) keeps working.
+              if (typeof window !== 'undefined') {
+                window.history.replaceState(null, '', `/${locale}/chat/${parsed.conversationId}`)
+              }
             } else if (event === 'message') {
               const parsed = JSON.parse(data) as { messageId: string }
               finalMsgId = parsed.messageId
@@ -280,7 +282,7 @@ export function ChatInterface({
         setStreamingState('idle')
       }
     },
-    [streamingState, initialCharacterId, locale, router, s.errorGeneric],
+    [streamingState, initialCharacterId, locale, s.errorGeneric],
   )
 
   const handleSubmit = (e: React.FormEvent) => {

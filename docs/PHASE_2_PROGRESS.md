@@ -2,7 +2,7 @@
 
 **Phase 2:** completed (2026-04-21)
 **Phase 3:** in progress (started 2026-04-23)
-**Last update:** 2026-04-23
+**Last update:** 2026-04-23 (evening — auth + chat streaming fixes)
 **Repo:** `C:/Users/User/projects/gfai`
 **Verification:** `pnpm typecheck` and `pnpm lint` both pass cleanly on 71 TypeScript files.
 
@@ -162,6 +162,45 @@ Build features first, layer safety on at the end (before any production launch).
 9. ⏳ Admin panel enhancements: moderation queue, analytics dashboard.
 10. ⏳ Relationship score computation on message send.
 11. ⏳ **Safety pipeline (last, before production launch)** — input/output filters, scoring system, hard-coded negative prompts in image gen, apparent-age classifier (NSFW requires `apparentAge > 25`), `content_flags` + `safety_incidents` collections, escalation cron (3-strike ban). Must be in place before public launch — current dev environment has no filters.
+
+### Bug fixes applied during live testing (2026-04-23 evening)
+
+Three issues surfaced once the builder + image flow were exercised against a
+real browser. All fixed:
+
+1. **OAuth login landed on /login instead of /dashboard** — Payload v3.83
+   enables session-based JWT auth by default (tokens carry a `sid`, checked
+   against `users_sessions`). The OAuth plugin signs JWTs without creating a
+   session row, so every subsequent request failed auth silently and the
+   dashboard's `requireCompleteProfile()` bounced the user to login. Fixed by
+   setting `auth.useSessions: false` on the Users collection (stateless JWT).
+   Follow-up for Phase 3-auth: either re-enable sessions and add an OAuth-side
+   session creation hook, or stay stateless and accept the reduced
+   revocation story.
+
+2. **Verified OAuth users still considered unverified** — Payload's
+   `auth.verify: true` keeps `_verificationtoken` populated on the user row
+   even when `_verified: true`. The JWT strategy treated the stale token as
+   "not fully verified". Cleared the token for the existing user manually;
+   future OAuth flows need the plugin callback to null it out (TODO).
+
+3. **Chat response text never rendered even though 200 streamed** —
+   `ChatInterface` called `router.replace('/chat/[conversationId]')` the
+   moment the server sent `event: conversation` for a new conversation. Next
+   App Router treats `/chat/new` and `/chat/[id]` as different routes, so the
+   whole component remounted mid-stream and every subsequent `delta` event
+   went into the void. Swapped `router.replace` → `window.history.replaceState`
+   which updates the URL without unmounting the widget, so SSE consumption
+   continues seamlessly.
+
+Additionally:
+- `src/app/api/chat/route.ts`: the `conversationId` coming from request body
+  is now coerced from string → number when it parses cleanly as a numeric id
+  (Postgres integer-id collections' `relationship` fields reject string ids).
+  Removed an accidental `String(conversation.id)` coercion on the fresh-created
+  conversation id for the same reason.
+- `src/shared/auth/current-user.ts`: debug logging stripped now that the
+  auth path is understood.
 
 ### R2 setup (required before testing image persistence)
 
