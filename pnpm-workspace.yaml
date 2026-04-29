@@ -1,0 +1,2 @@
+patchedDependencies:
+  payload-oauth2@1.0.20: patches/payload-oauth2@1.0.20.patch

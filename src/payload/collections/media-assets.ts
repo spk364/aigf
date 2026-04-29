@@ -61,6 +61,7 @@ export const MediaAssets: CollectionConfig = {
       options: [
         { label: 'R2', value: 'r2' },
         { label: 'S3', value: 's3' },
+        { label: 'Local (dev)', value: 'local' },
       ],
     },
     {

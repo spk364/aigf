@@ -54,6 +54,18 @@ const envSchema = z.object({
   NEXT_PUBLIC_POSTHOG_HOST: z.string().url().optional(),
   AXIOM_TOKEN: z.string().optional(),
   AXIOM_DATASET: z.string().optional(),
+
+  // Storage provider override ("r2" | "local"). Defaults to auto-detect:
+  // R2 if all R2_* vars are set, otherwise local (dev only).
+  STORAGE_PROVIDER: z.enum(['r2', 'local']).optional(),
+
+  // Dev-only auth bypass (NEVER honored in production — see src/shared/auth/current-user.ts).
+  // When set to 'true' in development, server actions and API routes resolve the
+  // current user as the seeded dev user (dev@local.test) without any login.
+  DEV_AUTH_BYPASS: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 })
 
 const parsed = envSchema.safeParse(process.env)

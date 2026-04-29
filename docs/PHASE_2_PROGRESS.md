@@ -2,9 +2,38 @@
 
 **Phase 2:** completed (2026-04-21)
 **Phase 3:** in progress (started 2026-04-23)
-**Last update:** 2026-04-23 (evening — auth + chat streaming fixes)
+**Last update:** 2026-04-23
 **Repo:** `C:/Users/User/projects/gfai`
-**Verification:** `pnpm typecheck` and `pnpm lint` both pass cleanly on 71 TypeScript files.
+**Verification:** `pnpm typecheck` and `pnpm lint` pass cleanly on every commit.
+
+---
+
+## Phase 3 — Feature status
+
+| # | Feature | Status |
+|---|---|---|
+| 1 | `media_assets` collection | ✅ done |
+| 2 | Cloudflare R2 + fal CDN mirroring | ✅ done |
+| 3 | Image generation pipeline + intent detection in chat | ✅ done |
+| 4 | Full `characters` schema (appearance + imageModel + userContentPreferences) | ✅ done |
+| 5 | Memory system (pgvector + extraction + retrieval + chat integration) | ✅ done |
+| 6 | Character builder — 4-step wizard | ✅ done |
+| 7 | Catalog APIs + public landing showcase (backend only) | 🟡 backend done, frontend deferred |
+| 8 | Relationship score (compute on every message) | ✅ done |
+| 9 | Soft-delete enforcement across key queries | ✅ done |
+| 10 | `character_appearance_presets` collection | ⏳ next |
+| 11 | GDPR export + delete endpoints | ⏳ next |
+| 12 | Inngest — async webhooks + memory extraction jobs | ⏳ next |
+| 13 | Real CCBill MD5 signature + DataLink cancel | ⏳ next |
+| 14 | Safety pipeline (input/output filters, apparent-age classifier, incidents) | ⏳ last (pre-launch blocker) |
+
+**Critical pre-launch gaps (block first user):**
+- Safety pipeline (item 14) — no filters exist today
+- Real CCBill signature verification (item 13) — currently shared-secret stub
+- GDPR export/delete (item 11) — required at launch
+- Hourly token ledger validator cron — function exists, no schedule
+
+---
 
 ---
 
@@ -154,14 +183,28 @@ Build features first, layer safety on at the end (before any production launch).
 1. ✅ **`media_assets` collection** — done (commit `4156c49`). 18 fields per spec, indexed, wired into messages (`imageAssetId`/`videoAssetId` are now relationships, not json) and characters (`primaryImageId` single + `galleryImageIds` hasMany, both optional). Supabase `media_assets` table created via Payload push.
 2. ✅ **Cloudflare R2 storage + fal CDN mirroring** — done. New files: `src/shared/storage/r2.ts` (S3-compatible client wrapper with `uploadBuffer`, `mirrorFromUrl`, `deleteObject`, `buildR2Key`), `src/features/media/persist-generated-image.ts` (helper that mirrors a fal CDN URL to R2 and creates a `media-assets` row in one call). Dev test endpoint `POST /api/dev/generate-image` accepts `persist: true` to exercise the full flow. Requires R2 env vars (see "R2 setup" section below); without them, `persist: false` still returns raw fal URLs.
 3. ✅ **Image generation pipeline + intent detection in chat** — done. New: `src/features/chat/intent-detection.ts` (regex-based `detectImageIntent` for en/ru/es), `src/features/chat/image-prompt.ts` (`buildImagePrompt` with hardcoded base + occupation hint + last-80-chars scene fragment). Chat route forks: image-intent → free tier sees Premium upsell text; premium with insufficient tokens sees top-up text; premium with tokens generates via fal → mirrors to R2 → saves message of type `image` with `imageAssetId` → spends 2 tokens via ledger → streams `event: image` over SSE. ChatInterface widget now renders image bubbles (max-w 320, rounded-2xl), and the conversation page batch-fetches `media-assets.publicUrl` for image messages in history. Token cost per spec 3.8: standard image = 2 tokens. Free tier blocked from image gen per spec 3.8. PostHog event `chat.image_generated` fired on success.
-4. ⏳ Full `characters` schema: `appearance` jsonb, `imageModel`, `userContentPreferences`.
-5. ⏳ Memory system: `memory_entries` with pgvector HNSW index, extraction job every 30 messages, top-5 retrieval.
+4. ✅ **Full `characters` schema** — done. Added `appearance` jsonb (ethnicity, ageRange, ageDisplay, bodyType, hair, eyes, features + pre-assembled `appearancePrompt`, `negativePrompt`, `safetyAdultMarkers`), `imageModel` jsonb ({primary, fallback}), `userContentPreferences` jsonb. `buildImagePrompt` now pulls from `appearance.appearancePrompt` when available (falls back to generic prompt for characters without it); `safetyAdultMarkers` always injected + hard-coded `SAFETY_NEGATIVE` merged into negative prompt. Conversation snapshot extended to capture `appearance` and `imageModel` fields at conversation creation time.
+5. ✅ **Memory system** — done. New `memory-entries` Payload collection (17 fields: userId, characterId, conversationId, category ×5, content, importance 1-5, verified, extractedFromMessageId, extractedAt, embeddingModel, deletedAt + timestamps). Supplemental SQL migration `migrations/0001_memory_embeddings.sql` adds `embedding vector(1536)` column + HNSW index (`m=16, ef_construction=64`, cosine ops). Script `pnpm migrate:memory` applies it. `src/shared/ai/embeddings.ts`: OpenAI text-embedding-3-small client with null-return on missing key. `src/features/memory/extract-memories.ts`: LLM extraction (DeepSeek V3, JSON response_format, `response_format: {type: 'json_object'}`), embeds each fact, saves to DB via Payload + raw SQL for vector column. `src/features/memory/retrieve-memories.ts`: pgvector cosine similarity with importance boost `(embedding <=> query) + (1/(importance+1))`, fallback to importance-ordered query without vector. Integration in `/api/chat/route.ts`: top-5 memories injected into system prompt before LLM call; extraction triggered fire-and-forget every 30 user messages.
 6. ✅ **Character builder — 4-step wizard** — done. New `character-drafts` Payload collection (userId, language, currentStep, data jsonb, previewGenerations jsonb, expiresAt +7d, deletedAt). Hardcoded option catalogs in `src/features/builder/options.ts` (art styles, ethnicities, age ranges with hard min 21, body types — no petite, hair/eye/features, archetypes with defaultTraits + systemPromptFragment, meet scenarios, relationship stages). Name safety blocklist (`src/features/builder/blocklist.ts` — childlike names + celebrities). Server actions: `createDraftAction` (enforces 1-character limit on free tier), `saveDraftStepAction`, `generatePreviewsAction` (max 5 preview generations per draft, free per spec 3.3), `selectReferenceAction`, `finalizeBuilderAction` (creates characters row, flips selected media-asset kind from `character_preview` → `character_reference`, soft-deletes draft, creates first conversation, redirects to chat). UI: `/[locale]/builder` drafts index + upgrade gate, `/[locale]/builder/[draftId]` with `CharacterBuilderWizard` client widget (step indicator, 4 step forms, debounced autosave, preview thumbnail grid, finalize CTA). Full i18n for en/ru/es.
-7. ⏳ Catalog page with filters, tags, content rating.
+7. 🟡 **Catalog APIs + landing showcase** — backend done (2026-04-23 late evening). Spec patched: new §3.2.1 "Public landing showcase" (pre-auth grid, SFW-only, age-gate splash, edge cache 5 min, CTA → signup → chat with preset) + §3.2.2 / §3.2.3. Data-model: new `landingFeatured` (bool) and `landingOrder` (int) fields on `characters` + index `(landingFeatured, language, landingOrder)`. Collection updated. New routes: `GET /api/landing/showcase?locale=` (public, no-auth, depth=1, edge cache headers) and `GET /api/characters?locale=&q=&artStyle=&archetype=&contentRating=&tags=&page=&limit=` (auth-required, multi-value filters via CSV, search ILIKE on name/shortBio, pagination, free-tier sees NSFW with `blurred:true` and stripped `primaryImageUrl`). Seed expanded: data-driven `preset-personas.ts` with 7 personas × 3 languages = **21 character rows**, system prompts assembled via `buildSystemPrompt()` template (name/city/archetype/relationshipStage/safety/language). Personas: Anna, Sofia, Mei, Isabella, Lily, Zara, Maya — covering all archetype slots from spec §3.3, all SFW, `landingFeatured:true`, `landingOrder` 1..7. **Frontend (catalog page, landing grid component) deferred** per user direction — backend-first.
 8. ⏳ `character_appearance_presets` catalog managed via admin.
 9. ⏳ Admin panel enhancements: moderation queue, analytics dashboard.
-10. ⏳ Relationship score computation on message send.
-11. ⏳ **Safety pipeline (last, before production launch)** — input/output filters, scoring system, hard-coded negative prompts in image gen, apparent-age classifier (NSFW requires `apparentAge > 25`), `content_flags` + `safety_incidents` collections, escalation cron (3-strike ban). Must be in place before public launch — current dev environment has no filters.
+10. ✅ **Relationship score** — done. Added `daysActiveCount` field to conversations. `src/features/chat/relationship-score.ts`: `computeRelationshipScore({messageCount, daysActiveCount, lastMessageAt})` implements `min(100, msgs×0.1 + days×2 - daysSinceLast×0.5)`. `isNewActiveDay(lastMessageAt)` returns true when current UTC date differs from lastMessageAt. All three conversation-update calls in `/api/chat/route.ts` (text path, image-denied, token-denied) now compute and persist `relationshipScore` + `daysActiveCount`.
+11. ✅ **Soft-delete enforcement** — done. `src/shared/lib/soft-delete.ts` exports `addSoftDeleteFilter(where)` helper and `notDeleted` constant. Applied: character + conversation `findByID` in chat route now check `.deletedAt` after fetch; message history queries use `{deletedAt: {equals: null}}` instead of broken `{exists: false}`; chat page adds `deletedAt` filter to characters and conversations queries; regenerate route patched.
+12. ⏳ **Safety pipeline (last, before production launch)** — input/output filters, scoring system, hard-coded negative prompts in image gen, apparent-age classifier (NSFW requires `apparentAge > 25`), `content_flags` + `safety_incidents` collections, escalation cron (3-strike ban). Must be in place before public launch — current dev environment has no filters.
+
+### Dev auth bypass (added 2026-04-23 late evening)
+
+For local UI/API testing without going through signup → email-verify → complete-profile every time. **Refused in production** (`NODE_ENV === 'production'` short-circuit in `src/shared/auth/current-user.ts`).
+
+**Setup:**
+1. Add `DEV_AUTH_BYPASS=true` to `.env.local`
+2. `pnpm seed:dev` — idempotently creates/refreshes `dev@local.test` (admin+user roles, emailVerified, NSFW unlocked, DOB=1990-01-01, premium_plus subscription via "manual" provider, top-up tokens via ledger to floor 500)
+3. Restart `pnpm dev`
+
+**Behavior:** every request resolves as the dev user; one-shot `logger.warn` per process so the bypass is visible in logs. `getCurrentUser()` is the only patch point — `requireAuth()` and `requireCompleteProfile()` work transparently.
+
+**New npm scripts:** `pnpm seed` (everything), `pnpm seed:characters` (presets only), `pnpm seed:dev` (dev user only).
 
 ### Bug fixes applied during live testing (2026-04-23 evening)
 

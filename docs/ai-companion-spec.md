@@ -105,12 +105,54 @@ Web-based AI companion platform с возможностью текстового
 
 ### 3.2 Каталог персонажей (Discovery)
 
+Каталог имеет **две поверхности**: публичную витрину на лендинге (до регистрации) и полноценный каталог в приложении (после логина).
+
+#### 3.2.1 Public landing showcase (pre-auth)
+
+Конверсионный hero на главной странице — посетитель видит готовых персонажей до регистрации, кликает по карточке и попадает на signup; после регистрации редирект сразу в чат с этим пресетом, минуя выбор в онбординге.
+
+**Layout:**
+- Под hero-блоком на `/` — секция "Meet your companion" с grid 6–12 карточек
+- Mobile-first (60% трафика mobile), 2 колонки на mobile, 3–4 на desktop
+
+**Источник данных:** существующая `characters` table с фильтром
+```
+kind = 'preset'
+AND isPublished = true
+AND landingFeatured = true            -- отдельный флаг (см. §3.2.3)
+AND contentRating = 'sfw'             -- pre-auth ВСЕГДА только SFW
+AND language = uiLocale
+AND deletedAt IS NULL
+ORDER BY landingOrder ASC, displayOrder ASC
+LIMIT 12
+```
+
+**Карточка содержит:**
+- `primaryImage` через `media-assets.publicUrl` (всегда SFW)
+- `name`
+- `tagline` (1 короткая фраза-крючок)
+- 2–3 `tags`
+- CTA "Chat with {name}" → `/{locale}/signup?next=/chat/new?characterId={id}`
+
+**Compliance / safety:**
+- На первом визите — age-gate splash модал (cookie `agePromptAck`, 365 дней). До подтверждения showcase скрыт, видна только hero без grid
+- Pre-auth ВСЕГДА только SFW — никаких blurred тизеров (нет 18+ confirmed session)
+- ToS / Privacy / 2257 ссылки в подвале лендинга обязательны
+- Geo-blocking запрещённых юрисдикций уровнем выше (Cloudflare WAF, §3.10 Layer 1)
+
+**Persistence:** карточки кешируются на edge на 5 минут (preset-данные редко меняются). Cache-Control: `public, s-maxage=300, stale-while-revalidate=600`.
+
+#### 3.2.2 Authenticated catalog (post-auth)
+
+Полноценный каталог внутри приложения — `/{locale}/catalog`.
+
 **Layout:**
 - Grid view с карточками: preview image, name, tagline, теги
-- Mobile responsive (60% трафика mobile)
+- Sticky filter sidebar на desktop, drawer на mobile
+- Pagination (server-side, 24 cards/page)
 
 **Карточка персонажа содержит:**
-- Primary image (или blurred preview если NSFW и user free-tier)
+- Primary image (или blurred preview если NSFW и user free-tier — тизер для конверсии)
 - Name + age display
 - Tagline (1 короткая фраза)
 - Теги (interests, archetype)
@@ -119,16 +161,21 @@ Web-based AI companion platform с возможностью текстового
 **Фильтры:**
 - Art style (realistic / anime / 3d / stylized)
 - Archetype (sweet / adventurous / dominant / etc)
-- Content rating (SFW / NSFW)
-- Tags (interests-based)
+- Content rating (SFW / NSFW soft / NSFW explicit) — для free-tier визуально доступен только SFW
+- Tags (interests-based, multi-select из tag cloud)
 
-**Search:** по имени и shortBio
+**Search:** по `name` и `shortBio` (ILIKE, fuzzy не нужен на MVP).
 
 **Разделы:**
-- "Featured" — preset characters на языке UI пользователя
+- "Featured" — preset characters на языке UI пользователя (`featured = true`)
+- "All" — все опубликованные preset на языке пользователя
 - "My Characters" — custom characters пользователя
 
 **Контент на старте:** 20-30 preset personas × 3 языка = 60-90 character records.
+
+#### 3.2.3 Связь с Builder
+
+Карточка любого preset (на лендинге или в каталоге) имеет вторичный CTA "Use as starting point" — создаёт `character_drafts` row, скопированный из preset (kind становится `custom`, `localeGroupId = null`, `createdBy = current user`), и открывает Builder на шаге 1. Реализация — Phase 3, после самой Builder-механики.
 
 ### 3.3 Character Builder
 
@@ -643,7 +690,8 @@ Architecture must support 10x growth without major refactoring.
 
 ### Phase 3: Core Features (weeks 6-9)
 - Full characters collection с appearance/personality/backstory
-- Catalog page с фильтрами
+- Catalog page с фильтрами (authenticated, §3.2.2)
+- **Public landing showcase** (§3.2.1) — pre-auth grid из 6-12 preset с конверсионным CTA
 - Memory system: pgvector setup, extraction job
 - Image generation pipeline: media_assets, fal.ai integration, IP-Adapter
 - Intent detection, image safety pipeline (включая apparent age classifier)

@@ -31,11 +31,12 @@ export default async function ChatPage({ params }: Props) {
 
   const charactersResult = await payload.find({
     collection: 'characters',
+    locale: locale as 'en' | 'ru' | 'es',
     where: {
       and: [
         { kind: { equals: 'preset' } },
-        { language: { equals: locale } },
         { isPublished: { equals: true } },
+        { deletedAt: { equals: null } },
       ],
     },
     limit: 20,
@@ -47,6 +48,7 @@ export default async function ChatPage({ params }: Props) {
       and: [
         { userId: { equals: user.id } },
         { status: { equals: 'active' } },
+        { deletedAt: { equals: null } },
       ],
     },
     sort: '-lastMessageAt',

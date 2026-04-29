@@ -11,7 +11,10 @@ import { getRequestContext } from '@/shared/lib/request-context'
 import { createLogger } from '@/shared/lib/logger'
 import { track } from '@/shared/analytics/posthog'
 import { detectImageIntent } from '@/features/chat/intent-detection'
-import { buildImagePrompt } from '@/features/chat/image-prompt'
+import { buildImagePrompt, type CharacterAppearance } from '@/features/chat/image-prompt'
+import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
+import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
+import { extractMemories } from '@/features/memory/extract-memories'
 import { generateImage } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { getBalance, spend } from '@/features/tokens/ledger'
@@ -35,6 +38,7 @@ const bodySchema = z.object({
   conversationId: idSchema.optional(),
   characterId: idSchema.optional(),
   message: z.string().min(1).max(2000),
+  locale: z.enum(['en', 'ru', 'es']).default('en'),
 })
 
 function sseEvent(event: string, data: unknown): string {
@@ -94,7 +98,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request', details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { conversationId: incomingConversationId, characterId, message } = parsed.data
+  const { conversationId: incomingConversationId, characterId, message, locale } = parsed.data
 
   const payload = await getPayload({ config })
 
@@ -116,8 +120,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'characterId required when no conversationId' }, { status: 400 })
     }
 
-    const character = await payload.findByID({ collection: 'characters', id: characterId })
-    if (!character) {
+    const character = await payload.findByID({ collection: 'characters', id: characterId, locale })
+    if (!character || character.deletedAt) {
       return NextResponse.json({ error: 'Character not found' }, { status: 404 })
     }
 
@@ -131,7 +135,8 @@ export async function POST(req: NextRequest) {
           name: character.name,
           personalityTraits: character.personalityTraits,
           backstory: character.backstory,
-          imageModel: null,
+          appearance: character.appearance ?? null,
+          imageModel: character.imageModel ?? null,
         },
         snapshotVersion: character.systemPromptVersion ?? 1,
         llmConfig: {
@@ -142,7 +147,7 @@ export async function POST(req: NextRequest) {
           maxTokens: LLM_MAX_TOKENS,
           snapshotAt: new Date().toISOString(),
         },
-        language: character.language,
+        language: locale,
         status: 'active',
       },
     })
@@ -155,7 +160,7 @@ export async function POST(req: NextRequest) {
   }
 
   const conversation = await payload.findByID({ collection: 'conversations', id: conversationId })
-  if (!conversation) {
+  if (!conversation || conversation.deletedAt) {
     return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
   }
 
@@ -258,16 +263,24 @@ export async function POST(req: NextRequest) {
               completedAt: new Date().toISOString(),
             },
           })
-          const currentCount = (conversation.messageCount as number | null) ?? 0
-          await payload.update({
-            collection: 'conversations',
-            id: conversationId,
-            data: {
-              messageCount: currentCount + 2,
-              lastMessageAt: new Date().toISOString(),
-              lastMessagePreview: upgradeMsg.slice(0, 120),
-            },
-          })
+          {
+            const cnt = (conversation.messageCount as number | null) ?? 0
+            const days = (conversation.daysActiveCount as number | null) ?? 0
+            const newDays = days + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
+            const newCnt = cnt + 2
+            const ts = new Date().toISOString()
+            await payload.update({
+              collection: 'conversations',
+              id: conversationId,
+              data: {
+                messageCount: newCnt,
+                daysActiveCount: newDays,
+                lastMessageAt: ts,
+                lastMessagePreview: upgradeMsg.slice(0, 120),
+                relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
+              },
+            })
+          }
           send('message', { messageId: String(deniedMsg.id) })
           send('delta', { text: upgradeMsg })
           send('done', { finishReason: 'entitlement_denied' })
@@ -290,16 +303,24 @@ export async function POST(req: NextRequest) {
               completedAt: new Date().toISOString(),
             },
           })
-          const currentCount = (conversation.messageCount as number | null) ?? 0
-          await payload.update({
-            collection: 'conversations',
-            id: conversationId,
-            data: {
-              messageCount: currentCount + 2,
-              lastMessageAt: new Date().toISOString(),
-              lastMessagePreview: tokenMsg.slice(0, 120),
-            },
-          })
+          {
+            const cnt = (conversation.messageCount as number | null) ?? 0
+            const days = (conversation.daysActiveCount as number | null) ?? 0
+            const newDays = days + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
+            const newCnt = cnt + 2
+            const ts = new Date().toISOString()
+            await payload.update({
+              collection: 'conversations',
+              id: conversationId,
+              data: {
+                messageCount: newCnt,
+                daysActiveCount: newDays,
+                lastMessageAt: ts,
+                lastMessagePreview: tokenMsg.slice(0, 120),
+                relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
+              },
+            })
+          }
           send('message', { messageId: String(tokenDeniedMsg.id) })
           send('delta', { text: tokenMsg })
           send('done', { finishReason: 'insufficient_tokens' })
@@ -311,6 +332,7 @@ export async function POST(req: NextRequest) {
         const characterSnapshot = (conversation.characterSnapshot ?? {}) as {
           name?: string
           backstory?: { occupation?: string; location?: string }
+          appearance?: CharacterAppearance | null
         }
 
         const { prompt, negativePrompt } = buildImagePrompt({
@@ -438,15 +460,26 @@ export async function POST(req: NextRequest) {
           return
         }
 
-        // Update conversation
+        // Update conversation + recompute relationship score
         const currentCount = (conversation.messageCount as number | null) ?? 0
+        const currentDaysActive = (conversation.daysActiveCount as number | null) ?? 0
+        const newDaysActive = currentDaysActive + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
+        const newMessageCount = currentCount + 2
+        const now = new Date().toISOString()
+        const newScore = computeRelationshipScore({
+          messageCount: newMessageCount,
+          daysActiveCount: newDaysActive,
+          lastMessageAt: now,
+        })
         await payload.update({
           collection: 'conversations',
           id: conversationId,
           data: {
-            messageCount: currentCount + 2,
-            lastMessageAt: new Date().toISOString(),
+            messageCount: newMessageCount,
+            daysActiveCount: newDaysActive,
+            lastMessageAt: now,
             lastMessagePreview: lastMessagePreviewForLocale(convLanguage),
+            relationshipScore: newScore,
           },
         })
 
@@ -500,7 +533,7 @@ export async function POST(req: NextRequest) {
       and: [
         { conversationId: { equals: conversationId } },
         { role: { in: ['user', 'assistant'] } },
-        { deletedAt: { exists: false } },
+        { deletedAt: { equals: null } },
       ],
     },
     sort: 'createdAt',
@@ -512,12 +545,30 @@ export async function POST(req: NextRequest) {
     name?: string
   } | null
 
+  // Retrieve top-5 relevant memories for this (user, character) pair.
+  const convCharacterId =
+    typeof conversation.characterId === 'object' && conversation.characterId !== null
+      ? (conversation.characterId as { id: string | number }).id
+      : conversation.characterId
+
+  const memories = await retrieveMemories({
+    payload,
+    userId: user.id,
+    characterId: convCharacterId,
+    queryText: message,
+  }).catch(() => [])
+
   const openrouterMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = []
 
   openrouterMessages.push({
     role: 'system',
     content: snapshot?.systemPrompt ?? '',
   })
+
+  const memoryBlock = formatMemoriesForPrompt(memories)
+  if (memoryBlock) {
+    openrouterMessages.push({ role: 'system', content: memoryBlock })
+  }
 
   if (conversation.summary) {
     openrouterMessages.push({
@@ -610,14 +661,20 @@ export async function POST(req: NextRequest) {
           },
         })
 
-        const currentCount = (conversation.messageCount as number | null) ?? 0
+        const cnt = (conversation.messageCount as number | null) ?? 0
+        const days = (conversation.daysActiveCount as number | null) ?? 0
+        const newDays = days + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
+        const newCnt = cnt + 2
+        const ts = new Date().toISOString()
         await payload.update({
           collection: 'conversations',
           id: conversationId,
           data: {
-            messageCount: currentCount + 2,
-            lastMessageAt: new Date().toISOString(),
+            messageCount: newCnt,
+            daysActiveCount: newDays,
+            lastMessageAt: ts,
             lastMessagePreview: accumulatedContent.slice(0, 120),
+            relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
           },
         })
 
@@ -626,6 +683,30 @@ export async function POST(req: NextRequest) {
           conversationId,
           latencyMs: Date.now() - handlerStart,
         })
+
+        // Trigger memory extraction every 30 user messages (fire-and-forget).
+        // The check uses newCnt (total messages, user+assistant = pairs of 2).
+        // newCnt / 2 = user messages count.
+        if (newCnt > 0 && (newCnt / 2) % 30 === 0) {
+          const extractionMessages = historyResult.docs
+            .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
+            .map((m) => ({ role: m.role as string, content: m.content ?? '', id: m.id }))
+
+          // Add the current user message and the just-generated assistant message.
+          extractionMessages.push({ role: 'user', content: message, id: 'current-user' })
+          extractionMessages.push({ role: 'assistant', content: accumulatedContent, id: assistantMsgId })
+
+          void extractMemories({
+            payload,
+            userId: user.id,
+            characterId: convCharacterId,
+            conversationId,
+            messages: extractionMessages,
+          }).catch((err: unknown) => {
+            log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+          })
+        }
+
         send('done', { finishReason: 'stop' })
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'

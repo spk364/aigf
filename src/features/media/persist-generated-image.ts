@@ -1,6 +1,6 @@
 import 'server-only'
 import type { BasePayload } from 'payload'
-import { mirrorFromUrl, buildR2Key } from '@/shared/storage/r2'
+import { mirrorFromUrl, buildR2Key, getStorageProvider } from '@/shared/storage'
 
 export type PersistGeneratedImageInput = {
   payload: BasePayload
@@ -73,7 +73,7 @@ export async function persistGeneratedImage(
     data: {
       kind: KIND_MAP[input.kind],
       storageKey: uploadResult.key,
-      storageProvider: 'r2',
+      storageProvider: getStorageProvider(),
       publicUrl: uploadResult.publicUrl,
       mimeType: uploadResult.contentType,
       sizeBytes: uploadResult.sizeBytes,

@@ -176,7 +176,7 @@ export function ChatInterface({
         textareaRef.current.style.height = 'auto'
       }
 
-      const body: Record<string, string> = { message: text }
+      const body: Record<string, string> = { message: text, locale }
       if (conversationIdRef.current) {
         body['conversationId'] = conversationIdRef.current
       } else if (initialCharacterId) {

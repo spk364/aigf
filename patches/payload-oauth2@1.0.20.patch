@@ -1,0 +1,62 @@
+diff --git a/dist/authorize-endpoint.js b/dist/authorize-endpoint.js
+index 5701dd280ede3f4ff7393ac5e22dd5202cee5e23..119f1f2259b98dee246bad5430ce9aad18bd445e 100644
+--- a/dist/authorize-endpoint.js
++++ b/dist/authorize-endpoint.js
+@@ -1,6 +1,6 @@
+ import crypto from "crypto";
+ import { generateCookie } from "payload";
+-import { defaultGetPkceCodes } from "./default-get-pkce-codes";
++import { defaultGetPkceCodes } from "./default-get-pkce-codes.js";
+ export const createAuthorizeEndpoint = (pluginOptions) => ({
+     method: "get",
+     path: pluginOptions.authorizePath || "/oauth/authorize",
+diff --git a/dist/callback-endpoint.js b/dist/callback-endpoint.js
+index 2651c435606e8ffe6b350b7174e032d439a6b1d3..0e359473a6bcdbc0d1110e4f37d391eb1705dcb8 100644
+--- a/dist/callback-endpoint.js
++++ b/dist/callback-endpoint.js
+@@ -1,8 +1,8 @@
+ import { SignJWT } from "jose";
+ import crypto from "node:crypto";
+ import { generatePayloadCookie, getFieldsToSign } from "payload";
+-import { defaultCallbackExtractToken } from "./default-callback-extract-token";
+-import { defaultGetToken } from "./default-get-token";
++import { defaultCallbackExtractToken } from "./default-callback-extract-token.js";
++import { defaultGetToken } from "./default-get-token.js";
+ export const createCallbackEndpoint = (pluginOptions) => {
+     const handler = async (req) => {
+         try {
+diff --git a/dist/index.js b/dist/index.js
+index d1c983c35b1ad01a3657e0107a1f5098cf7c5c00..dedd4d55ea0ab9ce30f4b808ffcebc7f88bb82f5 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,3 +1,3 @@
+-export { defaultGetToken } from "./default-get-token";
+-export { OAuth2Plugin } from "./plugin";
++export { defaultGetToken } from "./default-get-token.js";
++export { OAuth2Plugin } from "./plugin.js";
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/dist/modify-auth-collection.js b/dist/modify-auth-collection.js
+index 90fd368c6399a2718bca32fe4b72e6dbef4c8b9f..68cea896cf6edc71cccb5f5c3486bb31bf838507 100644
+--- a/dist/modify-auth-collection.js
++++ b/dist/modify-auth-collection.js
+@@ -1,6 +1,6 @@
+-import { createAuthStrategy } from "./auth-strategy";
+-import { createAuthorizeEndpoint } from "./authorize-endpoint";
+-import { createCallbackEndpoint } from "./callback-endpoint";
++import { createAuthStrategy } from "./auth-strategy.js";
++import { createAuthorizeEndpoint } from "./authorize-endpoint.js";
++import { createCallbackEndpoint } from "./callback-endpoint.js";
+ export const modifyAuthCollection = (pluginOptions, existingCollectionConfig, subFieldName) => {
+     // /////////////////////////////////////
+     // modify fields
+diff --git a/dist/plugin.js b/dist/plugin.js
+index d6f5255ac6fb80457b1a2d3c061dd71c468133c0..7c71538be9b607739f31e626d76b4c2d11486eae 100644
+--- a/dist/plugin.js
++++ b/dist/plugin.js
+@@ -1,4 +1,4 @@
+-import { modifyAuthCollection } from "./modify-auth-collection";
++import { modifyAuthCollection } from "./modify-auth-collection.js";
+ export const OAuth2Plugin = (pluginOptions) => (incomingConfig) => {
+     let config = { ...incomingConfig };
+     if (pluginOptions.enabled === false) {

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const payload = await getPayload({ config })
 
   const conversation = await payload.findByID({ collection: 'conversations', id: conversationId })
-  if (!conversation) {
+  if (!conversation || conversation.deletedAt) {
     return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
   }
 
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       and: [
         { conversationId: { equals: conversationId } },
         { role: { in: ['user', 'assistant'] } },
-        { deletedAt: { exists: false } },
+        { deletedAt: { equals: null } },
         { isRegenerated: { not_equals: true } },
       ],
     },

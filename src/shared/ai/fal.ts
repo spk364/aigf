@@ -1,10 +1,26 @@
 import 'server-only'
 
-// fal.ai's RealVisXL is served through the generic LoRA SDXL endpoint with
-// the Hugging Face checkpoint passed as `model_name`.
-// The dedicated `fal-ai/realistic-vision` endpoint exists but does not actually
-// schedule jobs (queues forever), so we go through `fal-ai/lora`.
-export const FAL_IMAGE_ENDPOINT = 'fal-ai/lora'
+// fal.ai image generation wrapper.
+//
+// Native fal endpoints (always warm, fast):
+//   fal-ai/realistic-vision — RealVisXL, photorealistic portraits (~20-50 s)
+//   fal-ai/fast-sdxl        — generic SDXL (~5-10 s)
+//   fal-ai/flux/schnell     — FLUX, very fast, 4 steps (~5-10 s)  ← no negative_prompt
+//   fal-ai/flux/dev         — FLUX, high quality (~30-60 s)        ← no negative_prompt
+//
+// HuggingFace checkpoints via fal-ai/lora (cold start 2-3 min):
+//   Any string not starting with "fal-ai/" is routed through fal-ai/lora
+//   with model_name set to the HF repo ID.
+export const FAL_ENDPOINT_REALISTIC_VISION = 'fal-ai/realistic-vision'
+export const FAL_ENDPOINT_FAST_SDXL = 'fal-ai/fast-sdxl'
+export const FAL_ENDPOINT_LORA = 'fal-ai/lora'
+export const FAL_ENDPOINT_FLUX_SCHNELL = 'fal-ai/flux/schnell'
+export const FAL_ENDPOINT_FLUX_DEV = 'fal-ai/flux/dev'
+export const FAL_ENDPOINT_IP_ADAPTER_FACE_ID = 'fal-ai/ip-adapter-face-id'
+
+export const FAL_IMAGE_ENDPOINT = FAL_ENDPOINT_REALISTIC_VISION
+
+// Legacy — only relevant when endpoint === FAL_ENDPOINT_LORA.
 export const FAL_IMAGE_CHECKPOINT = 'SG161222/RealVisXL_V4.0'
 
 const QUEUE_BASE = 'https://queue.fal.run'
@@ -25,7 +41,13 @@ export type GenerateImageInput = {
   numInferenceSteps?: number
   guidanceScale?: number
   seed?: number
+  // fal.ai endpoint slug. Defaults to FAL_IMAGE_ENDPOINT.
+  endpoint?: string
+  // HuggingFace checkpoint — only sent when endpoint === fal-ai/lora.
   modelName?: string
+  // When set, routes through fal-ai/ip-adapter-face-id for face consistency.
+  ipAdapterImageUrl?: string
+  ipAdapterScale?: number
 }
 
 export type GeneratedImage = {
@@ -44,37 +66,68 @@ export type GenerateImageResult = {
   latencyMs: number
 }
 
-const POLL_INTERVAL_MS = 1500
-const POLL_TIMEOUT_MS = 60_000
+const POLL_INTERVAL_MS = 2000
+const POLL_TIMEOUT_MS = 180_000
+
+// FLUX endpoints don't accept negative_prompt and use different step/guidance defaults.
+function isFluxEndpoint(endpoint: string): boolean {
+  return endpoint.startsWith('fal-ai/flux')
+}
 
 export async function generateImage(input: GenerateImageInput): Promise<GenerateImageResult> {
   const key = process.env.FAL_KEY
   if (!key) throw new Error('FAL_KEY is not set')
 
-  const modelName = input.modelName ?? FAL_IMAGE_CHECKPOINT
+  const endpoint = input.endpoint ?? FAL_IMAGE_ENDPOINT
+  const isFlux = isFluxEndpoint(endpoint)
+  const isSchnell = endpoint === FAL_ENDPOINT_FLUX_SCHNELL
   const startedAt = Date.now()
 
-  const submit = await fetch(`${QUEUE_BASE}/${FAL_IMAGE_ENDPOINT}`, {
+  // FLUX: no negative_prompt, fewer steps, different guidance scale.
+  // SD/SDXL/LoRA: all standard parameters.
+  const defaultSteps = isSchnell ? 4 : isFlux ? 25 : 35
+  const defaultGuidance = isFlux ? 3.5 : 5
+
+  const body: Record<string, unknown> = {
+    prompt: input.prompt,
+    image_size: input.imageSize ?? 'portrait_4_3',
+    num_images: input.numImages ?? 1,
+    num_inference_steps: input.numInferenceSteps ?? defaultSteps,
+    guidance_scale: input.guidanceScale ?? defaultGuidance,
+    ...(input.seed !== undefined ? { seed: input.seed } : {}),
+  }
+
+  // FLUX ignores negative_prompt — omit it entirely to avoid API errors.
+  if (!isFlux && input.negativePrompt) {
+    body.negative_prompt = input.negativePrompt
+  }
+
+  // model_name is only meaningful for the lora endpoint (HuggingFace checkpoint).
+  if (endpoint === FAL_ENDPOINT_LORA && input.modelName) {
+    body.model_name = input.modelName
+  }
+
+  // IP-Adapter face consistency — pass reference image and scale.
+  if (input.ipAdapterImageUrl) {
+    body.image_url = input.ipAdapterImageUrl
+    body.scale = input.ipAdapterScale ?? 0.7
+  }
+
+  // Adult content app — safety checker always off.
+  body.enable_safety_checker = false
+
+  const submit = await fetch(`${QUEUE_BASE}/${endpoint}`, {
     method: 'POST',
     headers: {
       Authorization: `Key ${key}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model_name: modelName,
-      prompt: input.prompt,
-      negative_prompt: input.negativePrompt,
-      image_size: input.imageSize ?? 'portrait_4_3',
-      num_images: input.numImages ?? 1,
-      num_inference_steps: input.numInferenceSteps ?? 28,
-      guidance_scale: input.guidanceScale ?? 5,
-      ...(input.seed !== undefined ? { seed: input.seed } : {}),
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!submit.ok) {
-    const body = await submit.text()
-    throw new Error(`fal submit failed: ${submit.status} ${body.slice(0, 200)}`)
+    const text = await submit.text()
+    throw new Error(`fal submit failed: ${submit.status} ${text.slice(0, 300)}`)
   }
 
   const submitData = (await submit.json()) as {
@@ -106,12 +159,12 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
           url: img.url,
           width: img.width,
           height: img.height,
-          contentType: img.content_type,
+          contentType: img.content_type ?? 'image/jpeg',
         })),
         seed: result.seed,
         requestId: submitData.request_id,
-        modelName,
-        endpoint: FAL_IMAGE_ENDPOINT,
+        modelName: endpoint === FAL_ENDPOINT_LORA ? (input.modelName ?? endpoint) : endpoint,
+        endpoint,
         latencyMs: Date.now() - startedAt,
       }
     }

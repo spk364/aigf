@@ -37,3 +37,16 @@ logs/
 
 # Testing
 coverage/
+
+# Local dev uploads (served from public/uploads in development)
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+# Claude Code
+.claude/
+
+# Local generated images (stored in R2 in production)
+generated-images/
+
+# Playwright MCP
+.playwright-mcp/

@@ -24,6 +24,7 @@ import { SystemPrompts } from './collections/system-prompts'
 import { FeatureFlags } from './collections/feature-flags'
 import { AuditLogs } from './collections/audit-logs'
 import { CharacterDrafts } from './collections/character-drafts'
+import { MemoryEntries } from './collections/memory-entries'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -142,6 +143,7 @@ export default buildConfig({
     SystemPrompts,
     FeatureFlags,
     AuditLogs,
+    MemoryEntries,
   ],
 
   typescript: {
@@ -152,6 +154,16 @@ export default buildConfig({
     importMap: {
       baseDir: path.resolve(dirname, '../app/(payload)'),
     },
+  },
+
+  localization: {
+    locales: [
+      { label: 'English', code: 'en' },
+      { label: 'Russian', code: 'ru' },
+      { label: 'Spanish', code: 'es' },
+    ],
+    defaultLocale: 'en',
+    fallback: true,
   },
 
   i18n: {

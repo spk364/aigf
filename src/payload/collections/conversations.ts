@@ -104,6 +104,13 @@ export const Conversations: CollectionConfig = {
       type: 'number',
       defaultValue: 0,
     },
+    // Count of distinct UTC calendar days with at least one message.
+    // Incremented in the chat route whenever the current day differs from lastMessageAt.
+    {
+      name: 'daysActiveCount',
+      type: 'number',
+      defaultValue: 0,
+    },
     {
       name: 'deletedAt',
       type: 'date',

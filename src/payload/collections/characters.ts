@@ -1,5 +1,4 @@
 // TODO(phase-3-auth): tighten access control
-// TODO(phase-3-task-N): appearance jsonb, imageModel jsonb, userContentPreferences jsonb
 import type { CollectionConfig } from 'payload'
 
 export const Characters: CollectionConfig = {
@@ -12,12 +11,12 @@ export const Characters: CollectionConfig = {
     delete: () => true,
   },
   indexes: [
-    { fields: ['localeGroupId', 'language'] },
-    { fields: ['language', 'kind', 'isPublished'] },
-    { fields: ['createdBy', 'deletedAt'] },
     { fields: ['kind', 'isPublished', 'displayOrder'] },
+    { fields: ['createdBy', 'deletedAt'] },
     { fields: ['contentRating', 'isPublished'] },
+    { fields: ['landingFeatured', 'landingOrder'] },
     { fields: ['moderationStatus'] },
+    { fields: ['kind', 'isPublished', 'landingFeatured'] },
   ],
   fields: [
     {
@@ -34,25 +33,12 @@ export const Characters: CollectionConfig = {
       type: 'relationship',
       relationTo: 'users',
     },
-    {
-      name: 'language',
-      type: 'select',
-      required: true,
-      options: [
-        { label: 'English', value: 'en' },
-        { label: 'Russian', value: 'ru' },
-        { label: 'Spanish', value: 'es' },
-      ],
-    },
-    {
-      name: 'localeGroupId',
-      type: 'text',
-      index: true,
-    },
+    // ── Localized text fields ─────────────────────────────────────────────────
     {
       name: 'name',
       type: 'text',
       required: true,
+      localized: true,
     },
     {
       name: 'slug',
@@ -62,15 +48,51 @@ export const Characters: CollectionConfig = {
     {
       name: 'tagline',
       type: 'text',
+      localized: true,
     },
     {
       name: 'shortBio',
       type: 'textarea',
+      localized: true,
     },
+    {
+      name: 'systemPrompt',
+      type: 'textarea',
+      localized: true,
+    },
+    {
+      name: 'systemPromptVersion',
+      type: 'number',
+      defaultValue: 1,
+    },
+    // communicationStyle is JSON containing petNamesForUser (locale-specific)
+    {
+      name: 'communicationStyle',
+      type: 'json',
+      localized: true,
+    },
+    // backstory contains occupation + interests (locale-specific)
+    {
+      name: 'backstory',
+      type: 'json',
+      localized: true,
+    },
+    // ── Shared (non-localized) fields ─────────────────────────────────────────
     {
       name: 'primaryImageId',
       type: 'relationship',
       relationTo: 'media-assets',
+    },
+    {
+      name: 'referenceImageId',
+      type: 'relationship',
+      relationTo: 'media-assets',
+      admin: { description: 'Primary reference image used for consistency in generation.' },
+    },
+    {
+      name: 'referenceImageUrl',
+      type: 'text',
+      admin: { description: 'Public URL of the reference image (denormalized for fast access in generation).' },
     },
     {
       name: 'galleryImageIds',
@@ -89,29 +111,35 @@ export const Characters: CollectionConfig = {
       ],
     },
     {
+      name: 'appearance',
+      type: 'json',
+      admin: {
+        description:
+          'Visual attributes + pre-assembled SD prompts. Set appearancePrompt, negativePrompt, safetyAdultMarkers for image gen.',
+      },
+    },
+    {
+      name: 'imageModel',
+      type: 'json',
+      admin: {
+        description: 'Image generation model config: { primary, fallback }.',
+      },
+    },
+    {
+      name: 'userContentPreferences',
+      type: 'json',
+      admin: {
+        description:
+          'Custom character content prefs: { contentIntensity, preferredDynamic, hardLimits[] }. Null for presets.',
+      },
+    },
+    {
       name: 'archetype',
       type: 'text',
     },
     {
       name: 'personalityTraits',
       type: 'json',
-    },
-    {
-      name: 'communicationStyle',
-      type: 'json',
-    },
-    {
-      name: 'backstory',
-      type: 'json',
-    },
-    {
-      name: 'systemPrompt',
-      type: 'textarea',
-    },
-    {
-      name: 'systemPromptVersion',
-      type: 'number',
-      defaultValue: 1,
     },
     {
       name: 'contentRating',
@@ -172,6 +200,25 @@ export const Characters: CollectionConfig = {
       name: 'featured',
       type: 'checkbox',
       defaultValue: false,
+      admin: {
+        description: 'Featured in authenticated catalog (post-login).',
+      },
+    },
+    {
+      name: 'landingFeatured',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: {
+        description:
+          'Show on the public landing showcase (pre-auth). Forced SFW only — see spec §3.2.1.',
+      },
+    },
+    {
+      name: 'landingOrder',
+      type: 'number',
+      admin: {
+        description: 'Order on the public landing showcase. Lower = earlier. NULLs sort last.',
+      },
     },
     {
       name: 'conversationCount',
@@ -188,6 +235,15 @@ export const Characters: CollectionConfig = {
       type: 'date',
       index: true,
       admin: { date: { pickerAppearance: 'dayAndTime' } },
+    },
+    {
+      name: 'generateImageAction',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '@/payload/admin-components/GenerateImageButton#GenerateImageButton',
+        },
+      },
     },
   ],
 }

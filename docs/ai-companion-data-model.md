@@ -224,7 +224,13 @@ BILLING                  └── character_drafts
   isPublished: boolean                          // true для preset, false для custom
   publishedAt: timestamp | null
   displayOrder: integer | null
-  featured: boolean
+  featured: boolean                             // featured в authenticated catalog
+
+  // Public landing showcase (см. spec §3.2.1)
+  // Отдельный флаг от `featured`: позволяет продюсеру независимо тасовать
+  // набор для pre-auth лендинга (всегда SFW), не затрагивая внутренний featured.
+  landingFeatured: boolean                      // показывать на главной до signup
+  landingOrder: integer | null                  // порядок именно для лендинга
 
   // Analytics
   conversationCount: integer
@@ -242,6 +248,7 @@ BILLING                  └── character_drafts
 - `createdBy, deletedAt` (для "My Characters")
 - `kind, isPublished, displayOrder` (каталог preset)
 - `contentRating, isPublished` (SFW/NSFW фильтр)
+- `landingFeatured, language, landingOrder` (public landing showcase, см. spec §3.2.1)
 - GIN index по `tags` (array contains)
 - `moderationStatus` (админская очередь)
 
@@ -988,10 +995,24 @@ LIMIT 5;
 { id: 'uuid-2', localeGroupId: 'anna-2026', language: 'ru', name: 'Анна', ... }
 { id: 'uuid-3', localeGroupId: 'anna-2026', language: 'es', name: 'Ana',  ... }
 
-// Каталог фильтрует по language=user.locale:
+// Authenticated catalog (spec §3.2.2) фильтрует по language=user.locale:
 SELECT * FROM characters
 WHERE kind = 'preset' AND language = $userLocale AND isPublished = true
+  AND deletedAt IS NULL
 ORDER BY displayOrder;
+
+// Public landing showcase (spec §3.2.1) — pre-auth, всегда SFW, отдельный флаг:
+SELECT c.*, m.publicUrl AS primaryImageUrl
+FROM characters c
+LEFT JOIN media_assets m ON m.id = c.primaryImageId
+WHERE c.kind = 'preset'
+  AND c.isPublished = true
+  AND c.landingFeatured = true
+  AND c.contentRating = 'sfw'
+  AND c.language = $uiLocale
+  AND c.deletedAt IS NULL
+ORDER BY c.landingOrder ASC NULLS LAST, c.displayOrder ASC
+LIMIT 12;
 ```
 
 ### Soft delete with cascade
