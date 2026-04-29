@@ -120,6 +120,9 @@ export default buildConfig({
     pool: {
       connectionString: process.env.DATABASE_URL,
     },
+    // Set PAYLOAD_PUSH_DB=true in env to push schema on first boot (one-time setup).
+    // Disable after initial schema creation to avoid accidental schema mutations.
+    push: process.env.PAYLOAD_PUSH_DB === 'true',
   }),
 
   editor: lexicalEditor(),
