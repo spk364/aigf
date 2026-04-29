@@ -55,10 +55,7 @@ function createRedis(): RedisLike {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN
 
   if (!url || !token) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required in production')
-    }
-    console.warn('[redis] UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing — using in-memory stub (dev only)')
+    console.warn('[redis] UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing — using in-memory stub (rate limiting is per-instance)')
     return makeStub()
   }
 
