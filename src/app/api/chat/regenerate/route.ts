@@ -1,4 +1,7 @@
 // Text regeneration is free per spec 3.8 — no quota / token deduction
+
+export const maxDuration = 60
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'

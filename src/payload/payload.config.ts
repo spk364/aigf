@@ -120,8 +120,6 @@ export default buildConfig({
     pool: {
       connectionString: process.env.DATABASE_URL,
     },
-    // TODO: add prodMigrations pointing to migrations/ folder once collections are defined
-    // prodMigrations: [],
   }),
 
   editor: lexicalEditor(),

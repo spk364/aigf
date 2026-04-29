@@ -1,5 +1,7 @@
 // TODO(phase-3-safety): add input/output safety filters before/after LLM call
 
+export const maxDuration = 60
+
 import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'

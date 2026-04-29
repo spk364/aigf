@@ -1,3 +1,5 @@
+export const maxDuration = 60
+
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPayload } from 'payload'
