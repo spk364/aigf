@@ -1,0 +1,1 @@
+export { AvatarGrid } from './AvatarGrid'

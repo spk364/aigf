@@ -1,0 +1,6 @@
+export { FeaturedCompanions } from './FeaturedCompanions'
+export { HowItWorks } from './HowItWorks'
+export { PricingTeaser } from './PricingTeaser'
+export { TrustStrip } from './TrustStrip'
+export { FaqSection } from './FaqSection'
+export { FinalCta } from './FinalCta'
