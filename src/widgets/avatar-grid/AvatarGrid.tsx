@@ -104,19 +104,21 @@ function AvatarColumn({
   columnIndex,
   direction,
   duration,
+  visibility,
 }: {
   columnIndex: number
   direction: 'up' | 'down'
   duration: number
+  visibility: string
 }) {
   const avatars = buildAvatars(AVATARS_PER_COLUMN, columnIndex)
   const animationName =
     direction === 'up' ? 'avatar-grid-scroll-up' : 'avatar-grid-scroll-down'
 
   return (
-    <div className="relative flex w-full flex-col">
+    <div className={`relative w-full flex-col ${visibility}`}>
       <div
-        className="avatar-grid-column-track flex flex-col gap-4"
+        className="avatar-grid-column-track flex flex-col gap-3 sm:gap-4"
         style={{
           animationName,
           animationDuration: `${duration}s`,
@@ -136,11 +138,21 @@ function AvatarColumn({
   )
 }
 
+const COLUMN_VISIBILITY = [
+  'flex',
+  'flex',
+  'flex',
+  'hidden sm:flex',
+  'hidden md:flex',
+  'hidden lg:flex',
+]
+
 export function AvatarGrid() {
   const columns = Array.from({ length: COLUMN_COUNT }, (_, i) => ({
     index: i,
     direction: (i % 2 === 0 ? 'up' : 'down') as 'up' | 'down',
     duration: 60 + (i % 3) * 15,
+    visibility: COLUMN_VISIBILITY[i] ?? 'flex',
   }))
 
   return (
@@ -164,18 +176,14 @@ export function AvatarGrid() {
         }
       `}</style>
 
-      <div
-        className="absolute inset-0 grid gap-4 px-4 sm:gap-5 sm:px-6"
-        style={{
-          gridTemplateColumns: `repeat(${COLUMN_COUNT}, minmax(0, 1fr))`,
-        }}
-      >
+      <div className="absolute inset-0 grid grid-cols-3 gap-3 px-3 sm:grid-cols-4 sm:gap-4 sm:px-6 md:grid-cols-5 lg:grid-cols-6 lg:gap-5">
         {columns.map((col) => (
           <AvatarColumn
             key={col.index}
             columnIndex={col.index}
             direction={col.direction}
             duration={col.duration}
+            visibility={col.visibility}
           />
         ))}
       </div>

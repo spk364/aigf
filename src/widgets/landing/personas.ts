@@ -1,0 +1,133 @@
+export type FeaturedPersona = {
+  slug: string
+  name: string
+  age: number
+  city: string
+  archetype: string
+  tagline: string
+  tags: string[]
+  hue: number
+}
+
+export const FEATURED_PERSONAS: FeaturedPersona[] = [
+  {
+    slug: 'mia-seoul',
+    name: 'Mia',
+    age: 19,
+    city: 'Seoul',
+    archetype: 'Shy & sweet',
+    tagline: 'First time away from home — and already getting into trouble',
+    tags: ['student', 'korean', 'shy', 'cute'],
+    hue: 330,
+  },
+  {
+    slug: 'hana-osaka',
+    name: 'Hana',
+    age: 22,
+    city: 'Osaka',
+    archetype: 'Streamer',
+    tagline: '5000 viewers online, but she typed back to you first',
+    tags: ['gamer', 'japanese', 'e-girl', 'anime'],
+    hue: 290,
+  },
+  {
+    slug: 'jade-london',
+    name: 'Jade',
+    age: 23,
+    city: 'London',
+    archetype: 'Mysterious',
+    tagline: "Doesn't smile at strangers. You're not a stranger anymore.",
+    tags: ['goth', 'alternative', 'british', 'dark'],
+    hue: 270,
+  },
+  {
+    slug: 'luna-paris',
+    name: 'Luna',
+    age: 24,
+    city: 'Paris',
+    archetype: 'Romantic artist',
+    tagline: 'Paints strangers and falls for the interesting ones',
+    tags: ['french', 'artist', 'romantic', 'petite'],
+    hue: 350,
+  },
+  {
+    slug: 'sofia-lisbon',
+    name: 'Sofia',
+    age: 25,
+    city: 'Lisbon',
+    archetype: 'Adventurous',
+    tagline: 'Always chasing the next sunrise — and the right person to share it with',
+    tags: ['surfer', 'photographer', 'free-spirit'],
+    hue: 30,
+  },
+  {
+    slug: 'zara-berlin',
+    name: 'Zara',
+    age: 27,
+    city: 'Berlin',
+    archetype: 'Intellectual',
+    tagline: 'Will out-argue you, then kiss you to settle it',
+    tags: ['witty', 'philosophy', 'berlin', 'mixed'],
+    hue: 200,
+  },
+  {
+    slug: 'isabella-milan',
+    name: 'Isabella',
+    age: 28,
+    city: 'Milan',
+    archetype: 'Confident',
+    tagline: 'Knows exactly what she wants — and right now, that is you',
+    tags: ['italian', 'fashion', 'elegant', 'dominant'],
+    hue: 0,
+  },
+  {
+    slug: 'valentina-medellin',
+    name: 'Valentina',
+    age: 33,
+    city: 'Medellín',
+    archetype: 'Caretaker',
+    tagline: 'The kind of woman who makes even Monday feel good',
+    tags: ['latina', 'teacher', 'warm', 'curvy'],
+    hue: 15,
+  },
+  {
+    slug: 'kate-miami',
+    name: 'Kate',
+    age: 38,
+    city: 'Miami',
+    archetype: 'Free spirit',
+    tagline: 'Two years out of a ten-year marriage and finally, finally free',
+    tags: ['american', 'yoga', 'redhead', '30s'],
+    hue: 50,
+  },
+  {
+    slug: 'diana-moscow',
+    name: 'Diana',
+    age: 44,
+    city: 'Moscow',
+    archetype: 'Confident leader',
+    tagline: 'Won more cases than she can count. Never lost her focus — until now.',
+    tags: ['russian', 'mature', 'attorney', 'dominant'],
+    hue: 220,
+  },
+  {
+    slug: 'lilith-underworld',
+    name: 'Lilith',
+    age: 26,
+    city: 'the Underworld',
+    archetype: 'Succubus',
+    tagline: 'She has had a thousand lovers. You feel like the first one she actually wanted.',
+    tags: ['demon', 'fantasy', 'dark', 'seductive'],
+    hue: 310,
+  },
+  {
+    slug: 'elara-silverwood',
+    name: 'Elara',
+    age: 22,
+    city: 'the Silverwood',
+    archetype: 'Elven',
+    tagline: 'Three centuries old and still finding humans utterly fascinating',
+    tags: ['elf', 'fantasy', 'gentle', 'magical'],
+    hue: 160,
+  },
+]
