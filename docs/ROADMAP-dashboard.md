@@ -86,33 +86,33 @@ Left rail with subpage navigation (Profile / Content / Notifications / Account /
 
 ---
 
-## M3 — Billing & payment methods
+## M3 — Billing (stub)
 
-**Scope:** unify upgrade flow + add payment-method management. We already have CCBill and NOWPayments env vars; check what's wired.
+**Scope:** UI shell only. No real wiring to CCBill / NOWPayments yet — that's deferred to a later epic.
 
-### Subpages
+### Subpages (all stubs)
 
-1. **`/settings/billing`** — current plan, next renewal, "Change plan" / "Cancel" buttons.
-2. **`/settings/billing/methods`** — list of saved cards / wallets, "Add new" CTA, default-payment-method toggle.
-3. **`/settings/billing/history`** — invoice list (read from `subscriptions` + `transactions` if it exists; otherwise add `transactions` collection).
+1. **`/settings/billing`** — show static "Free" plan label and a "Change plan" button leading to `/upgrade` (already exists). No live subscription state.
+2. **`/settings/billing/methods`** — empty state: "No payment methods yet. Coming soon." Disabled "Add card" / "Add crypto wallet" buttons.
+3. **`/settings/billing/history`** — empty state: "No invoices yet."
 
-### CCBill / NOWPayments
+### What stays out
 
-- Existing routes: `src/app/api/billing/manage/...` and `src/app/(app)/[locale]/billing/manage` — adopt this as the canonical billing surface and link from settings. Don't duplicate.
-- For payment methods: CCBill stores tokens server-side; expose only last-4 / card type from `subscriptions.paymentMethod` (add field if missing).
-- Crypto via NOWPayments — show wallet history, no "add method" needed.
+- No reads from `subscriptions` / `transactions` even if they exist — keep this surface purely cosmetic until the M3-real epic lands.
+- Don't touch existing `/billing/manage` flow — leave it alone for users who got there via direct link.
+- No new collections, no schema changes.
 
 ### Files
 
-- audit `src/app/(app)/[locale]/billing/manage/page.tsx` — likely already has most of this; rename routes / reorganize under `/settings/billing/*` or alias.
-- decide if `transactions` collection needs adding (likely yes, for history).
+- new `src/app/(app)/[locale]/settings/billing/{page,methods/page,history/page}.tsx` — three thin stub pages.
+- new `src/widgets/settings/BillingStub.tsx` if needed for shared empty-state styling.
 
 ### Acceptance
 
-- User can see current plan, change/cancel.
-- User can see (and remove) payment methods.
-- User can see invoice/transaction history.
-- No new payment provider; just expose what we have.
+- All three subpages render with clear "stub / coming soon" messaging.
+- Settings → Billing tile shows up and links to `/settings/billing`.
+- "Change plan" link works (goes to existing `/upgrade`).
+- Nothing crashes if user has no subscription record.
 
 ---
 
@@ -166,7 +166,7 @@ Nothing — purely a UI/data shell so we can:
 
 - M1 first — biggest user-visible win, no schema churn, ~1 day of work.
 - M2 second — unlocks NSFW toggle (currently no UI for the existing `users.nsfwEnabled` field), and gives a place to put M3/M4 entry points.
-- M3 third — depends on auditing what `/billing/manage` already does; may be smaller than it looks.
+- M3 third — pure UI stub, very small (a few static pages). Real billing wiring is a separate, later epic.
 - M4 last — needs schema + bot setup; the UI shell can ship without the actual bots running.
 
 ## Out of scope here (intentionally deferred)
