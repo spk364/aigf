@@ -61,8 +61,9 @@ export async function getDashboardData(opts: {
   const payload = await getPayload({ config })
   const now = new Date().toISOString()
 
-  // 1) Custom characters created by this user.
-  const charactersPromise = payload.find({
+  // Sequential queries: Supabase session-mode pool is small (15 clients), so
+  // running them with Promise.all blows the pool on serverless cold-starts.
+  const charactersResult = await payload.find({
     collection: 'characters',
     locale: opts.locale,
     where: {
@@ -78,8 +79,7 @@ export async function getDashboardData(opts: {
     overrideAccess: true,
   })
 
-  // 2) Recent conversations.
-  const conversationsPromise = payload.find({
+  const conversationsResult = await payload.find({
     collection: 'conversations',
     where: {
       and: [
@@ -94,8 +94,7 @@ export async function getDashboardData(opts: {
     overrideAccess: true,
   })
 
-  // 3) Open drafts (not deleted, not expired).
-  const draftsPromise = payload.find({
+  const draftsResult = await payload.find({
     collection: 'character-drafts',
     where: {
       and: [
@@ -108,12 +107,6 @@ export async function getDashboardData(opts: {
     limit: 5,
     overrideAccess: true,
   })
-
-  const [charactersResult, conversationsResult, draftsResult] = await Promise.all([
-    charactersPromise,
-    conversationsPromise,
-    draftsPromise,
-  ])
 
   // Index conversations by characterId for "last activity" + jump-into-chat on companion cards.
   const conversationByCharacter = new Map<

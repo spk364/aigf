@@ -29,25 +29,24 @@ export default async function DashboardPage({ params }: Props) {
 
   const payload = await getPayload({ config })
 
-  const [cap, dashboard, subResult] = await Promise.all([
-    getDailyMessageCap(payload, user),
-    getDashboardData({
-      userId: user.id,
-      locale: locale as 'en' | 'ru' | 'es',
-    }),
-    payload.find({
-      collection: 'subscriptions',
-      where: {
-        and: [
-          { userId: { equals: user.id } },
-          { status: { equals: 'active' } },
-        ],
-      },
-      limit: 1,
-      overrideAccess: true,
-    }),
-  ])
+  // Sequential to avoid blowing the Supabase session-mode pool (size 15).
+  const subResult = await payload.find({
+    collection: 'subscriptions',
+    where: {
+      and: [
+        { userId: { equals: user.id } },
+        { status: { equals: 'active' } },
+      ],
+    },
+    limit: 1,
+    overrideAccess: true,
+  })
+  const cap = await getDailyMessageCap(payload, user)
   const quota = await getQuotaStatus(user.id, cap)
+  const dashboard = await getDashboardData({
+    userId: user.id,
+    locale: locale as 'en' | 'ru' | 'es',
+  })
 
   const sub = subResult.docs[0]
   const isPremium = !!(
