@@ -3,13 +3,9 @@
 import { cookies } from 'next/headers'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { TEST_USER_EMAIL, TEST_USER_PASSWORD, testLoginEnabled } from '../test-login-config'
+import { TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../test-login-config'
 
 export async function loginAsTestUserAction(): Promise<{ success: boolean; error?: string }> {
-  if (!testLoginEnabled()) {
-    return { success: false, error: 'Test login is disabled.' }
-  }
-
   const payload = await getPayload({ config })
 
   const existing = await payload.find({
