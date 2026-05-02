@@ -62,7 +62,7 @@ export default async function HomePage({ params }: Props) {
 
             <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:gap-4">
               <Link
-                href={`/${locale}/try`}
+                href={`/${locale}/start`}
                 className="inline-flex items-center justify-center rounded-xl bg-[var(--color-accent-strong)] px-8 py-3.5 font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
               >
                 Create my companion

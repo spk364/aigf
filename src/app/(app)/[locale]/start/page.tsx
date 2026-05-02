@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { OnboardingWizard } from '@/widgets/onboarding'
 
+export const maxDuration = 60
+
 type Props = {
   params: Promise<{ locale: string }>
 }

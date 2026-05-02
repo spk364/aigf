@@ -13,6 +13,24 @@ import {
   type Option,
 } from './data'
 import { CompanionPreview } from './CompanionPreview'
+import {
+  generateGuestPreviewAction,
+  selectGuestPreviewAction,
+} from '@/features/builder/guest-actions'
+
+type GeneratedPreview = {
+  mediaAssetId: string
+  publicUrl: string
+}
+
+function choicesToAppearance(choices: OnboardingChoices): Record<string, unknown> {
+  const appearance: Record<string, unknown> = {}
+  if (choices.style) appearance.artStyle = choices.style
+  if (choices.body) appearance.bodyType = choices.body
+  if (choices.hairColor) appearance.hair = { color: choices.hairColor }
+  if (choices.eyeColor) appearance.eyes = { color: choices.eyeColor }
+  return appearance
+}
 
 const STORAGE_KEY = 'gfai_onboarding_v1'
 
@@ -413,10 +431,67 @@ function RevealView({
     return sp.toString()
   }, [choices])
 
+  const [previews, setPreviews] = useState<GeneratedPreview[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [status, setStatus] = useState<'generating' | 'ready' | 'error'>('generating')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const startedRef = useRef(false)
+
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
+    let cancelled = false
+
+    const run = async () => {
+      const result = await generateGuestPreviewAction({
+        appearance: choicesToAppearance(choices),
+        language: (['en', 'ru', 'es'] as const).includes(locale as 'en' | 'ru' | 'es')
+          ? (locale as 'en' | 'ru' | 'es')
+          : 'en',
+      })
+      if (cancelled) return
+      if (!result.ok) {
+        setStatus('error')
+        switch (result.error) {
+          case 'rate_limited_hour':
+            setErrorMessage("You've used your free previews for this hour. Try again later or sign up for unlimited.")
+            break
+          case 'rate_limited_day':
+            setErrorMessage("You've reached today's free preview limit. Sign up to keep going.")
+            break
+          case 'preview_limit_reached':
+            setErrorMessage("You've already generated previews. Pick one and continue.")
+            break
+          default:
+            setErrorMessage('Generation failed. Please try again.')
+        }
+        return
+      }
+      setPreviews(result.previews.map((p) => ({ mediaAssetId: p.mediaAssetId, publicUrl: p.publicUrl })))
+      const first = result.previews[0]
+      if (first) {
+        setSelectedId(first.mediaAssetId)
+        // Persist initial selection so signup-claim has a reference picked.
+        void selectGuestPreviewAction(first.mediaAssetId)
+      }
+      setStatus('ready')
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [choices, locale])
+
+  const handleSelect = async (mediaAssetId: string) => {
+    setSelectedId(mediaAssetId)
+    await selectGuestPreviewAction(mediaAssetId)
+  }
+
   return (
     <div className="mt-8 flex flex-col items-center text-center">
       <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-accent)]">
-        Your companion is ready
+        {status === 'generating' ? 'Bringing her to life...' : 'Your companion is ready'}
       </p>
       <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)] sm:text-5xl">
         Meet{' '}
@@ -425,11 +500,31 @@ function RevealView({
         </span>
       </h1>
       <p className="mt-2 max-w-md text-[var(--color-text-muted)]">
-        She’s waiting for you. Create a free account to start chatting in under a minute.
+        {status === 'generating'
+          ? 'Generating her photo — this takes about 10 seconds.'
+          : 'She’s waiting for you. Create a free account to start chatting in under a minute.'}
       </p>
 
       <div className="mt-8">
-        <CompanionPreview choices={choices} size="lg" />
+        {status === 'ready' && previews.length > 0 ? (
+          <RealPreviewGrid
+            previews={previews}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+          />
+        ) : status === 'error' ? (
+          <div className="flex flex-col items-center gap-4">
+            <CompanionPreview choices={choices} size="lg" />
+            <p className="max-w-sm text-sm text-[var(--color-danger)]">{errorMessage}</p>
+          </div>
+        ) : (
+          <div className="relative">
+            <CompanionPreview choices={choices} size="lg" />
+            <div className="absolute inset-0 grid place-items-center rounded-3xl bg-black/40 backdrop-blur-sm">
+              <span className="inline-block h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-[var(--color-accent-strong)]" />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mt-8 flex w-full max-w-md flex-col gap-3 sm:flex-row">
@@ -450,6 +545,61 @@ function RevealView({
       <p className="mt-6 text-xs text-[var(--color-text-muted)]">
         Free forever · No credit card · Cancel anytime
       </p>
+    </div>
+  )
+}
+
+function RealPreviewGrid({
+  previews,
+  selectedId,
+  onSelect,
+}: {
+  previews: GeneratedPreview[]
+  selectedId: string | null
+  onSelect: (mediaAssetId: string) => void
+}) {
+  if (previews.length === 1) {
+    const only = previews[0]!
+    return (
+      <div className="relative aspect-[3/4] w-72 overflow-hidden rounded-3xl border-2 border-[var(--color-accent-strong)] shadow-[0_20px_50px_-12px_rgba(192,116,255,0.55)]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={only.publicUrl} alt="Companion" className="h-full w-full object-cover" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      {previews.map((p) => {
+        const isSelected = selectedId === p.mediaAssetId
+        return (
+          <button
+            key={p.mediaAssetId}
+            type="button"
+            onClick={() => onSelect(p.mediaAssetId)}
+            className={[
+              'relative aspect-[3/4] w-40 overflow-hidden rounded-2xl border-2 transition-all sm:w-48',
+              isSelected
+                ? 'border-[var(--color-accent-strong)] shadow-[0_18px_50px_-12px_rgba(192,116,255,0.55)]'
+                : 'border-[var(--color-border)] hover:-translate-y-0.5 hover:border-[var(--color-text-muted)]',
+            ].join(' ')}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.publicUrl} alt="Companion preview" className="h-full w-full object-cover" />
+            {isSelected && (
+              <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-[var(--color-accent-strong)] text-[var(--color-bg)] shadow-lg">
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-4 w-4">
+                  <path
+                    fillRule="evenodd"
+                    d="M16.704 5.29a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 011.06-1.06L8.674 12.26l6.97-6.97a.75.75 0 011.06 0z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </span>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }
