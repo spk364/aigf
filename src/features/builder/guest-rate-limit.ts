@@ -20,6 +20,8 @@ async function readClientIp(): Promise<string> {
 }
 
 export async function checkGuestPreviewRateLimit(): Promise<GuestRateLimitResult> {
+  if (process.env.NODE_ENV !== 'production') return { ok: true }
+
   const ip = await readClientIp()
   const now = new Date()
   const dayKey = `guest:preview:day:${ip}:${now.toISOString().slice(0, 10)}`

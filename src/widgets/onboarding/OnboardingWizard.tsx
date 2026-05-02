@@ -561,7 +561,7 @@ function RealPreviewGrid({
   if (previews.length === 1) {
     const only = previews[0]!
     return (
-      <div className="relative aspect-[3/4] w-72 overflow-hidden rounded-3xl border-2 border-[var(--color-accent-strong)] shadow-[0_20px_50px_-12px_rgba(192,116,255,0.55)]">
+      <div className="relative aspect-[9/16] w-72 overflow-hidden rounded-3xl border-2 border-[var(--color-accent-strong)] shadow-[0_20px_50px_-12px_rgba(192,116,255,0.55)]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={only.publicUrl} alt="Companion" className="h-full w-full object-cover" />
       </div>
@@ -578,7 +578,7 @@ function RealPreviewGrid({
             type="button"
             onClick={() => onSelect(p.mediaAssetId)}
             className={[
-              'relative aspect-[3/4] w-40 overflow-hidden rounded-2xl border-2 transition-all sm:w-48',
+              'relative aspect-[9/16] w-40 overflow-hidden rounded-2xl border-2 transition-all sm:w-48',
               isSelected
                 ? 'border-[var(--color-accent-strong)] shadow-[0_18px_50px_-12px_rgba(192,116,255,0.55)]'
                 : 'border-[var(--color-border)] hover:-translate-y-0.5 hover:border-[var(--color-text-muted)]',

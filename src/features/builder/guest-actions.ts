@@ -48,7 +48,7 @@ const generateInputSchema = z.object({
   language: z.enum(['en', 'ru', 'es']).default('en'),
 })
 
-// SFW but alluring — soft glamour styling, suggestive but fully clothed.
+// SFW but alluring — soft glamour styling, suggestive but fully clothed, full-body composition.
 function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const parts: string[] = []
 
@@ -56,7 +56,10 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const artOption = ART_STYLES.find((a) => a.value === artStyle)
   parts.push(artOption?.promptFragment ?? 'photorealistic, high detail, soft lighting')
 
-  parts.push('alluring portrait of a confident adult woman')
+  parts.push(
+    'full-body shot of a confident adult woman, head to toe, complete figure visible',
+    'alluring stance, soft contrapposto, one hand on hip, weight on one leg, playful confident smile, eye contact',
+  )
 
   const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 25
   const safeAge = Math.max(21, ageDisplay)
@@ -90,12 +93,13 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
     if (opt?.promptFragment) parts.push(opt.promptFragment)
   }
 
-  // Alluring SFW styling: tasteful glamour, suggestive but fully clothed.
+  // Alluring SFW styling: tasteful glamour, suggestive but fully clothed, full body framing.
   parts.push(
-    'sultry expression, soft seductive smile, eye contact, glossy lips',
-    'fashionable elegant outfit, fully clothed, off-shoulder dress or tasteful blouse',
-    'cinematic warm lighting, golden hour, shallow depth of field, bokeh',
-    'editorial fashion photography, magazine cover quality, 4k, sharp focus',
+    'sultry expression, soft seductive smile, glossy lips',
+    'tasteful elegant outfit, fully clothed, fashionable dress or stylish top with skirt or fitted jeans, heels or stylish shoes visible',
+    'standing pose, full body composition, slight side angle, attractive silhouette',
+    'cinematic warm lighting, golden hour, shallow depth of field, soft bokeh background',
+    'editorial fashion photography, magazine cover quality, 4k, sharp focus, detailed face and figure',
   )
 
   return parts.join(', ')
@@ -128,7 +132,11 @@ export async function generateGuestPreviewAction(
 
   const existing = await readGuestDraft()
 
-  if (existing && existing.previews.length >= MAX_PREVIEWS) {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    existing &&
+    existing.previews.length >= MAX_PREVIEWS
+  ) {
     return { ok: false, error: 'preview_limit_reached' }
   }
 
@@ -149,7 +157,7 @@ export async function generateGuestPreviewAction(
     result = await generateImage({
       prompt,
       negativePrompt: NEGATIVE_PROMPT,
-      imageSize: 'portrait_4_3',
+      imageSize: 'portrait_16_9',
       numImages: 2,
       endpoint: FAL_ENDPOINT_FAST_SDXL,
     })
