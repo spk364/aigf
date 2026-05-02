@@ -50,7 +50,7 @@ export function FeaturedCompanions({ locale }: Props) {
               <li key={persona.slug}>
                 <PersonaCard
                   persona={persona}
-                  href={`/${locale}/signup?companion=${persona.slug}`}
+                  href={`/${locale}/start?companion=${persona.slug}`}
                 />
               </li>
             ))}

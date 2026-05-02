@@ -1,6 +1,12 @@
 import { getTranslations } from 'next-intl/server'
 import { redirect } from 'next/navigation'
 import { loginAction } from '@/features/auth/actions/login'
+import { loginAsTestUserAction } from '@/features/auth/actions/test-login'
+import {
+  TEST_USER_EMAIL,
+  TEST_USER_PASSWORD,
+  testLoginEnabled,
+} from '@/features/auth/test-login-config'
 import Link from 'next/link'
 
 type Props = {
@@ -14,10 +20,20 @@ export default async function LoginPage({ params, searchParams }: Props) {
   const t = await getTranslations('auth')
 
   const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+  const demoEnabled = testLoginEnabled()
 
   async function handleLogin(formData: FormData) {
     'use server'
     const result = await loginAction(formData)
+    if (result.success) {
+      redirect(`/${locale}/dashboard`)
+    }
+    redirect(`/${locale}/login?error=invalid`)
+  }
+
+  async function handleDemoLogin() {
+    'use server'
+    const result = await loginAsTestUserAction()
     if (result.success) {
       redirect(`/${locale}/dashboard`)
     }
@@ -69,6 +85,28 @@ export default async function LoginPage({ params, searchParams }: Props) {
               className="mb-5 rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-3 text-sm text-[var(--color-danger)]"
             >
               {t('login.invalidCredentials')}
+            </div>
+          )}
+
+          {demoEnabled && (
+            <div className="mb-5 rounded-xl border border-[var(--color-accent-strong)]/30 bg-[var(--color-accent-strong)]/10 p-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
+                Demo mode
+              </p>
+              <p className="mb-3 text-sm text-[var(--color-text)]/90">
+                One-click login as a test user with Premium Plus, no email needed.
+              </p>
+              <p className="mb-3 select-all rounded-lg bg-[var(--color-bg)]/60 px-3 py-2 font-mono text-xs text-[var(--color-text-muted)]">
+                {TEST_USER_EMAIL} · {TEST_USER_PASSWORD}
+              </p>
+              <form action={handleDemoLogin}>
+                <button
+                  type="submit"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-accent-strong)] px-4 py-2.5 text-sm font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
+                >
+                  Sign in as demo user
+                </button>
+              </form>
             </div>
           )}
 
