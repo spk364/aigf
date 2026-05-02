@@ -2,11 +2,7 @@ import { getTranslations } from 'next-intl/server'
 import { redirect } from 'next/navigation'
 import { loginAction } from '@/features/auth/actions/login'
 import { loginAsTestUserAction } from '@/features/auth/actions/test-login'
-import {
-  TEST_USER_EMAIL,
-  TEST_USER_PASSWORD,
-  testLoginEnabled,
-} from '@/features/auth/test-login-config'
+import { TEST_USER_EMAIL, TEST_USER_PASSWORD } from '@/features/auth/test-login-config'
 import Link from 'next/link'
 
 type Props = {
@@ -20,7 +16,6 @@ export default async function LoginPage({ params, searchParams }: Props) {
   const t = await getTranslations('auth')
 
   const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
-  const demoEnabled = testLoginEnabled()
 
   async function handleLogin(formData: FormData) {
     'use server'
@@ -88,8 +83,7 @@ export default async function LoginPage({ params, searchParams }: Props) {
             </div>
           )}
 
-          {demoEnabled && (
-            <div className="mb-5 rounded-xl border border-[var(--color-accent-strong)]/30 bg-[var(--color-accent-strong)]/10 p-4">
+          <div className="mb-5 rounded-xl border border-[var(--color-accent-strong)]/30 bg-[var(--color-accent-strong)]/10 p-4">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-accent)]">
                 Demo mode
               </p>
@@ -108,7 +102,6 @@ export default async function LoginPage({ params, searchParams }: Props) {
                 </button>
               </form>
             </div>
-          )}
 
           {googleEnabled && (
             <>
