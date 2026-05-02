@@ -93,6 +93,29 @@
       "mustAgree": "You must confirm you are 18 or older and agree to the terms."
     }
   },
+  "tryBuilder": {
+    "title": "Design your dream companion",
+    "subtitle": "Pick her look — we'll bring her to life. No signup required.",
+    "hint": "Generation takes ~10 seconds. Limited free previews per hour.",
+    "previewsHeading": "Tap one to choose her",
+    "actions": {
+      "generate": "Generate her",
+      "regenerate": "Generate more variants",
+      "generating": "Generating...",
+      "selected": "Selected"
+    },
+    "cta": {
+      "heading": "She's waiting for you",
+      "body": "Sign up to give her a name, story, and start chatting.",
+      "signup": "Save her — sign up free"
+    },
+    "errors": {
+      "rateLimitedHour": "You've used your free previews for this hour. Try again later — or sign up for unlimited.",
+      "rateLimitedDay": "You've reached today's free preview limit. Sign up to keep going.",
+      "previewLimit": "You've created enough previews. Pick one and sign up to continue.",
+      "generationFailed": "Generation failed. Please try again."
+    }
+  },
   "builder": {
     "title": "Create your companion",
     "startNew": "Start new",

@@ -7,6 +7,7 @@ import config from '@payload-config'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { track } from '@/shared/analytics/posthog'
 import { headers as getHeaders } from 'next/headers'
+import { claimGuestDraftForUser } from '@/features/builder/guest-claim'
 
 function isAtLeast18(dob: Date): boolean {
   const now = new Date()
@@ -97,5 +98,24 @@ export async function completeProfileAction(
     properties: { provider: 'google', locale: userLocale },
   })
 
+  // Adopt any guest builder draft created before sign-in.
+  let claimedDraftId: string | undefined
+  try {
+    const claim = await claimGuestDraftForUser(user.id)
+    if (claim.claimed) {
+      claimedDraftId = claim.draftId
+      track({
+        userId: String(user.id),
+        event: 'builder.guest_draft_claimed',
+        properties: { draftId: claim.draftId },
+      })
+    }
+  } catch {
+    // Non-blocking
+  }
+
+  if (claimedDraftId) {
+    redirect(`/${locale}/builder/${claimedDraftId}`)
+  }
   redirect(`/${locale}/dashboard`)
 }

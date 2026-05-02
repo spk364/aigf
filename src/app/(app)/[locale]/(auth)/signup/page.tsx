@@ -24,6 +24,9 @@ export default async function SignupPage({ params, searchParams }: Props) {
     }
     const result = await signupAction(formData)
     if (result.success) {
+      if (result.claimedDraftId) {
+        redirect(`/${locale}/builder/${result.claimedDraftId}`)
+      }
       redirect(`/${locale}/dashboard`)
     }
     const params = new URLSearchParams({ error: result.error })

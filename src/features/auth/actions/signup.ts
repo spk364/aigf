@@ -5,9 +5,10 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { signupSchema } from '../schemas'
 import { track } from '@/shared/analytics/posthog'
+import { claimGuestDraftForUser } from '@/features/builder/guest-claim'
 
 export type SignupState =
-  | { success: true }
+  | { success: true; claimedDraftId?: string }
   | { success: false; error: string; field?: string }
 
 export async function signupAction(formData: FormData): Promise<SignupState> {
@@ -87,5 +88,23 @@ export async function signupAction(formData: FormData): Promise<SignupState> {
     // If auto-login fails, user can still log in manually
   }
 
-  return { success: true }
+  // Adopt any guest builder draft from the pre-signup teaser flow.
+  let claimedDraftId: string | undefined
+  if (createdUserId) {
+    try {
+      const claim = await claimGuestDraftForUser(createdUserId)
+      if (claim.claimed) {
+        claimedDraftId = claim.draftId
+        track({
+          userId: createdUserId,
+          event: 'builder.guest_draft_claimed',
+          properties: { draftId: claim.draftId },
+        })
+      }
+    } catch {
+      // Non-blocking — signup must succeed even if claim fails.
+    }
+  }
+
+  return { success: true, claimedDraftId }
 }

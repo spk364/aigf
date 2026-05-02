@@ -93,6 +93,29 @@
       "mustAgree": "Debes confirmar que tienes 18 anos o mas y aceptar los terminos."
     }
   },
+  "tryBuilder": {
+    "title": "Diseña a tu companion ideal",
+    "subtitle": "Elige su apariencia — la haremos cobrar vida. Sin registro.",
+    "hint": "Generar tarda ~10 segundos. Vistas previas gratuitas limitadas por hora.",
+    "previewsHeading": "Toca una para elegirla",
+    "actions": {
+      "generate": "Generar",
+      "regenerate": "Mas variantes",
+      "generating": "Generando...",
+      "selected": "Elegida"
+    },
+    "cta": {
+      "heading": "Ella te espera",
+      "body": "Registrate para darle un nombre, una historia y empezar a chatear.",
+      "signup": "Guardarla — registrate gratis"
+    },
+    "errors": {
+      "rateLimitedHour": "Has usado tus vistas previas gratuitas de esta hora. Intentalo mas tarde o registrate para acceso ilimitado.",
+      "rateLimitedDay": "Has alcanzado el limite diario de vistas previas. Registrate para continuar.",
+      "previewLimit": "Suficientes vistas previas. Elige una y registrate para continuar.",
+      "generationFailed": "Error al generar. Intentalo de nuevo."
+    }
+  },
   "builder": {
     "title": "Crea tu companion",
     "startNew": "Nuevo",
