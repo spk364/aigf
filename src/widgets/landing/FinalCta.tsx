@@ -33,10 +33,10 @@ export function FinalCta({ locale }: Props) {
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
           <Link
-            href={`/${locale}/signup`}
+            href={`/${locale}/start`}
             className="inline-flex items-center justify-center rounded-xl bg-[var(--color-accent-strong)] px-8 py-3.5 font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
           >
-            Get started free
+            Create my companion
           </Link>
           <Link
             href={`/${locale}/explore`}
