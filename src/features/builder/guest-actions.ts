@@ -6,7 +6,7 @@ import config from '@payload-config'
 import {
   generateImage,
   FAL_ENDPOINT_FAST_SDXL,
-  FAL_ENDPOINT_REALISTIC_VISION,
+  FAL_ENDPOINT_FLUX_SCHNELL,
 } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import {
@@ -52,13 +52,15 @@ function buildNegativePrompt(artStyle: string): string {
   return `${base}, ${SAFETY_NEGATIVE}, ${SFW_GUEST_NEGATIVE}`
 }
 
-// Pick the best fal.ai endpoint per art style, mirroring the choice the admin
-// reference-generation route makes for the same style. RealVisXL gives us the
-// best photoreal portraits; fast-sdxl is generic-but-fast for anime / 3D /
-// stylized. We avoid the Pony/Illustrious checkpoints here because their 2-3
-// minute cold start is unusable in a 10-second teaser flow, and FLUX is off-
-// limits because it ignores negative_prompt (we need it for the age-safety
-// weights above).
+// Pick the best fal.ai endpoint per art style, optimised for the teaser flow's
+// 60-second Vercel function budget. RealVisXL is higher quality for photoreal
+// but takes 30-60s for 2 images and was timing out; FLUX schnell delivers
+// comparable photoreal quality in ~5-10s (4 inference steps). For anime / 3D /
+// stylized we use fast-sdxl (5-10s, generic SDXL handles those styles fine).
+// Pony/Illustrious checkpoints are excluded due to 2-3 min cold start.
+//
+// FLUX has no negative_prompt — for safety we lean harder on positive-prompt
+// age markers ("mature adult woman, 30 year old") in buildPreviewPrompt.
 function pickEndpointForStyle(artStyle: string): {
   endpoint: string
   inferenceSteps: number
@@ -72,9 +74,9 @@ function pickEndpointForStyle(artStyle: string): {
     case 'realistic':
     default:
       return {
-        endpoint: FAL_ENDPOINT_REALISTIC_VISION,
-        inferenceSteps: 35,
-        guidance: 5,
+        endpoint: FAL_ENDPOINT_FLUX_SCHNELL,
+        inferenceSteps: 4,
+        guidance: 3.5,
       }
   }
 }
@@ -180,17 +182,62 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
     ].join(', ')
   }
 
-  // realistic — RealVisXL responds best to "RAW photo" framing + photography
-  // keywords + skin texture markers.
+  // realistic — FLUX schnell wants natural-language sentences, not SD token
+  // lists. We also lean hard on explicit adult/mature markers in the positive
+  // prompt because FLUX ignores negative_prompt.
+  return buildFluxRealisticPrompt(appearance)
+}
+
+// Produce a natural-language description for FLUX. Pulls the same option
+// fragments but rewords them as "with X" / adjectives glued into a sentence.
+function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
+  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 28
+  const safeAge = Math.max(21, ageDisplay)
+
+  const ethnicityDescriptors: string[] = []
+  const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
+  for (const eth of ethnicities) {
+    const opt = ETHNICITIES.find((e) => e.value === eth)
+    if (opt?.promptFragment) ethnicityDescriptors.push(opt.promptFragment)
+  }
+
+  const bodyType = String(appearance.bodyType ?? '')
+  const bodyOpt = BODY_TYPES.find((b) => b.value === bodyType)
+  const bodyDesc = bodyOpt?.promptFragment ?? ''
+
+  const hair = (appearance.hair ?? {}) as Record<string, string>
+  const hairColor = HAIR_COLORS.find((h) => h.value === hair.color)?.promptFragment
+  const hairLength = HAIR_LENGTHS.find((h) => h.value === hair.length)?.promptFragment
+  const hairStyle = HAIR_STYLES.find((h) => h.value === hair.style)?.promptFragment
+  const hairDesc = [hairLength, hairStyle, hairColor].filter(Boolean).join(' ')
+
+  const eyes = (appearance.eyes ?? {}) as Record<string, string>
+  const eyesDesc = EYE_COLORS.find((e) => e.value === eyes.color)?.promptFragment ?? ''
+
+  const featureBits: string[] = []
+  const features = Array.isArray(appearance.features) ? (appearance.features as string[]) : []
+  for (const feat of features) {
+    const opt = FEATURES.find((f) => f.value === feat)
+    if (opt?.promptFragment) featureBits.push(opt.promptFragment)
+  }
+
+  const descriptors = [
+    ethnicityDescriptors.join(' '),
+    bodyDesc,
+    hairDesc,
+    eyesDesc,
+    featureBits.join(', '),
+  ].filter(Boolean).join(', ')
+
   return [
-    'RAW photo, full body shot of a confident adult woman, head to toe, complete figure visible',
-    subject,
-    'alluring stance, soft contrapposto, one hand on hip, weight on one leg, playful confident smile, eye contact, glossy lips',
-    'tasteful elegant outfit, fully clothed, fashionable dress or stylish top with skirt or fitted jeans, heels or stylish shoes visible',
-    'standing pose, slight side angle, attractive silhouette',
-    'cinematic warm lighting, golden hour, shallow depth of field, soft bokeh background',
-    '8k uhd, dslr, soft natural lighting, high quality, film grain, Fujifilm XT3, photorealistic, realistic skin texture, detailed face',
-  ].join(', ')
+    `Editorial full-body fashion photograph of a confident mature adult woman, ${safeAge} years old, fully grown adult.`,
+    descriptors ? `She has ${descriptors}.` : '',
+    'She is standing in a relaxed alluring pose, soft contrapposto with one hand on her hip and weight on one leg, giving the camera a playful confident smile and direct eye contact.',
+    'She wears a tasteful elegant outfit — a fashionable dress or stylish top with a skirt or well-fitted jeans, fully clothed, heels or stylish shoes visible.',
+    'The shot is taken with a professional DSLR, 50mm lens, golden-hour cinematic warm lighting, shallow depth of field with a soft bokeh background.',
+    'Photorealistic, sharp focus on her face and full figure, head to toe in frame, magazine-quality 4K editorial photography.',
+    'She is clearly an adult woman in her late twenties or older, mature features, no childlike or teenage characteristics.',
+  ].filter(Boolean).join(' ')
 }
 
 export type GenerateGuestPreviewResult =
