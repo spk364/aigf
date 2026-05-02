@@ -501,7 +501,7 @@ function RevealView({
       </h1>
       <p className="mt-2 max-w-md text-[var(--color-text-muted)]">
         {status === 'generating'
-          ? 'Generating her photo — this takes about 10 seconds.'
+          ? 'Generating her photo — this takes 20–40 seconds. Worth the wait.'
           : 'She’s waiting for you. Create a free account to start chatting in under a minute.'}
       </p>
 

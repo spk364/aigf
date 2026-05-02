@@ -3,10 +3,13 @@
 import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { generateImage, FAL_ENDPOINT_FAST_SDXL } from '@/shared/ai/fal'
+import {
+  generateImage,
+  FAL_ENDPOINT_FAST_SDXL,
+  FAL_ENDPOINT_REALISTIC_VISION,
+} from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import {
-  ART_STYLES,
   ETHNICITIES,
   BODY_TYPES,
   HAIR_COLORS,
@@ -25,12 +28,56 @@ import { checkGuestPreviewRateLimit } from './guest-rate-limit'
 
 const MAX_PREVIEWS = 6
 
-const NEGATIVE_PROMPT =
+// Mirrors the admin reference-generation safety negative prompt. Heavy weights
+// on age markers are critical given that we don't have human moderation in the
+// loop on the teaser flow.
+const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
   '(petite:1.2), (small:1.2), (flat chest:1.4), (underage:1.5), (minor:1.5), ' +
-  '(childlike features:1.5), nudity, nipples, explicit, nsfw, sexual content, ' +
-  'deformed, low quality, blurry, bad anatomy, extra limbs, extra fingers, ' +
-  'watermark, text, signature, multiple people'
+  '(childlike features:1.5), deformed, low quality, multiple people, bad anatomy'
+
+const SFW_GUEST_NEGATIVE =
+  'nudity, nipples, explicit, nsfw, sexual content, ' +
+  'extra limbs, extra fingers, watermark, text, signature'
+
+// Per-style negative prompt — anime models hate "deformed iris" markers, photo
+// models want them.
+const REALISTIC_NEGATIVE =
+  '(deformed iris, deformed pupils), text, cropped, worst quality, low quality, blurry, bad anatomy, watermark'
+const ANIME_NEGATIVE =
+  'worst quality, low quality, normal quality, lowres, watermark, signature, blurry, deformed'
+
+function buildNegativePrompt(artStyle: string): string {
+  const base = artStyle === 'anime' ? ANIME_NEGATIVE : REALISTIC_NEGATIVE
+  return `${base}, ${SAFETY_NEGATIVE}, ${SFW_GUEST_NEGATIVE}`
+}
+
+// Pick the best fal.ai endpoint per art style, mirroring the choice the admin
+// reference-generation route makes for the same style. RealVisXL gives us the
+// best photoreal portraits; fast-sdxl is generic-but-fast for anime / 3D /
+// stylized. We avoid the Pony/Illustrious checkpoints here because their 2-3
+// minute cold start is unusable in a 10-second teaser flow, and FLUX is off-
+// limits because it ignores negative_prompt (we need it for the age-safety
+// weights above).
+function pickEndpointForStyle(artStyle: string): {
+  endpoint: string
+  inferenceSteps: number
+  guidance: number
+} {
+  switch (artStyle) {
+    case 'anime':
+    case '3d_render':
+    case 'stylized':
+      return { endpoint: FAL_ENDPOINT_FAST_SDXL, inferenceSteps: 30, guidance: 6 }
+    case 'realistic':
+    default:
+      return {
+        endpoint: FAL_ENDPOINT_REALISTIC_VISION,
+        inferenceSteps: 35,
+        guidance: 5,
+      }
+  }
+}
 
 const appearanceSchema = z.object({
   artStyle: z.enum(['realistic', 'anime', '3d_render', 'stylized']).optional(),
@@ -49,21 +96,16 @@ const generateInputSchema = z.object({
 })
 
 // SFW but alluring — soft glamour styling, suggestive but fully clothed, full-body composition.
-function buildPreviewPrompt(appearance: Record<string, unknown>): string {
+// Subject tokens describing the woman's appearance from the user's onboarding
+// choices. Style-agnostic — same pieces are layered into either an SD-style
+// or anime prompt by buildPreviewPrompt.
+function buildSubjectTokens(appearance: Record<string, unknown>): string {
   const parts: string[] = []
-
-  const artStyle = String(appearance.artStyle ?? 'realistic')
-  const artOption = ART_STYLES.find((a) => a.value === artStyle)
-  parts.push(artOption?.promptFragment ?? 'photorealistic, high detail, soft lighting')
-
-  parts.push(
-    'full-body shot of a confident adult woman, head to toe, complete figure visible',
-    'alluring stance, soft contrapposto, one hand on hip, weight on one leg, playful confident smile, eye contact',
-  )
 
   const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 25
   const safeAge = Math.max(21, ageDisplay)
-  parts.push(`${safeAge} years old, (adult woman:1.3)`)
+  parts.push(`${safeAge} years old`)
+  parts.push('(adult woman:1.3)')
 
   const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
   for (const eth of ethnicities) {
@@ -93,16 +135,62 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
     if (opt?.promptFragment) parts.push(opt.promptFragment)
   }
 
-  // Alluring SFW styling: tasteful glamour, suggestive but fully clothed, full body framing.
-  parts.push(
-    'sultry expression, soft seductive smile, glossy lips',
-    'tasteful elegant outfit, fully clothed, fashionable dress or stylish top with skirt or fitted jeans, heels or stylish shoes visible',
-    'standing pose, full body composition, slight side angle, attractive silhouette',
-    'cinematic warm lighting, golden hour, shallow depth of field, soft bokeh background',
-    'editorial fashion photography, magazine cover quality, 4k, sharp focus, detailed face and figure',
-  )
-
   return parts.join(', ')
+}
+
+// Build a per-style prompt. Realistic uses RealVisXL's "RAW photo" framing;
+// anime uses the masterpiece/best quality tag stack; 3D and stylized lean on
+// their own descriptors. All three preserve the alluring full-body intent.
+function buildPreviewPrompt(appearance: Record<string, unknown>): string {
+  const artStyle = String(appearance.artStyle ?? 'realistic')
+  const subject = buildSubjectTokens(appearance)
+
+  if (artStyle === 'anime') {
+    return [
+      'anime style, masterpiece, best quality, detailed illustration',
+      'full body shot, head to toe, complete figure visible',
+      subject,
+      'alluring pose, soft contrapposto, one hand on hip, playful smile, looking at viewer',
+      'tasteful elegant outfit, fully clothed, stylish dress or top with skirt',
+      'soft lighting, gradient background, vibrant colors, clean lineart',
+    ].join(', ')
+  }
+
+  if (artStyle === '3d_render') {
+    return [
+      '3D render, octane render, high quality CGI, smooth shading, Pixar-quality character',
+      'full body shot, head to toe, complete figure visible',
+      subject,
+      'alluring stance, soft contrapposto, one hand on hip, playful confident smile',
+      'tasteful elegant outfit, fully clothed, stylish dress or top with skirt',
+      'cinematic studio lighting, shallow depth of field, soft bokeh background',
+      'subsurface scattering, realistic materials, 4k, sharp focus',
+    ].join(', ')
+  }
+
+  if (artStyle === 'stylized') {
+    return [
+      'stylized digital painting, painterly, semi-realistic, high detail',
+      'full body shot, head to toe, complete figure visible',
+      subject,
+      'alluring stance, soft contrapposto, hand on hip, confident playful smile',
+      'tasteful elegant outfit, fully clothed, stylish fashionable look',
+      'cinematic warm lighting, golden hour, soft bokeh background',
+      'concept art quality, magazine illustration, 4k, sharp focus',
+    ].join(', ')
+  }
+
+  // realistic — RealVisXL responds best to "RAW photo" framing + photography
+  // keywords + skin texture markers.
+  return [
+    'RAW photo, full body shot of a confident adult woman, head to toe, complete figure visible',
+    subject,
+    'alluring stance, soft contrapposto, one hand on hip, weight on one leg, playful confident smile, eye contact, glossy lips',
+    'tasteful elegant outfit, fully clothed, fashionable dress or stylish top with skirt or fitted jeans, heels or stylish shoes visible',
+    'standing pose, slight side angle, attractive silhouette',
+    'cinematic warm lighting, golden hour, shallow depth of field, soft bokeh background',
+    '8k uhd, dslr, soft natural lighting, high quality, film grain, Fujifilm XT3, photorealistic, realistic skin texture, detailed face',
+  ].join(', ')
 }
 
 export type GenerateGuestPreviewResult =
@@ -150,16 +238,21 @@ export async function generateGuestPreviewAction(
   }
 
   const appearance = parsed.data.appearance as Record<string, unknown>
+  const artStyle = String(appearance.artStyle ?? 'realistic')
   const prompt = buildPreviewPrompt(appearance)
+  const negativePrompt = buildNegativePrompt(artStyle)
+  const { endpoint, inferenceSteps, guidance } = pickEndpointForStyle(artStyle)
 
   let result: Awaited<ReturnType<typeof generateImage>>
   try {
     result = await generateImage({
       prompt,
-      negativePrompt: NEGATIVE_PROMPT,
+      negativePrompt,
       imageSize: 'portrait_16_9',
       numImages: 2,
-      endpoint: FAL_ENDPOINT_FAST_SDXL,
+      endpoint,
+      numInferenceSteps: inferenceSteps,
+      guidanceScale: guidance,
     })
   } catch {
     return { ok: false, error: 'generation_failed' }
