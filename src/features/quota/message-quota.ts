@@ -1,7 +1,16 @@
 import type { BasePayload } from 'payload'
 import { redis } from '@/shared/redis/client'
+import { isPremiumPlan } from '@/features/billing/plans'
 
 type UserLike = { id: string | number }
+
+/**
+ * Free-tier daily message ceiling. Set to 30 based on competitor benchmarks
+ * (Candy ~5–7 hits the wall too fast; OurDream gives unlimited text and
+ * monetises media instead). 30 leaves room for users to fall in love with
+ * a companion before the paywall.
+ */
+const FREE_TIER_DAILY_CAP = 30
 
 export async function getDailyMessageCap(payload: BasePayload, user: UserLike): Promise<number> {
   const result = await payload.find({
@@ -17,14 +26,13 @@ export async function getDailyMessageCap(payload: BasePayload, user: UserLike): 
   })
 
   const sub = result.docs[0]
-  if (!sub) return 10
+  if (!sub) return FREE_TIER_DAILY_CAP
 
-  const plan = sub.plan as string
-  if (plan === 'premium_monthly' || plan === 'premium_yearly' || plan === 'premium_plus_monthly') {
+  if (isPremiumPlan(sub.plan as string | null)) {
     return Infinity
   }
 
-  return 10
+  return FREE_TIER_DAILY_CAP
 }
 
 function utcDateString(date: Date): string {

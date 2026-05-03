@@ -129,6 +129,20 @@ export async function handleNewSaleSuccess(
       idempotencyKey: `ccbill:newsale:${transactionId ?? subId}`,
     })
 
+    // 4. Annual plans: front-load value with a one-time bonus on first activation.
+    //    Separate idempotency key so the redeliver guard is independent of the
+    //    base monthly grant above.
+    if (planConfig.features.annualUpfrontBonus > 0) {
+      await grant(payload, {
+        userId,
+        type: 'grant_subscription_upfront',
+        amount: planConfig.features.annualUpfrontBonus,
+        reason: 'annual_upfront_bonus',
+        relatedPaymentId: paymentTx.id as string,
+        idempotencyKey: `ccbill:upfront:${transactionId ?? subId}`,
+      })
+    }
+
     if (txId) await payload.db.commitTransaction(txId)
 
     track({

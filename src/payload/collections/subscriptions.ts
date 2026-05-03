@@ -28,6 +28,7 @@ export const Subscriptions: CollectionConfig = {
         { label: 'Premium Monthly', value: 'premium_monthly' },
         { label: 'Premium Yearly', value: 'premium_yearly' },
         { label: 'Premium Plus Monthly', value: 'premium_plus_monthly' },
+        { label: 'Premium Plus Yearly', value: 'premium_plus_yearly' },
       ],
     },
     {

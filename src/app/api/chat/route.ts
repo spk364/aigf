@@ -20,6 +20,7 @@ import { extractMemories } from '@/features/memory/extract-memories'
 import { generateImage } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { getBalance, spend } from '@/features/tokens/ledger'
+import { isPremiumPlan } from '@/features/billing/plans'
 
 const LLM_MODEL = OPENROUTER_MODEL
 const LLM_TEMPERATURE = 1.3
@@ -246,11 +247,7 @@ export async function POST(req: NextRequest) {
         })
 
         const activeSub = subResult.docs[0]
-        const isPremium = activeSub && (
-          activeSub.plan === 'premium_monthly' ||
-          activeSub.plan === 'premium_yearly' ||
-          activeSub.plan === 'premium_plus_monthly'
-        )
+        const isPremium = !!activeSub && isPremiumPlan(activeSub.plan as string | null)
 
         if (!isPremium) {
           const upgradeMsg = upgradeMessageForLocale(convLanguage, upgradeUrl)

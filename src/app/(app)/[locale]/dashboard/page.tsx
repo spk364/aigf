@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { getDailyMessageCap, getQuotaStatus } from '@/features/quota/message-quota'
+import { isPremiumPlan } from '@/features/billing/plans'
 import { getDashboardData } from '@/features/dashboard/queries'
 import { ContinueCard } from '@/widgets/dashboard/ContinueCard'
 import { MyCompanions } from '@/widgets/dashboard/MyCompanions'
@@ -49,12 +50,7 @@ export default async function DashboardPage({ params }: Props) {
   })
 
   const sub = subResult.docs[0]
-  const isPremium = !!(
-    sub &&
-    (sub.plan === 'premium_monthly' ||
-      sub.plan === 'premium_yearly' ||
-      sub.plan === 'premium_plus_monthly')
-  )
+  const isPremium = !!sub && isPremiumPlan(sub.plan as string | null)
 
   const quotaCap = quota.cap === Infinity ? null : quota.cap
 
