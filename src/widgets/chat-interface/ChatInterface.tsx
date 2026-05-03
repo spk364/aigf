@@ -24,6 +24,7 @@ export type ChatStrings = {
   send: string
   errorGeneric: string
   errorQuota: string
+  upgradeCta: string
 }
 
 type Props = {
@@ -44,6 +45,7 @@ const defaultStrings: ChatStrings = {
   send: 'Send',
   errorGeneric: 'Something went wrong. Please try again.',
   errorQuota: 'You have reached your daily message limit.',
+  upgradeCta: 'Upgrade',
 }
 
 function parseSseChunk(raw: string): Array<{ event: string; data: string }> {
@@ -149,6 +151,9 @@ export function ChatInterface({
   // currentMsgId tracked for potential future use (e.g. scroll-to-message)
   const [, setCurrentMsgId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Set when the server returns 429 (free-tier daily cap). Switches the error
+  // banner into a paywall variant with a direct upgrade CTA.
+  const [showUpgradeCta, setShowUpgradeCta] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const conversationIdRef = useRef<string | undefined>(initialConversationId)
   const abortRef = useRef<AbortController | null>(null)
@@ -164,6 +169,7 @@ export function ChatInterface({
       if (!text.trim() || streamingState !== 'idle') return
 
       setError(null)
+      setShowUpgradeCta(false)
       setStreamingState('pending')
       setDraft('')
 
@@ -193,6 +199,16 @@ export function ChatInterface({
           body: JSON.stringify(body),
           signal: controller.signal,
         })
+
+        if (res.status === 429) {
+          // Free-tier daily message cap. The server has not consumed the slot
+          // (see checkAndIncrementQuota's decrement-on-reject). Surface a
+          // paywall instead of the generic error and let the user upgrade.
+          setError(s.errorQuota)
+          setShowUpgradeCta(true)
+          setStreamingState('idle')
+          return
+        }
 
         if (!res.ok || !res.body) {
           throw new Error('Request failed')
@@ -282,7 +298,7 @@ export function ChatInterface({
         setStreamingState('idle')
       }
     },
-    [streamingState, initialCharacterId, locale, s.errorGeneric],
+    [streamingState, initialCharacterId, locale, s.errorGeneric, s.errorQuota],
   )
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -532,9 +548,21 @@ export function ChatInterface({
         <div className="mx-auto w-full max-w-3xl px-4 pb-2">
           <div
             role="alert"
-            className="rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2.5 text-sm text-[var(--color-danger)]"
+            className={
+              showUpgradeCta
+                ? 'flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent-strong)]/30 bg-[var(--color-accent-soft)] px-4 py-2.5 text-sm text-[var(--color-text)]'
+                : 'rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2.5 text-sm text-[var(--color-danger)]'
+            }
           >
-            {error}
+            <span>{error}</span>
+            {showUpgradeCta && (
+              <a
+                href={`/${locale}/upgrade`}
+                className="shrink-0 rounded-lg bg-[var(--color-accent-strong)] px-3 py-1.5 text-xs font-bold text-[var(--color-bg)] hover:bg-[var(--color-accent)]"
+              >
+                {s.upgradeCta}
+              </a>
+            )}
           </div>
         </div>
       )}

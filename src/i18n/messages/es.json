@@ -17,6 +17,7 @@
     "copy": "Copiar",
     "errorGeneric": "Algo salio mal. Por favor, intentalo de nuevo.",
     "errorQuota": "Has alcanzado tu limite diario de mensajes. Tu cuota se restablece a medianoche UTC.",
+    "upgradeCta": "Mejorar",
     "yourConversations": "Tus conversaciones",
     "startNewChat": "Iniciar un nuevo chat",
     "image": {

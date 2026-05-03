@@ -28,6 +28,7 @@ export default async function NewChatPage({ params, searchParams }: Props) {
           send: t('send'),
           errorGeneric: t('errorGeneric'),
           errorQuota: t('errorQuota'),
+          upgradeCta: t('upgradeCta'),
         }}
       />
     </div>

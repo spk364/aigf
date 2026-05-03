@@ -17,6 +17,7 @@
     "copy": "Copy",
     "errorGeneric": "Something went wrong. Please try again.",
     "errorQuota": "You have reached your daily message limit. Your quota resets at midnight UTC.",
+    "upgradeCta": "Upgrade",
     "yourConversations": "Your conversations",
     "startNewChat": "Start a new chat",
     "image": {

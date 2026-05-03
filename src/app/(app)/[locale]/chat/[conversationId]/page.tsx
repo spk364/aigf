@@ -108,6 +108,7 @@ export default async function ConversationPage({ params }: Props) {
           send: t('send'),
           errorGeneric: t('errorGeneric'),
           errorQuota: t('errorQuota'),
+          upgradeCta: t('upgradeCta'),
         }}
       />
     </div>
