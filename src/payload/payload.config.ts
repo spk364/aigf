@@ -1,7 +1,7 @@
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { buildConfig } from 'payload'
-import { postgresAdapter } from '@payloadcms/db-postgres'
+import { vercelPostgresAdapter } from '@payloadcms/db-vercel-postgres'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import { resendAdapter } from '@payloadcms/email-resend'
 import { en } from '@payloadcms/translations/languages/en'
@@ -116,15 +116,14 @@ export default buildConfig({
       }
     : {}),
 
-  db: postgresAdapter({
+  db: vercelPostgresAdapter({
     pool: {
+      // postgres-js under the hood. Works against Supabase's pgbouncer
+      // transaction-mode pooler (port 6543) which lifts the 15-client
+      // session-mode cap. DATABASE_URL must point to either:
+      //   - aws-0-{region}.pooler.supabase.com:6543  (transaction mode, recommended)
+      //   - aws-0-{region}.pooler.supabase.com:5432  (session mode, legacy)
       connectionString: process.env.DATABASE_URL,
-      // Supabase free-tier session-mode pooler caps at 15 concurrent clients.
-      // Cap each serverless instance's pg.Pool well below that so a single
-      // cold-start with parallel admin queries can't exhaust the upstream
-      // pool and trigger EMAXCONNSESSION.
-      max: 3,
-      idleTimeoutMillis: 10_000,
     },
     // Set PAYLOAD_PUSH_DB=true in env to push schema on first boot (one-time setup).
     // Disable after initial schema creation to avoid accidental schema mutations.
