@@ -61,3 +61,60 @@ export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
 ]
 
 export const DEFAULT_IMAGE_MODEL_ID = IMAGE_MODEL_OPTIONS[0]!.id
+
+// SDXL-native resolution buckets. We send these as explicit {width, height}
+// to fal rather than the legacy preset enum, because fal's `portrait_4_3`
+// (768×1024) and `portrait_16_9` (576×1024) sit below SDXL's training buckets
+// and produce visibly worse character anatomy.
+//
+// `bestForVideo` flags sources that comfortably clear MIN_SOURCE_RESOLUTION_PIXELS
+// (768×1024) in `motion-presets.ts` and animate well.
+export type ImageSizePresetOption = {
+  id: string
+  label: string
+  width: number
+  height: number
+  bestForVideo?: boolean
+}
+
+export const IMAGE_SIZE_PRESETS: ImageSizePresetOption[] = [
+  {
+    id: 'portrait_2_3',
+    label: 'Portrait 2:3 — 832×1216',
+    width: 832,
+    height: 1216,
+    bestForVideo: true,
+  },
+  {
+    id: 'portrait_9_16',
+    label: 'Portrait 9:16 — 768×1344 (best for video)',
+    width: 768,
+    height: 1344,
+    bestForVideo: true,
+  },
+  {
+    id: 'square_hd',
+    label: 'Square HD — 1024×1024',
+    width: 1024,
+    height: 1024,
+    bestForVideo: true,
+  },
+  {
+    id: 'landscape_3_2',
+    label: 'Landscape 3:2 — 1216×832',
+    width: 1216,
+    height: 832,
+    bestForVideo: true,
+  },
+]
+
+export const DEFAULT_IMAGE_SIZE_PRESET_ID = 'portrait_2_3'
+
+export function resolveImageSize(
+  presetId: string | undefined,
+): { width: number; height: number } {
+  const preset =
+    IMAGE_SIZE_PRESETS.find((p) => p.id === presetId) ??
+    IMAGE_SIZE_PRESETS.find((p) => p.id === DEFAULT_IMAGE_SIZE_PRESET_ID)!
+  return { width: preset.width, height: preset.height }
+}

@@ -30,13 +30,17 @@ export const FAL_IMAGE_CHECKPOINT = 'SG161222/RealVisXL_V4.0'
 
 const QUEUE_BASE = 'https://queue.fal.run'
 
-export type ImageSize =
+export type ImageSizePreset =
   | 'square_hd'
   | 'square'
   | 'portrait_4_3'
   | 'portrait_16_9'
   | 'landscape_4_3'
   | 'landscape_16_9'
+
+// fal.ai accepts either a preset string or an explicit {width, height}.
+// Custom objects let us request SDXL-native buckets (e.g. 832×1216 portrait).
+export type ImageSize = ImageSizePreset | { width: number; height: number }
 
 export type GenerateImageInput = {
   prompt: string
@@ -93,9 +97,13 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
   const defaultSteps = isSchnell ? 4 : isFlux ? 25 : 35
   const defaultGuidance = isFlux ? 3.5 : 5
 
+  // fal expects image_size to be either a string preset or an object {width, height}.
+  // Pass through whichever variant the caller chose; default to SDXL-native portrait.
+  const imageSizeValue: ImageSize = input.imageSize ?? { width: 832, height: 1216 }
+
   const body: Record<string, unknown> = {
     prompt: input.prompt,
-    image_size: input.imageSize ?? 'portrait_4_3',
+    image_size: imageSizeValue,
     num_images: input.numImages ?? 1,
     num_inference_steps: input.numInferenceSteps ?? defaultSteps,
     guidance_scale: input.guidanceScale ?? defaultGuidance,

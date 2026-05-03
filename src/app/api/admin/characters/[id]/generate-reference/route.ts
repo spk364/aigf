@@ -122,10 +122,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const negativePrompt = `${baseNegative}, ${SAFETY_NEGATIVE}${REFERENCE_NEGATIVE_EXTRA}`
 
   try {
+    // 832×1216 — SDXL-native portrait bucket. Comfortably clears the video
+    // source threshold (768×1024) and gives WAN 2.2 i2v a tall frame to work with.
     const result = await generateImage({
       prompt,
       negativePrompt,
-      imageSize: 'square_hd',
+      imageSize: { width: 832, height: 1216 },
       numImages: 1,
       numInferenceSteps: 40,
       guidanceScale: 7,

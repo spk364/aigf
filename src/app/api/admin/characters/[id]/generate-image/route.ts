@@ -7,7 +7,12 @@ import config from '@payload-config'
 import { generateImage, FAL_IMAGE_ENDPOINT, FAL_ENDPOINT_LORA, FAL_ENDPOINT_IP_ADAPTER_FACE_ID, type GenerateImageResult } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { getCurrentUser } from '@/shared/auth/current-user'
-import { IMAGE_MODEL_OPTIONS } from '@/shared/ai/image-models'
+import {
+  IMAGE_MODEL_OPTIONS,
+  IMAGE_SIZE_PRESETS,
+  DEFAULT_IMAGE_SIZE_PRESET_ID,
+  resolveImageSize,
+} from '@/shared/ai/image-models'
 import { saveGeneratedImageToDisk } from '@/shared/debug/save-generated-image'
 
 const SAFETY_NEGATIVE =
@@ -22,12 +27,11 @@ const BASE_NEGATIVE =
 const PONY_PREFIX = 'score_9, score_8_up, score_7_up, score_6_up'
 
 const VALID_MODEL_IDS = IMAGE_MODEL_OPTIONS.map((m) => m.id)
+const VALID_SIZE_IDS = IMAGE_SIZE_PRESETS.map((p) => p.id) as [string, ...string[]]
 
 const bodySchema = z.object({
   setPrimary: z.boolean().default(false),
-  imageSize: z
-    .enum(['square_hd', 'square', 'portrait_4_3', 'portrait_16_9', 'landscape_4_3', 'landscape_16_9'])
-    .default('portrait_4_3'),
+  imageSize: z.enum(VALID_SIZE_IDS).default(DEFAULT_IMAGE_SIZE_PRESET_ID),
   sceneHint: z.string().max(2000).optional(),
   modelOverride: z.string().optional(),
 })
@@ -152,7 +156,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         result = await generateImage({
           prompt,
           negativePrompt,
-          imageSize: body.imageSize,
+          imageSize: resolveImageSize(body.imageSize),
           numImages: 1,
           endpoint: FAL_ENDPOINT_IP_ADAPTER_FACE_ID,
           ipAdapterImageUrl: referenceImageUrl,
@@ -162,7 +166,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         result = await generateImage({
           prompt,
           negativePrompt,
-          imageSize: body.imageSize,
+          imageSize: resolveImageSize(body.imageSize),
           numImages: 1,
           endpoint,
           modelName,
@@ -172,7 +176,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       result = await generateImage({
         prompt,
         negativePrompt,
-        imageSize: body.imageSize,
+        imageSize: resolveImageSize(body.imageSize),
         numImages: 1,
         endpoint,
         modelName,
