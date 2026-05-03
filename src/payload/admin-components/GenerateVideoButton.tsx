@@ -217,6 +217,26 @@ export function GenerateVideoButton() {
     }
   }
 
+  async function cancel(curState: ProgressState) {
+    if (pollTimer.current) clearTimeout(pollTimer.current)
+    try {
+      await fetch(`/api/admin/characters/${id}/video-cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: curState.requestId,
+          endpoint: curState.endpoint,
+        }),
+      })
+    } catch {
+      // best-effort — even if the API call fails, stop polling locally
+    }
+    setState({
+      status: 'error',
+      message: 'Cancelled',
+    })
+  }
+
   async function submit() {
     setState({ status: 'idle' })
     try {
@@ -493,20 +513,35 @@ export function GenerateVideoButton() {
         </div>
       </details>
 
-      <button
-        onClick={submit}
-        disabled={isBusy || !primaryImageUrl}
-        style={{
-          ...BTN,
-          background: '#7c3aed',
-          color: '#fff',
-          opacity: isBusy || !primaryImageUrl ? 0.7 : 1,
-        }}
-      >
-        {state.status === 'queued' || state.status === 'polling'
-          ? 'Generating video…'
-          : 'Generate Video'}
-      </button>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <button
+          onClick={submit}
+          disabled={isBusy || !primaryImageUrl}
+          style={{
+            ...BTN,
+            background: '#7c3aed',
+            color: '#fff',
+            opacity: isBusy || !primaryImageUrl ? 0.7 : 1,
+          }}
+        >
+          {state.status === 'queued' || state.status === 'polling'
+            ? 'Generating video…'
+            : 'Generate Video'}
+        </button>
+
+        {(state.status === 'queued' || state.status === 'polling') && (
+          <button
+            onClick={() => cancel(state)}
+            style={{
+              ...BTN,
+              background: '#dc2626',
+              color: '#fff',
+            }}
+          >
+            Cancel
+          </button>
+        )}
+      </div>
 
       {(state.status === 'queued' || state.status === 'polling') && (
         <div style={{ marginTop: '8px' }}>

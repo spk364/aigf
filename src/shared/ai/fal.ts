@@ -268,6 +268,23 @@ export async function submitVideoJob(
   return { requestId: submitData.request_id, endpoint }
 }
 
+// Cancels a queued or in-progress fal job. fal accepts the cancel request
+// for IN_QUEUE jobs reliably; for IN_PROGRESS the model decides whether to
+// honour it (most do — WAN 2.2 included).
+export async function cancelFalJob(
+  endpoint: string,
+  requestId: string,
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const key = process.env.FAL_KEY
+  if (!key) throw new Error('FAL_KEY is not set')
+  const res = await fetch(`${QUEUE_BASE}/${endpoint}/requests/${requestId}/cancel`, {
+    method: 'PUT',
+    headers: { Authorization: `Key ${key}` },
+  })
+  const body = await res.text()
+  return { ok: res.ok, status: res.status, body: body.slice(0, 500) }
+}
+
 // Mirrors fal.ai's queue status enum so the UI can show "queued vs running".
 export type VideoJobPhase = 'queued' | 'running' | 'unknown'
 
