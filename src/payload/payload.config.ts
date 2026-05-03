@@ -119,6 +119,12 @@ export default buildConfig({
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URL,
+      // Supabase free-tier session-mode pooler caps at 15 concurrent clients.
+      // Cap each serverless instance's pg.Pool well below that so a single
+      // cold-start with parallel admin queries can't exhaust the upstream
+      // pool and trigger EMAXCONNSESSION.
+      max: 3,
+      idleTimeoutMillis: 10_000,
     },
     // Set PAYLOAD_PUSH_DB=true in env to push schema on first boot (one-time setup).
     // Disable after initial schema creation to avoid accidental schema mutations.
