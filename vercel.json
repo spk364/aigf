@@ -1,4 +1,10 @@
 {
   "framework": "nextjs",
-  "buildCommand": "pnpm build"
+  "buildCommand": "pnpm build",
+  "crons": [
+    {
+      "path": "/api/cron/validate-balances",
+      "schedule": "0 * * * *"
+    }
+  ]
 }
