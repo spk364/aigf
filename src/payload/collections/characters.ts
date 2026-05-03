@@ -245,5 +245,14 @@ export const Characters: CollectionConfig = {
         },
       },
     },
+    {
+      name: 'generateVideoAction',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '@/payload/admin-components/GenerateVideoButton#GenerateVideoButton',
+        },
+      },
+    },
   ],
 }
