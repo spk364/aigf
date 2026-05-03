@@ -118,13 +118,15 @@ export async function handleNewSaleSuccess(
       req: { transactionID: txId } as never,
     })
 
-    // 3. Grant monthly tokens
+    // 3. Grant monthly tokens. Idempotent per CCBill transaction so a redelivered
+    //    webhook does not credit twice.
     await grant(payload, {
       userId,
       type: 'grant_subscription',
       amount: planConfig.features.monthlyTokenAllocation,
       reason: 'subscription_initial',
       relatedPaymentId: paymentTx.id as string,
+      idempotencyKey: `ccbill:newsale:${transactionId ?? subId}`,
     })
 
     if (txId) await payload.db.commitTransaction(txId)
@@ -211,6 +213,7 @@ export async function handleRenewalSuccess(
       amount: planConfig.features.monthlyTokenAllocation,
       reason: 'subscription_renewal',
       relatedPaymentId: paymentTx.id as string,
+      idempotencyKey: `ccbill:renewal:${transactionId ?? `${sub.id}:${now.toISOString().slice(0, 7)}`}`,
     })
 
     if (txId) await payload.db.commitTransaction(txId)
