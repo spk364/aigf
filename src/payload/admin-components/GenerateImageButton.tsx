@@ -1,15 +1,14 @@
 'use client'
 import React, { useState } from 'react'
 import { useDocumentInfo } from '@payloadcms/ui'
-import { IMAGE_MODEL_OPTIONS, DEFAULT_IMAGE_MODEL_ID } from '@/shared/ai/image-models'
+import {
+  IMAGE_MODEL_OPTIONS,
+  DEFAULT_IMAGE_MODEL_ID,
+  IMAGE_SIZE_PRESETS,
+  DEFAULT_IMAGE_SIZE_PRESET_ID,
+} from '@/shared/ai/image-models'
 
-type ImageSize =
-  | 'portrait_4_3'
-  | 'portrait_16_9'
-  | 'square_hd'
-  | 'square'
-  | 'landscape_4_3'
-  | 'landscape_16_9'
+type ImageSize = string
 
 type State =
   | { status: 'idle' }
@@ -67,21 +66,17 @@ const SELECT: React.CSSProperties = {
   fontSize: '13px',
 }
 
-const SIZES: { value: ImageSize; label: string }[] = [
-  { value: 'portrait_4_3', label: 'Portrait 4:3' },
-  { value: 'portrait_16_9', label: 'Portrait 16:9' },
-  { value: 'square_hd', label: 'Square HD' },
-  { value: 'square', label: 'Square' },
-  { value: 'landscape_4_3', label: 'Landscape 4:3' },
-  { value: 'landscape_16_9', label: 'Landscape 16:9' },
-]
+const SIZES: { value: ImageSize; label: string }[] = IMAGE_SIZE_PRESETS.map((p) => ({
+  value: p.id,
+  label: p.label,
+}))
 
 export function GenerateImageButton() {
   const { id, savedDocumentData } = useDocumentInfo()
   const [state, setState] = useState<State>({ status: 'idle' })
   const [refState, setRefState] = useState<RefState>({ status: 'idle' })
   const [refSetPrimaryState, setRefSetPrimaryState] = useState<SetPrimaryState>({ status: 'idle' })
-  const [imageSize, setImageSize] = useState<ImageSize>('portrait_4_3')
+  const [imageSize, setImageSize] = useState<ImageSize>(DEFAULT_IMAGE_SIZE_PRESET_ID)
   const [sceneHint, setSceneHint] = useState('')
   const [modelOverride, setModelOverride] = useState(DEFAULT_IMAGE_MODEL_ID)
 
@@ -228,10 +223,15 @@ export function GenerateImageButton() {
         borderTop: '1px solid var(--theme-elevation-100, #e5e7eb)',
       }}
     >
-      {/* ── Character Reference section ───────────────────────────────── */}
-      <h4 style={{ margin: '0 0 10px', fontWeight: 600, fontSize: '14px' }}>
-        Character Reference
+      {/* ── Step 1: Lock in face (reference) ──────────────────────────── */}
+      <h4 style={{ margin: '0 0 4px', fontWeight: 600, fontSize: '14px' }}>
+        Step 1 — Lock in face (reference)
       </h4>
+      <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 10px' }}>
+        Plain neutral pose, gray studio background, even lighting — used by IP-Adapter
+        to keep the face consistent across all later scenes and videos. Generates at
+        832×1216 (SDXL-native portrait).
+      </p>
 
       {currentRefUrl && (
         <div style={{ marginBottom: '10px' }}>
@@ -310,16 +310,16 @@ export function GenerateImageButton() {
         </div>
       )}
 
-      <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 16px' }}>
-        Reference is used automatically for face consistency in all future generations.
-      </p>
+      <div style={{ borderTop: '1px solid var(--theme-elevation-100, #e5e7eb)', marginTop: '16px', paddingTop: '16px' }} />
 
-      <div style={{ borderTop: '1px solid var(--theme-elevation-100, #e5e7eb)', paddingTop: '16px' }} />
-
-      {/* ── Generate Character Image section ──────────────────────────── */}
-      <h4 style={{ margin: '0 0 12px', fontWeight: 600, fontSize: '14px' }}>
-        Generate Character Image
+      {/* ── Step 2: Generate scenes ───────────────────────────────────── */}
+      <h4 style={{ margin: '0 0 4px', fontWeight: 600, fontSize: '14px' }}>
+        Step 2 — Generate scenes
       </h4>
+      <p style={{ fontSize: '11px', color: '#9ca3af', margin: '0 0 12px' }}>
+        Free-form scenes; if a reference exists, IP-Adapter pulls the locked-in face
+        automatically. Defaults to 832×1216 portrait (SDXL-native).
+      </p>
 
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <div>

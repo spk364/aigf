@@ -187,7 +187,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (sourceDimensions) {
     const px = sourceDimensions.width * sourceDimensions.height
     if (px < MIN_SOURCE_RESOLUTION_PIXELS) {
-      resolutionWarning = `Source is ${sourceDimensions.width}×${sourceDimensions.height} — below the recommended 1024×1536. Motion quality may suffer.`
+      resolutionWarning = `Source is ${sourceDimensions.width}×${sourceDimensions.height} — below the recommended 832×1216. Motion quality may suffer.`
     }
   }
 

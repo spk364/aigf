@@ -80,4 +80,8 @@ export const VIDEO_NEGATIVE_PROMPT = [
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), (petite:1.2), (small:1.2), (flat chest:1.4), (underage:1.5), (minor:1.5), (childlike features:1.5)',
 ].join(', ')
 
-export const MIN_SOURCE_RESOLUTION_PIXELS = 1024 * 1536
+// WAN 2.2 i2v itself only requires ~512×512 input (resized/cropped to the
+// chosen output resolution), but at very low source pixel counts identity
+// drift and detail loss become visible. 768×1024 (the smallest SDXL-native
+// portrait bucket) is the practical floor for character sources.
+export const MIN_SOURCE_RESOLUTION_PIXELS = 768 * 1024
