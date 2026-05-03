@@ -23,6 +23,13 @@ const bodySchema = z.object({
   // Optional override — caller passes a specific media-asset id (e.g. a gallery
   // image rather than the primary one).
   sourceMediaAssetId: z.union([z.string(), z.number()]).optional(),
+  // Advanced: when set, sent verbatim to fal.ai instead of building from
+  // motionDescription + mood + motionStrength. Negative prompt stays the
+  // safety stack regardless.
+  customPrompt: z.string().min(1).max(2000).optional(),
+  // Advanced: override the safety negative. Pass an empty string to keep the
+  // default stack — undefined leaves it as-is.
+  customNegativePrompt: z.string().max(2000).optional(),
 })
 
 type CharacterForVideo = {
@@ -127,11 +134,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const mood = body.mood as MotionMood
   const preset = MOTION_PRESETS[motionStrength]
 
-  const prompt = buildVideoPrompt({
-    motionDescription: body.motionDescription,
-    mood,
-    motionStrength,
-  })
+  const prompt =
+    body.customPrompt && body.customPrompt.trim().length > 0
+      ? body.customPrompt.trim()
+      : buildVideoPrompt({
+          motionDescription: body.motionDescription,
+          mood,
+          motionStrength,
+        })
+
+  const negativePrompt =
+    typeof body.customNegativePrompt === 'string'
+      ? body.customNegativePrompt
+      : VIDEO_NEGATIVE_PROMPT
 
   // Resolution warning — fired alongside the response, not blocking, so the
   // admin gets feedback but can still proceed.
@@ -148,7 +163,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     submission = await submitVideoJob({
       imageUrl: sourceImageUrl,
       prompt,
-      negativePrompt: VIDEO_NEGATIVE_PROMPT,
+      negativePrompt,
       numFrames: preset.numFrames,
       guidanceScale: preset.guidanceScale,
       shift: preset.shift,

@@ -1,6 +1,7 @@
 'use client'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDocumentInfo } from '@payloadcms/ui'
+import { buildVideoPrompt, VIDEO_NEGATIVE_PROMPT } from '@/features/video/motion-presets'
 
 type MotionStrength = 'subtle' | 'medium' | 'strong'
 type MotionMood = 'gentle' | 'playful' | 'intimate'
@@ -119,7 +120,22 @@ export function GenerateVideoButton() {
     'She slowly turns her head to look at the camera and smiles warmly',
   )
   const [resolution, setResolution] = useState<Resolution>('720p')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [promptOverride, setPromptOverride] = useState<string | null>(null)
+  const [negativeOverride, setNegativeOverride] = useState<string | null>(null)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Live auto-generated prompt — mirrors what the server would build if the
+  // override is empty. Used as the placeholder/starting value for the textarea.
+  const autoPrompt = useMemo(
+    () =>
+      buildVideoPrompt({
+        motionDescription,
+        mood,
+        motionStrength,
+      }),
+    [motionDescription, mood, motionStrength],
+  )
 
   const primaryImageUrl =
     (savedDocumentData as Record<string, unknown> | undefined)?.referenceImageUrl as
@@ -199,6 +215,12 @@ export function GenerateVideoButton() {
           mood,
           motionDescription: motionDescription.trim(),
           resolution,
+          ...(promptOverride && promptOverride.trim().length > 0
+            ? { customPrompt: promptOverride.trim() }
+            : {}),
+          ...(negativeOverride !== null
+            ? { customNegativePrompt: negativeOverride }
+            : {}),
         }),
       })
       const data = (await res.json()) as SubmitResponse
@@ -352,6 +374,109 @@ export function GenerateVideoButton() {
           }}
         />
       </div>
+
+      <details
+        open={advancedOpen}
+        onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+        style={{ marginBottom: '14px' }}
+      >
+        <summary style={{ fontSize: '12px', color: '#6b7280', cursor: 'pointer' }}>
+          Advanced — edit final prompt &amp; negative prompt
+        </summary>
+
+        <div style={{ marginTop: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <label style={{ fontSize: '12px', color: '#6b7280' }}>
+              Final prompt sent to fal.ai
+            </label>
+            {promptOverride !== null && (
+              <button
+                type="button"
+                onClick={() => setPromptOverride(null)}
+                disabled={isBusy}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#3b82f6',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                Reset to auto
+              </button>
+            )}
+          </div>
+          <textarea
+            value={promptOverride ?? autoPrompt}
+            onChange={(e) => setPromptOverride(e.target.value)}
+            disabled={isBusy}
+            rows={5}
+            placeholder={autoPrompt}
+            style={{
+              width: '100%',
+              padding: '8px',
+              borderRadius: '4px',
+              border: '1px solid #d1d5db',
+              fontSize: '12px',
+              fontFamily: 'monospace',
+              boxSizing: 'border-box',
+              resize: 'vertical',
+              background: promptOverride !== null ? '#fff' : '#f9fafb',
+            }}
+          />
+          <p style={{ fontSize: '11px', color: '#9ca3af', margin: '4px 0 0' }}>
+            {promptOverride !== null
+              ? 'Custom prompt — sent verbatim. Motion strength still controls num_frames / guidance_scale / shift.'
+              : 'Auto-generated from motion description, mood, and motion strength. Edit to override.'}
+          </p>
+        </div>
+
+        <div style={{ marginTop: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <label style={{ fontSize: '12px', color: '#6b7280' }}>
+              Negative prompt
+            </label>
+            {negativeOverride !== null && (
+              <button
+                type="button"
+                onClick={() => setNegativeOverride(null)}
+                disabled={isBusy}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#3b82f6',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                Reset to default
+              </button>
+            )}
+          </div>
+          <textarea
+            value={negativeOverride ?? VIDEO_NEGATIVE_PROMPT}
+            onChange={(e) => setNegativeOverride(e.target.value)}
+            disabled={isBusy}
+            rows={4}
+            style={{
+              width: '100%',
+              padding: '8px',
+              borderRadius: '4px',
+              border: '1px solid #d1d5db',
+              fontSize: '12px',
+              fontFamily: 'monospace',
+              boxSizing: 'border-box',
+              resize: 'vertical',
+              background: negativeOverride !== null ? '#fff' : '#f9fafb',
+            }}
+          />
+          <p style={{ fontSize: '11px', color: '#dc2626', margin: '4px 0 0' }}>
+            ⚠ The default negative includes age-safety weights — don&rsquo;t weaken them.
+          </p>
+        </div>
+      </details>
 
       <button
         onClick={submit}
