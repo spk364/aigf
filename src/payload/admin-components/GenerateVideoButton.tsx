@@ -11,6 +11,9 @@ type SubmitResponse = {
   ok?: true
   requestId?: string
   endpoint?: string
+  statusUrl?: string
+  responseUrl?: string
+  cancelUrl?: string
   sourceImageUrl?: string
   sourceDimensions?: { width: number; height: number } | null
   promptUsed?: string
@@ -44,6 +47,9 @@ type ProgressState = {
   status: 'queued' | 'polling'
   requestId: string
   endpoint: string
+  statusUrl: string
+  responseUrl: string
+  cancelUrl: string
   startedAt: number
   promptUsed: string
   motionStrength: MotionStrength
@@ -175,6 +181,8 @@ export function GenerateVideoButton() {
       const params = new URLSearchParams({
         requestId: curState.requestId,
         endpoint: curState.endpoint,
+        statusUrl: curState.statusUrl,
+        responseUrl: curState.responseUrl,
         startedAt: String(curState.startedAt),
         motionStrength: curState.motionStrength,
         mood: curState.mood,
@@ -224,8 +232,7 @@ export function GenerateVideoButton() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          requestId: curState.requestId,
-          endpoint: curState.endpoint,
+          cancelUrl: curState.cancelUrl,
         }),
       })
     } catch {
@@ -257,7 +264,16 @@ export function GenerateVideoButton() {
         }),
       })
       const data = (await res.json()) as SubmitResponse
-      if (!res.ok || !data.ok || !data.requestId || !data.endpoint || !data.sourceImageUrl) {
+      if (
+        !res.ok ||
+        !data.ok ||
+        !data.requestId ||
+        !data.endpoint ||
+        !data.statusUrl ||
+        !data.responseUrl ||
+        !data.cancelUrl ||
+        !data.sourceImageUrl
+      ) {
         setState({
           status: 'error',
           message: data.message ?? data.error ?? `HTTP ${res.status}`,
@@ -268,6 +284,9 @@ export function GenerateVideoButton() {
         status: 'queued',
         requestId: data.requestId,
         endpoint: data.endpoint,
+        statusUrl: data.statusUrl,
+        responseUrl: data.responseUrl,
+        cancelUrl: data.cancelUrl,
         startedAt: data.startedAt ?? Date.now(),
         promptUsed: data.promptUsed ?? '',
         motionStrength: data.motionStrength ?? motionStrength,
@@ -545,12 +564,14 @@ export function GenerateVideoButton() {
 
       {(state.status === 'queued' || state.status === 'polling') && (
         <div style={{ marginTop: '8px' }}>
-          <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
+          <p style={{ fontSize: '12px', color: state.phase === 'unknown' && Date.now() - state.startedAt > 60_000 ? '#d97706' : '#6b7280', margin: 0 }}>
             {state.phase === 'queued'
               ? 'Queued on fal.ai — waiting for a free GPU'
               : state.phase === 'running'
                 ? 'Running on GPU — generating video'
-                : 'Submitted — waiting for status'}
+                : Date.now() - state.startedAt > 60_000
+                  ? '⚠ Status check is failing — fal not returning a phase. See last log below.'
+                  : 'Submitted — waiting for status'}
             {' · '}
             elapsed {Math.floor((Date.now() - state.startedAt) / 1000)}s
             {state.queuePosition !== null && state.queuePosition > 0

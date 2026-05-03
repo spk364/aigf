@@ -227,9 +227,19 @@ export type GenerateVideoResult = {
 // open. We expose async primitives instead: submit returns the queued request
 // id, and the caller polls for status separately.
 
-export async function submitVideoJob(
-  input: GenerateVideoInput,
-): Promise<{ requestId: string; endpoint: string }> {
+export type VideoJobHandles = {
+  requestId: string
+  endpoint: string
+  // fal returns its own queue URLs in the submit response — they live under
+  // a SHORT path (e.g. `/fal-ai/wan/requests/<id>/status`) that does NOT match
+  // the submission endpoint (`/fal-ai/wan/v2.2-a14b/image-to-video`). Polling
+  // self-built status URLs returns 405; we must use whatever fal hands back.
+  statusUrl: string
+  responseUrl: string
+  cancelUrl: string
+}
+
+export async function submitVideoJob(input: GenerateVideoInput): Promise<VideoJobHandles> {
   const key = process.env.FAL_KEY
   if (!key) throw new Error('FAL_KEY is not set')
 
@@ -271,21 +281,32 @@ export async function submitVideoJob(
     request_id: string
     status_url?: string
     response_url?: string
+    cancel_url?: string
   }
 
-  return { requestId: submitData.request_id, endpoint }
+  if (!submitData.request_id || !submitData.status_url || !submitData.response_url) {
+    throw new Error(
+      `fal submit response missing required URLs: ${JSON.stringify(submitData).slice(0, 300)}`,
+    )
+  }
+
+  return {
+    requestId: submitData.request_id,
+    endpoint,
+    statusUrl: submitData.status_url,
+    responseUrl: submitData.response_url,
+    cancelUrl: submitData.cancel_url ?? `${submitData.status_url.replace(/\/status.*$/, '')}/cancel`,
+  }
 }
 
-// Cancels a queued or in-progress fal job. fal accepts the cancel request
-// for IN_QUEUE jobs reliably; for IN_PROGRESS the model decides whether to
-// honour it (most do — WAN 2.2 included).
+// Cancels a queued or in-progress fal job using fal's own cancel URL. fal
+// accepts cancel for IN_QUEUE reliably; for IN_PROGRESS most models honour it.
 export async function cancelFalJob(
-  endpoint: string,
-  requestId: string,
+  cancelUrl: string,
 ): Promise<{ ok: boolean; status: number; body: string }> {
   const key = process.env.FAL_KEY
   if (!key) throw new Error('FAL_KEY is not set')
-  const res = await fetch(`${QUEUE_BASE}/${endpoint}/requests/${requestId}/cancel`, {
+  const res = await fetch(cancelUrl, {
     method: 'PUT',
     headers: { Authorization: `Key ${key}` },
   })
@@ -316,21 +337,37 @@ function mapPhase(raw: string | undefined): VideoJobPhase {
   return 'unknown'
 }
 
-export async function fetchVideoJobStatus(
-  endpoint: string,
-  requestId: string,
-  startedAtMs?: number,
-): Promise<VideoJobStatus> {
+export async function fetchVideoJobStatus(args: {
+  // fal-provided status URL — under a SHORT path that does NOT match the
+  // submission endpoint. Always pass what fal handed back at submit time.
+  statusUrl: string
+  responseUrl: string
+  requestId: string
+  endpoint: string
+  startedAtMs?: number
+}): Promise<VideoJobStatus> {
   const key = process.env.FAL_KEY
   if (!key) throw new Error('FAL_KEY is not set')
 
   // Ask fal to include logs so we can surface the last progress line.
-  const statusRes = await fetch(
-    `${QUEUE_BASE}/${endpoint}/requests/${requestId}/status?logs=1`,
-    { headers: { Authorization: `Key ${key}` } },
-  )
+  const url = args.statusUrl.includes('?')
+    ? `${args.statusUrl}&logs=1`
+    : `${args.statusUrl}?logs=1`
+  const statusRes = await fetch(url, {
+    headers: { Authorization: `Key ${key}` },
+  })
   if (!statusRes.ok) {
-    return { status: 'pending', phase: 'unknown' }
+    // Surface why the status fetch failed instead of silently looking pending.
+    // 401/403 = bad key, 404 = job evicted/unknown, 5xx = fal flake.
+    const body = await statusRes.text().catch(() => '')
+    const summary = `fal status HTTP ${statusRes.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+    if (statusRes.status === 404 || statusRes.status === 410) {
+      return { status: 'failed', error: `Job not found in fal queue (${summary}). The request may have been evicted.` }
+    }
+    if (statusRes.status === 401 || statusRes.status === 403) {
+      return { status: 'failed', error: `fal authentication failed (${summary}). Check FAL_KEY.` }
+    }
+    return { status: 'pending', phase: 'unknown', lastLog: summary, raw: `HTTP_${statusRes.status}` }
   }
   const status = (await statusRes.json()) as {
     status: string
@@ -353,7 +390,7 @@ export async function fetchVideoJobStatus(
     }
   }
 
-  const resultRes = await fetch(`${QUEUE_BASE}/${endpoint}/requests/${requestId}`, {
+  const resultRes = await fetch(args.responseUrl, {
     headers: { Authorization: `Key ${key}` },
   })
   if (!resultRes.ok) {
@@ -377,9 +414,9 @@ export async function fetchVideoJobStatus(
         contentType: result.video.content_type ?? 'video/mp4',
       },
       seed: result.seed ?? 0,
-      requestId,
-      endpoint,
-      latencyMs: startedAtMs ? Date.now() - startedAtMs : 0,
+      requestId: args.requestId,
+      endpoint: args.endpoint,
+      latencyMs: args.startedAtMs ? Date.now() - args.startedAtMs : 0,
     },
   }
 }

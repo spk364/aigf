@@ -11,6 +11,11 @@ import { getCurrentUser } from '@/shared/auth/current-user'
 const querySchema = z.object({
   requestId: z.string().min(1),
   endpoint: z.string().min(1),
+  // fal-provided URLs from the original submit response. Polling self-built
+  // URLs against the WAN 2.2 endpoint returns 405 — fal exposes status only
+  // under the short `/fal-ai/wan/requests/<id>/status` path.
+  statusUrl: z.string().url(),
+  responseUrl: z.string().url(),
   startedAt: z.coerce.number().optional(),
   motionStrength: z.string().optional(),
   mood: z.string().optional(),
@@ -27,6 +32,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const parsed = querySchema.safeParse({
     requestId: url.searchParams.get('requestId'),
     endpoint: url.searchParams.get('endpoint'),
+    statusUrl: url.searchParams.get('statusUrl'),
+    responseUrl: url.searchParams.get('responseUrl'),
     startedAt: url.searchParams.get('startedAt') ?? undefined,
     motionStrength: url.searchParams.get('motionStrength') ?? undefined,
     mood: url.searchParams.get('mood') ?? undefined,
@@ -39,15 +46,25 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     )
   }
 
+  // SSRF guard — only accept fal queue URLs.
+  if (
+    !parsed.data.statusUrl.startsWith('https://queue.fal.run/') ||
+    !parsed.data.responseUrl.startsWith('https://queue.fal.run/')
+  ) {
+    return NextResponse.json({ error: 'invalid_fal_urls' }, { status: 400 })
+  }
+
   const { id: characterId } = await params
 
   let jobStatus: Awaited<ReturnType<typeof fetchVideoJobStatus>>
   try {
-    jobStatus = await fetchVideoJobStatus(
-      parsed.data.endpoint,
-      parsed.data.requestId,
-      parsed.data.startedAt,
-    )
+    jobStatus = await fetchVideoJobStatus({
+      statusUrl: parsed.data.statusUrl,
+      responseUrl: parsed.data.responseUrl,
+      requestId: parsed.data.requestId,
+      endpoint: parsed.data.endpoint,
+      startedAtMs: parsed.data.startedAt,
+    })
   } catch (err) {
     return NextResponse.json(
       {
