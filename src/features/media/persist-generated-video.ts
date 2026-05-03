@@ -27,6 +27,13 @@ const KIND_MAP = {
   'message-video': 'generated_video',
 } as const satisfies Record<PersistGeneratedVideoInput['kind'], string>
 
+// URL params arrive as strings; the postgres int-pk relationship validator
+// rejects strings, so coerce numeric-string ids to numbers.
+function coerceRelId<T extends string | number | undefined>(v: T): T {
+  if (typeof v === 'string' && /^\d+$/.test(v)) return Number(v) as T
+  return v
+}
+
 function extFromContentType(contentType: string): string {
   const normalized = contentType.split(';')[0]?.trim() ?? ''
   switch (normalized) {
@@ -46,11 +53,15 @@ export async function persistGeneratedVideo(
 ): Promise<PersistGeneratedVideoResult> {
   const ext = extFromContentType(input.contentType)
 
+  const ownerUserId = coerceRelId(input.ownerUserId)
+  const ownerCharacterId = coerceRelId(input.ownerCharacterId)
+  const relatedMessageId = coerceRelId(input.relatedMessageId)
+
   const key = buildR2Key({
     kind: input.kind,
-    ownerId: input.ownerUserId,
-    characterId: input.ownerCharacterId,
-    messageId: input.relatedMessageId,
+    ownerId: ownerUserId,
+    characterId: ownerCharacterId,
+    messageId: relatedMessageId,
     ext,
   })
 
@@ -71,9 +82,9 @@ export async function persistGeneratedVideo(
       width: input.width,
       height: input.height,
       durationSec: input.durationSec,
-      ownerUserId: input.ownerUserId,
-      ownerCharacterId: input.ownerCharacterId,
-      relatedMessageId: input.relatedMessageId,
+      ownerUserId,
+      ownerCharacterId,
+      relatedMessageId,
       generationMetadata: input.generationMetadata ?? null,
       moderationStatus: 'pending',
       isNsfw: false,

@@ -29,6 +29,14 @@ const KIND_MAP = {
   'message-image': 'generated_message',
 } as const satisfies Record<PersistGeneratedImageInput['kind'], string>
 
+// Coerce numeric-string ids to numbers so Payload's int-pk relationship
+// validators accept them. URL params arrive as strings; the underlying
+// postgres column is an integer.
+function coerceRelId<T extends string | number | undefined>(v: T): T {
+  if (typeof v === 'string' && /^\d+$/.test(v)) return Number(v) as T
+  return v
+}
+
 // Derives a file extension from a MIME type string.
 function extFromContentType(contentType: string): string {
   const normalized = contentType.split(';')[0]?.trim() ?? ''
@@ -53,11 +61,15 @@ export async function persistGeneratedImage(
 ): Promise<PersistGeneratedImageResult> {
   const ext = extFromContentType(input.contentType)
 
+  const ownerUserId = coerceRelId(input.ownerUserId)
+  const ownerCharacterId = coerceRelId(input.ownerCharacterId)
+  const relatedMessageId = coerceRelId(input.relatedMessageId)
+
   const key = buildR2Key({
     kind: input.kind,
-    ownerId: input.ownerUserId,
-    characterId: input.ownerCharacterId,
-    messageId: input.relatedMessageId,
+    ownerId: ownerUserId,
+    characterId: ownerCharacterId,
+    messageId: relatedMessageId,
     ext,
   })
 
@@ -79,9 +91,9 @@ export async function persistGeneratedImage(
       sizeBytes: uploadResult.sizeBytes,
       width: input.width,
       height: input.height,
-      ownerUserId: input.ownerUserId,
-      ownerCharacterId: input.ownerCharacterId,
-      relatedMessageId: input.relatedMessageId,
+      ownerUserId,
+      ownerCharacterId,
+      relatedMessageId,
       generationMetadata: input.generationMetadata ?? null,
       moderationStatus: 'pending',
       isNsfw: false,
