@@ -8,10 +8,11 @@ import { createLogger } from '@/shared/lib/logger'
 const log = createLogger({ route: '/api/cron/validate-balances' })
 
 /**
- * Hourly token-balance reconciliation. Compares cached `token_balances.balance`
+ * Daily token-balance reconciliation (03:00 UTC, Vercel Hobby's minimum
+ * granularity is once-per-day). Compares cached `token_balances.balance`
  * against the SUM of `token_transactions.amount` per user; on any mismatch
  * raises a Sentry issue and writes an audit-log row pointing at the affected
- * user so an admin can investigate.
+ * user so an admin can investigate. Move to hourly once on a paid Vercel plan.
  *
  * Auth: bearer token must match `CRON_SECRET`. Vercel Cron sends this header
  * automatically when the route is registered in `vercel.json`. The same
