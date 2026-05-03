@@ -22,6 +22,9 @@ const REFERENCE_NEGATIVE_EXTRA =
 
 const bodySchema = z.object({
   modelOverride: z.string().optional(),
+  // When true, the freshly persisted reference asset is also written to
+  // `characters.primaryImageId` so it shows on the catalog / video flow.
+  setPrimary: z.boolean().default(false),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -159,13 +162,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const publicUrl = persisted.publicUrl
     const mediaAssetId = persisted.mediaAssetId
 
+    const updateData: Record<string, unknown> = {
+      referenceImageId: mediaAssetId,
+      referenceImageUrl: publicUrl,
+    }
+    if (body.setPrimary) {
+      updateData.primaryImageId = mediaAssetId
+    }
+
     await payload.update({
       collection: 'characters',
       id: characterId,
-      data: {
-        referenceImageId: mediaAssetId,
-        referenceImageUrl: publicUrl,
-      },
+      data: updateData,
       overrideAccess: true,
     })
 
@@ -176,6 +184,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       width: img.width,
       height: img.height,
       latencyMs: result.latencyMs,
+      primarySet: body.setPrimary,
       savedPath,
     })
   } catch (err) {

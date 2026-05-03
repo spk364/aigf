@@ -32,7 +32,22 @@ type State =
 type RefState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'done'; url: string; width: number; height: number; latencyMs: number; savedPath: string | null }
+  | {
+      status: 'done'
+      url: string
+      mediaAssetId: string | number | null
+      width: number
+      height: number
+      latencyMs: number
+      savedPath: string | null
+      primarySet: boolean
+    }
+  | { status: 'error'; message: string }
+
+type SetPrimaryState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'done' }
   | { status: 'error'; message: string }
 
 const BTN: React.CSSProperties = {
@@ -65,6 +80,7 @@ export function GenerateImageButton() {
   const { id, savedDocumentData } = useDocumentInfo()
   const [state, setState] = useState<State>({ status: 'idle' })
   const [refState, setRefState] = useState<RefState>({ status: 'idle' })
+  const [refSetPrimaryState, setRefSetPrimaryState] = useState<SetPrimaryState>({ status: 'idle' })
   const [imageSize, setImageSize] = useState<ImageSize>('portrait_4_3')
   const [sceneHint, setSceneHint] = useState('')
   const [modelOverride, setModelOverride] = useState(DEFAULT_IMAGE_MODEL_ID)
@@ -133,21 +149,24 @@ export function GenerateImageButton() {
     }
   }
 
-  async function generateReference() {
+  async function generateReference(setPrimary: boolean) {
     setRefState({ status: 'loading' })
+    setRefSetPrimaryState({ status: 'idle' })
     try {
       const res = await fetch(`/api/admin/characters/${id}/generate-reference`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ setPrimary }),
       })
       const data = (await res.json()) as {
         error?: string
         url?: string
+        mediaAssetId?: string | number | null
         width?: number
         height?: number
         latencyMs?: number
         savedPath?: string | null
+        primarySet?: boolean
       }
       if (!res.ok) {
         setRefState({ status: 'error', message: data.error ?? `HTTP ${res.status}` })
@@ -156,13 +175,42 @@ export function GenerateImageButton() {
       setRefState({
         status: 'done',
         url: data.url!,
+        mediaAssetId: data.mediaAssetId ?? null,
         width: data.width!,
         height: data.height!,
         latencyMs: data.latencyMs!,
         savedPath: data.savedPath ?? null,
+        primarySet: !!data.primarySet,
       })
     } catch (err) {
       setRefState({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Unknown error',
+      })
+    }
+  }
+
+  async function setReferenceAsPrimary(mediaAssetId: string | number) {
+    setRefSetPrimaryState({ status: 'loading' })
+    try {
+      const res = await fetch(`/api/admin/characters/${id}/set-primary-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mediaAssetId }),
+      })
+      const data = (await res.json()) as { error?: string; message?: string }
+      if (!res.ok) {
+        setRefSetPrimaryState({
+          status: 'error',
+          message: data.message ?? data.error ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      setRefSetPrimaryState({ status: 'done' })
+      // Reflect the new state in the local refState too.
+      setRefState((prev) => (prev.status === 'done' ? { ...prev, primarySet: true } : prev))
+    } catch (err) {
+      setRefSetPrimaryState({
         status: 'error',
         message: err instanceof Error ? err.message : 'Unknown error',
       })
@@ -199,13 +247,22 @@ export function GenerateImageButton() {
         </div>
       )}
 
-      <button
-        onClick={generateReference}
-        disabled={refLoading}
-        style={{ ...BTN, background: '#7c3aed', color: '#fff', opacity: refLoading ? 0.7 : 1, marginBottom: '8px' }}
-      >
-        {refLoading ? 'Generating reference — ~30–60s…' : 'Generate Reference Image'}
-      </button>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+        <button
+          onClick={() => generateReference(false)}
+          disabled={refLoading}
+          style={{ ...BTN, background: '#7c3aed', color: '#fff', opacity: refLoading ? 0.7 : 1 }}
+        >
+          {refLoading ? 'Generating…' : 'Generate Reference Image'}
+        </button>
+        <button
+          onClick={() => generateReference(true)}
+          disabled={refLoading}
+          style={{ ...BTN, background: '#10b981', color: '#fff', opacity: refLoading ? 0.7 : 1 }}
+        >
+          {refLoading ? 'Generating…' : 'Generate & Set as Primary'}
+        </button>
+      </div>
 
       {refState.status === 'error' && (
         <p style={{ fontSize: '13px', color: '#dc2626', marginBottom: '8px' }}>
@@ -226,8 +283,27 @@ export function GenerateImageButton() {
           <p style={{ fontSize: '12px', color: '#10b981', margin: '0 0 2px' }}>
             ✓ Reference saved · {refState.width}×{refState.height} · {(refState.latencyMs / 1000).toFixed(1)} s
           </p>
+          {refState.primarySet && (
+            <p style={{ fontSize: '12px', color: '#10b981', margin: '4px 0 0' }}>
+              ✓ Set as primary image
+            </p>
+          )}
+          {!refState.primarySet && refState.mediaAssetId !== null && (
+            <button
+              onClick={() => setReferenceAsPrimary(refState.mediaAssetId!)}
+              disabled={refSetPrimaryState.status === 'loading'}
+              style={{ ...BTN, background: '#10b981', color: '#fff', marginTop: '8px' }}
+            >
+              {refSetPrimaryState.status === 'loading' ? 'Setting…' : 'Set as Primary Image'}
+            </button>
+          )}
+          {refSetPrimaryState.status === 'error' && (
+            <p style={{ fontSize: '12px', color: '#dc2626', margin: '4px 0 0' }}>
+              {refSetPrimaryState.message}
+            </p>
+          )}
           {refState.savedPath && (
-            <p style={{ fontSize: '11px', color: '#6b7280', margin: 0, fontFamily: 'monospace' }}>
+            <p style={{ fontSize: '11px', color: '#6b7280', margin: '4px 0 0', fontFamily: 'monospace' }}>
               {refState.savedPath}
             </p>
           )}
