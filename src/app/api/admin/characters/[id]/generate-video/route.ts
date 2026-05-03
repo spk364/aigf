@@ -130,6 +130,39 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     )
   }
 
+  // fal.ai fetches the image from this URL — it must be reachable from the
+  // public internet. localhost / private-network URLs almost always come from
+  // a developer running /generate-reference on their laptop while pointed at
+  // the shared Supabase database; the URL gets persisted but is unreachable
+  // from fal. Fail fast so we don't burn fal credits on a black-input job.
+  const sourceUrlError = (() => {
+    let parsed: URL
+    try {
+      parsed = new URL(sourceImageUrl)
+    } catch {
+      return `source URL is not a valid URL: ${sourceImageUrl}`
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return `source URL must be http(s), got ${parsed.protocol}`
+    }
+    const host = parsed.hostname.toLowerCase()
+    const isLocalhost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '::1'
+    const isPrivate10 = /^10\./.test(host)
+    const isPrivate172 = /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+    const isPrivate192 = /^192\.168\./.test(host)
+    const isLinkLocal = /^169\.254\./.test(host)
+    if (isLocalhost || isPrivate10 || isPrivate172 || isPrivate192 || isLinkLocal) {
+      return `source URL points to a private/loopback host (${host}). fal.ai cannot reach it. Re-generate the character's image with R2 storage configured.`
+    }
+    return null
+  })()
+  if (sourceUrlError) {
+    return NextResponse.json(
+      { error: 'source_unreachable', message: sourceUrlError, sourceImageUrl },
+      { status: 400 },
+    )
+  }
+
   const motionStrength = body.motionStrength as MotionStrength
   const mood = body.mood as MotionMood
   const preset = MOTION_PRESETS[motionStrength]
