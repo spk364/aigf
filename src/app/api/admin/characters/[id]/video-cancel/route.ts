@@ -6,8 +6,7 @@ import { cancelFalJob } from '@/shared/ai/fal'
 import { getCurrentUser } from '@/shared/auth/current-user'
 
 const bodySchema = z.object({
-  requestId: z.string().min(1),
-  endpoint: z.string().min(1),
+  cancelUrl: z.string().url(),
 })
 
 export async function POST(req: Request) {
@@ -26,8 +25,13 @@ export async function POST(req: Request) {
     )
   }
 
+  // Only accept fal queue cancel URLs to prevent SSRF.
+  if (!body.cancelUrl.startsWith('https://queue.fal.run/')) {
+    return NextResponse.json({ error: 'invalid_cancel_url' }, { status: 400 })
+  }
+
   try {
-    const result = await cancelFalJob(body.endpoint, body.requestId)
+    const result = await cancelFalJob(body.cancelUrl)
     return NextResponse.json({
       ok: result.ok,
       status: result.status,

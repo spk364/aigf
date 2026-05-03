@@ -191,7 +191,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
-  let submission: { requestId: string; endpoint: string }
+  let submission: Awaited<ReturnType<typeof submitVideoJob>>
   try {
     submission = await submitVideoJob({
       imageUrl: sourceImageUrl,
@@ -218,6 +218,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ok: true,
     requestId: submission.requestId,
     endpoint: submission.endpoint,
+    statusUrl: submission.statusUrl,
+    responseUrl: submission.responseUrl,
+    cancelUrl: submission.cancelUrl,
     sourceImageUrl,
     sourceDimensions,
     promptUsed: prompt,
