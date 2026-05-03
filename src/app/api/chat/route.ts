@@ -19,7 +19,8 @@ import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/ret
 import { extractMemories } from '@/features/memory/extract-memories'
 import { generateImage } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
-import { getBalance, spend } from '@/features/tokens/ledger'
+import { autoRefund, getBalance, spend } from '@/features/tokens/ledger'
+import { classifyImageSafety } from '@/shared/ai/safety'
 import { isPremiumPlan } from '@/features/billing/plans'
 
 const LLM_MODEL = OPENROUTER_MODEL
@@ -287,7 +288,8 @@ export async function POST(req: NextRequest) {
           return
         }
 
-        // 2. Check token balance
+        // 2. Pre-flight balance check (cheap UX hint — reserve below is the
+        //    authoritative gate via atomic spend).
         const balance = await getBalance(payload, user.id)
         if (balance < IMAGE_TOKEN_COST) {
           const tokenMsg = tokensRequiredMessageForLocale(convLanguage, upgradeUrl)
@@ -327,7 +329,52 @@ export async function POST(req: NextRequest) {
           return
         }
 
-        // 3. Generate image
+        // 3. Create the assistant message FIRST so we have a stable id to use
+        //    as the idempotency anchor for the reserve, refund, and any retries.
+        const assistantImageMsg = await payload.create({
+          collection: 'messages',
+          data: {
+            conversationId: conversationId,
+            role: 'assistant',
+            type: 'image',
+            status: 'pending',
+          },
+        })
+        const assistantImageMsgId = String(assistantImageMsg.id)
+        send('message', { messageId: assistantImageMsgId })
+
+        // 4. Reserve tokens BEFORE calling fal.ai. Two concurrent requests with
+        //    barely-enough balance: at most one wins; the loser short-circuits
+        //    without burning provider quota. Idempotency key keyed on the
+        //    message id so a retried HTTP request reuses the same reservation.
+        const reserveKey = `image:reserve:${assistantImageMsgId}`
+        const refundTechKey = `image:refund:tech:${assistantImageMsgId}`
+        const refundSafetyKey = `image:refund:safety:${assistantImageMsgId}`
+
+        const spendResult = await spend(payload, {
+          userId: user.id,
+          type: 'spend_image',
+          amount: IMAGE_TOKEN_COST,
+          relatedMessageId: assistantImageMsgId,
+          reason: 'on-request image',
+          idempotencyKey: reserveKey,
+        })
+
+        if (!spendResult.ok) {
+          await payload.update({
+            collection: 'messages',
+            id: assistantImageMsgId,
+            data: {
+              status: 'failed',
+              errorReason: 'insufficient_tokens',
+              completedAt: new Date().toISOString(),
+            },
+          })
+          send('error', { message: tokensRequiredMessageForLocale(convLanguage, upgradeUrl) })
+          controller.close()
+          return
+        }
+
         const characterSnapshot = (conversation.characterSnapshot ?? {}) as {
           name?: string
           backstory?: { occupation?: string; location?: string }
@@ -340,6 +387,9 @@ export async function POST(req: NextRequest) {
           language: convLanguage,
         })
 
+        // 5. Generate. On failure, refund the reservation (tech_refund) and
+        //    surface a generic error to the user — they should not pay for
+        //    our provider hiccups.
         let imageResult: Awaited<ReturnType<typeof generateImage>>
         const imageStart = Date.now()
 
@@ -353,18 +403,20 @@ export async function POST(req: NextRequest) {
           const errMsg = genErr instanceof Error ? genErr.message : 'Image generation failed'
           log.error({ msg: 'chat.image.gen_failed', conversationId, err: errMsg })
 
-          const failedMsg = await payload.create({
-            collection: 'messages',
-            data: {
-              conversationId: conversationId,
-              role: 'assistant',
-              type: 'image',
-              status: 'failed',
-              errorReason: errMsg,
-              completedAt: new Date().toISOString(),
-            },
+          await autoRefund(payload, {
+            userId: user.id,
+            type: 'tech_refund',
+            amount: IMAGE_TOKEN_COST,
+            reason: `image_gen_failed: ${errMsg}`.slice(0, 240),
+            relatedMessageId: assistantImageMsgId,
+            idempotencyKey: refundTechKey,
           })
-          send('message', { messageId: String(failedMsg.id) })
+
+          await payload.update({
+            collection: 'messages',
+            id: assistantImageMsgId,
+            data: { status: 'failed', errorReason: errMsg, completedAt: new Date().toISOString() },
+          })
           send('error', { message: imageFailedMessageForLocale(convLanguage) })
           controller.close()
           return
@@ -373,20 +425,7 @@ export async function POST(req: NextRequest) {
         const latencyMs = Date.now() - imageStart
         const firstImage = imageResult.images[0]!
 
-        // 4–5. Create assistant message, persist image, spend tokens — in order
-        const assistantImageMsg = await payload.create({
-          collection: 'messages',
-          data: {
-            conversationId: conversationId,
-            role: 'assistant',
-            type: 'image',
-            status: 'pending',
-          },
-        })
-        const assistantImageMsgId = String(assistantImageMsg.id)
-
-        send('message', { messageId: assistantImageMsgId })
-
+        // 6. Persist to R2. Same refund policy as gen failure.
         let persistResult: Awaited<ReturnType<typeof persistGeneratedImage>>
         try {
           persistResult = await persistGeneratedImage({
@@ -402,10 +441,62 @@ export async function POST(req: NextRequest) {
         } catch (persistErr) {
           const errMsg = persistErr instanceof Error ? persistErr.message : 'Persist failed'
           log.error({ msg: 'chat.image.persist_failed', conversationId, err: errMsg })
+
+          await autoRefund(payload, {
+            userId: user.id,
+            type: 'tech_refund',
+            amount: IMAGE_TOKEN_COST,
+            reason: `image_persist_failed: ${errMsg}`.slice(0, 240),
+            relatedMessageId: assistantImageMsgId,
+            idempotencyKey: refundTechKey,
+          })
+
           await payload.update({
             collection: 'messages',
             id: assistantImageMsgId,
             data: { status: 'failed', errorReason: errMsg, completedAt: new Date().toISOString() },
+          })
+          send('error', { message: imageFailedMessageForLocale(convLanguage) })
+          controller.close()
+          return
+        }
+
+        // 7. Safety classifier (stub for now). On flag: soft-delete the asset,
+        //    refund the user (safety_refund — separate from tech for metrics),
+        //    and surface a generic refusal so we don't leak classifier internals.
+        const verdict = await classifyImageSafety({
+          imageUrl: persistResult.publicUrl,
+          width: firstImage.width,
+          height: firstImage.height,
+        })
+
+        if (verdict.flagged) {
+          log.warn({
+            msg: 'chat.image.safety_flagged',
+            conversationId,
+            mediaAssetId: persistResult.mediaAssetId,
+            reason: verdict.reason,
+          })
+
+          await payload.update({
+            collection: 'media-assets',
+            id: String(persistResult.mediaAssetId),
+            data: { deletedAt: new Date().toISOString() },
+          }).catch(() => {})
+
+          await autoRefund(payload, {
+            userId: user.id,
+            type: 'safety_refund',
+            amount: IMAGE_TOKEN_COST,
+            reason: `safety_flagged: ${verdict.reason}`.slice(0, 240),
+            relatedMessageId: assistantImageMsgId,
+            idempotencyKey: refundSafetyKey,
+          })
+
+          await payload.update({
+            collection: 'messages',
+            id: assistantImageMsgId,
+            data: { status: 'failed', errorReason: 'safety_flagged', completedAt: new Date().toISOString() },
           })
           send('error', { message: imageFailedMessageForLocale(convLanguage) })
           controller.close()
@@ -432,32 +523,6 @@ export async function POST(req: NextRequest) {
             },
           },
         })
-
-        const spendResult = await spend(payload, {
-          userId: user.id,
-          type: 'spend_image',
-          amount: IMAGE_TOKEN_COST,
-          relatedMessageId: assistantImageMsgId,
-          reason: 'on-request image',
-        })
-
-        if (!spendResult.ok) {
-          // Race condition — balance drained between check and spend
-          log.warn({ msg: 'chat.image.spend_race', conversationId, userId: String(user.id) })
-          await payload.update({
-            collection: 'messages',
-            id: assistantImageMsgId,
-            data: { status: 'failed', errorReason: 'insufficient_tokens_race' },
-          })
-          await payload.update({
-            collection: 'media-assets',
-            id: String(persistResult.mediaAssetId),
-            data: { deletedAt: new Date().toISOString() },
-          }).catch(() => {})
-          send('error', { message: tokensRequiredMessageForLocale(convLanguage, upgradeUrl) })
-          controller.close()
-          return
-        }
 
         // Update conversation + recompute relationship score
         const currentCount = (conversation.messageCount as number | null) ?? 0

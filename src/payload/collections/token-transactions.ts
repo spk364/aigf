@@ -53,6 +53,7 @@ export const TokenTransactions: CollectionConfig = {
         { label: 'Spend Advanced LLM', value: 'spend_advanced_llm' },
         { label: 'Refund', value: 'refund' },
         { label: 'Safety Refund', value: 'safety_refund' },
+        { label: 'Tech Refund', value: 'tech_refund' },
         { label: 'Admin Adjustment', value: 'admin_adjustment' },
       ],
     },

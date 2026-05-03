@@ -10,7 +10,10 @@ export type GrantType =
   | 'grant_referral'
   | 'refund'
   | 'safety_refund'
+  | 'tech_refund'
   | 'admin_adjustment'
+
+export type AutoRefundType = 'safety_refund' | 'tech_refund'
 export type SpendType =
   | 'spend_image'
   | 'spend_image_premium'
@@ -341,17 +344,24 @@ export async function refundByAdmin(
 }
 
 /**
- * System-driven refund (e.g. NSFW classifier blocks an image after spend).
- * Distinct from admin refund: no adminUserId, type=safety_refund for analytics.
+ * System-driven refund. Two flavours, kept as separate transaction types so we
+ * can split metrics:
+ *   - safety_refund: NSFW classifier flagged a generated asset post-spend.
+ *   - tech_refund:   provider failure (fal.ai timeout, R2 persist failure, etc.).
+ *
+ * idempotencyKey is required because every caller is in a retry-prone path
+ * (chat stream, Inngest job). Distinct keys per (messageId, refund-flavour) so
+ * a tech_refund and a later safety_refund on the same message can both land.
  */
-export async function safetyRefund(
+export async function autoRefund(
   payload: BasePayload,
   opts: {
     userId: string | number
+    type: AutoRefundType
     amount: number
     reason: string
     relatedMessageId?: string | number
-    idempotencyKey: string // required — system retries demand it
+    idempotencyKey: string
   },
 ): Promise<TokenTransaction> {
   if (opts.amount <= 0) throw new Error('refund amount must be positive')
@@ -381,7 +391,7 @@ export async function safetyRefund(
       collection: 'token-transactions',
       data: {
         userId: opts.userId,
-        type: 'safety_refund',
+        type: opts.type,
         amount: opts.amount,
         balanceAfter: newBalance,
         idempotencyKey: opts.idempotencyKey,
