@@ -268,10 +268,28 @@ export async function submitVideoJob(
   return { requestId: submitData.request_id, endpoint }
 }
 
+// Mirrors fal.ai's queue status enum so the UI can show "queued vs running".
+export type VideoJobPhase = 'queued' | 'running' | 'unknown'
+
 export type VideoJobStatus =
-  | { status: 'pending'; queuePosition?: number }
+  | {
+      status: 'pending'
+      phase: VideoJobPhase
+      queuePosition?: number
+      // Last fal log message (when ?logs=1 is requested), useful for debugging.
+      lastLog?: string
+      // Raw fal status string (IN_QUEUE / IN_PROGRESS / etc.) for diagnostics.
+      raw?: string
+    }
   | { status: 'completed'; result: GenerateVideoResult }
   | { status: 'failed'; error: string }
+
+function mapPhase(raw: string | undefined): VideoJobPhase {
+  if (!raw) return 'unknown'
+  if (raw === 'IN_QUEUE') return 'queued'
+  if (raw === 'IN_PROGRESS') return 'running'
+  return 'unknown'
+}
 
 export async function fetchVideoJobStatus(
   endpoint: string,
@@ -281,22 +299,33 @@ export async function fetchVideoJobStatus(
   const key = process.env.FAL_KEY
   if (!key) throw new Error('FAL_KEY is not set')
 
+  // Ask fal to include logs so we can surface the last progress line.
   const statusRes = await fetch(
-    `${QUEUE_BASE}/${endpoint}/requests/${requestId}/status`,
+    `${QUEUE_BASE}/${endpoint}/requests/${requestId}/status?logs=1`,
     { headers: { Authorization: `Key ${key}` } },
   )
   if (!statusRes.ok) {
-    return { status: 'pending' }
+    return { status: 'pending', phase: 'unknown' }
   }
   const status = (await statusRes.json()) as {
     status: string
     queue_position?: number
+    logs?: Array<{ message: string; timestamp?: string }>
   }
   if (status.status === 'FAILED' || status.status === 'ERROR') {
     return { status: 'failed', error: JSON.stringify(status) }
   }
   if (status.status !== 'COMPLETED') {
-    return { status: 'pending', queuePosition: status.queue_position }
+    const lastLog = Array.isArray(status.logs) && status.logs.length > 0
+      ? status.logs[status.logs.length - 1]?.message
+      : undefined
+    return {
+      status: 'pending',
+      phase: mapPhase(status.status),
+      queuePosition: status.queue_position,
+      lastLog,
+      raw: status.status,
+    }
   }
 
   const resultRes = await fetch(`${QUEUE_BASE}/${endpoint}/requests/${requestId}`, {

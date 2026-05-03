@@ -22,8 +22,16 @@ type SubmitResponse = {
   message?: string
 }
 
+type VideoPhase = 'queued' | 'running' | 'unknown'
+
 type StatusResponse =
-  | { status: 'pending'; queuePosition?: number | null }
+  | {
+      status: 'pending'
+      phase?: VideoPhase
+      queuePosition?: number | null
+      lastLog?: string | null
+      raw?: string | null
+    }
   | {
       status: 'completed'
       video: { url: string; mediaAssetId: string | number; contentType: string }
@@ -42,6 +50,8 @@ type ProgressState = {
   mood: MotionMood
   resolutionWarning: string | null
   queuePosition: number | null
+  phase: VideoPhase
+  lastLog: string | null
   sourceImageUrl: string
 }
 
@@ -173,12 +183,15 @@ export function GenerateVideoButton() {
       const res = await fetch(`/api/admin/characters/${id}/video-status?${params.toString()}`)
       const data = (await res.json()) as StatusResponse
       if (data.status === 'pending') {
-        setState({
+        const nextState: ProgressState = {
           ...curState,
           status: 'polling',
           queuePosition: data.queuePosition ?? null,
-        })
-        pollTimer.current = setTimeout(() => pollOnce(curState), POLL_INTERVAL_MS)
+          phase: data.phase ?? 'unknown',
+          lastLog: data.lastLog ?? null,
+        }
+        setState(nextState)
+        pollTimer.current = setTimeout(() => pollOnce(nextState), POLL_INTERVAL_MS)
         return
       }
       if (data.status === 'failed') {
@@ -241,6 +254,8 @@ export function GenerateVideoButton() {
         mood: data.mood ?? mood,
         resolutionWarning: data.resolutionWarning ?? null,
         queuePosition: null,
+        phase: 'unknown',
+        lastLog: null,
         sourceImageUrl: data.sourceImageUrl,
       }
       setState(next)
@@ -265,8 +280,8 @@ export function GenerateVideoButton() {
         Generate Video (image-to-video)
       </h4>
       <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#9ca3af' }}>
-        WAN 2.2 · uses the character&rsquo;s primary or reference image as the source.
-        ~90–180 seconds.
+        WAN 2.2 (14B) · uses the character&rsquo;s primary or reference image as the source.
+        Typical generation time at 720p is 3–6 minutes; lower resolutions are faster.
       </p>
 
       {primaryImageUrl ? (
@@ -493,19 +508,41 @@ export function GenerateVideoButton() {
           : 'Generate Video'}
       </button>
 
-      {state.status === 'queued' && (
-        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
-          Queued… polling every 5s. WAN 2.2 typically takes 90–180s.
-        </p>
-      )}
-
-      {state.status === 'polling' && (
-        <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
-          Generating… elapsed {Math.floor((Date.now() - state.startedAt) / 1000)}s
-          {state.queuePosition !== null && state.queuePosition > 0
-            ? ` · queue position #${state.queuePosition}`
-            : ''}
-        </p>
+      {(state.status === 'queued' || state.status === 'polling') && (
+        <div style={{ marginTop: '8px' }}>
+          <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
+            {state.phase === 'queued'
+              ? 'Queued on fal.ai — waiting for a free GPU'
+              : state.phase === 'running'
+                ? 'Running on GPU — generating video'
+                : 'Submitted — waiting for status'}
+            {' · '}
+            elapsed {Math.floor((Date.now() - state.startedAt) / 1000)}s
+            {state.queuePosition !== null && state.queuePosition > 0
+              ? ` · queue position #${state.queuePosition}`
+              : ''}
+          </p>
+          <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0' }}>
+            Polling every 5s. WAN 2.2 a14b at 720p is typically 3–6 minutes.
+          </p>
+          {state.lastLog && (
+            <p
+              style={{
+                fontSize: '11px',
+                color: '#6b7280',
+                margin: '4px 0 0',
+                fontFamily: 'monospace',
+                background: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '4px',
+                padding: '4px 6px',
+                wordBreak: 'break-word',
+              }}
+            >
+              {state.lastLog}
+            </p>
+          )}
+        </div>
       )}
 
       {(state.status === 'queued' || state.status === 'polling') && state.resolutionWarning && (
