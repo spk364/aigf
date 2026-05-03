@@ -76,6 +76,15 @@
       "cancelConfirm": "Are you sure? Your subscription will remain active until the end of the current billing period.",
       "cancelSuccess": "Your subscription has been canceled.",
       "cancelAtPeriodEnd": "Your subscription will not renew at the end of the current period."
+    },
+    "tokens": {
+      "eyebrow": "Top up",
+      "title": "Buy tokens",
+      "subtitle": "Tokens never expire. Use them for images, voice, and video.",
+      "currentBalance": "Current balance:",
+      "perToken": "{price} per token",
+      "buy": "Buy now",
+      "mockMode": "Billing is not configured. Purchases will be credited as a stub for development."
     }
   },
   "errors": {

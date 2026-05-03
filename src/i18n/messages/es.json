@@ -76,6 +76,15 @@
       "cancelConfirm": "Esta seguro? Su suscripcion permanecera activa hasta el final del periodo de facturacion actual.",
       "cancelSuccess": "Su suscripcion ha sido cancelada.",
       "cancelAtPeriodEnd": "Su suscripcion no se renovara al final del periodo actual."
+    },
+    "tokens": {
+      "eyebrow": "Recarga",
+      "title": "Comprar tokens",
+      "subtitle": "Los tokens no caducan. Se usan para imagenes, voz y video.",
+      "currentBalance": "Saldo actual:",
+      "perToken": "{price} por token",
+      "buy": "Comprar",
+      "mockMode": "El cobro no esta configurado. Las compras se acreditaran como stub para desarrollo."
     }
   },
   "errors": {
