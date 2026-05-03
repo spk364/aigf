@@ -330,7 +330,17 @@ export async function fetchVideoJobStatus(
     { headers: { Authorization: `Key ${key}` } },
   )
   if (!statusRes.ok) {
-    return { status: 'pending', phase: 'unknown' }
+    // Surface why the status fetch failed instead of silently looking pending.
+    // 401/403 = bad key, 404 = job evicted/unknown, 5xx = fal flake.
+    const body = await statusRes.text().catch(() => '')
+    const summary = `fal status HTTP ${statusRes.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+    if (statusRes.status === 404 || statusRes.status === 410) {
+      return { status: 'failed', error: `Job not found in fal queue (${summary}). The request may have been evicted.` }
+    }
+    if (statusRes.status === 401 || statusRes.status === 403) {
+      return { status: 'failed', error: `fal authentication failed (${summary}). Check FAL_KEY.` }
+    }
+    return { status: 'pending', phase: 'unknown', lastLog: summary, raw: `HTTP_${statusRes.status}` }
   }
   const status = (await statusRes.json()) as {
     status: string

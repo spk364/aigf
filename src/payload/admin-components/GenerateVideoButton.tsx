@@ -545,12 +545,14 @@ export function GenerateVideoButton() {
 
       {(state.status === 'queued' || state.status === 'polling') && (
         <div style={{ marginTop: '8px' }}>
-          <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
+          <p style={{ fontSize: '12px', color: state.phase === 'unknown' && Date.now() - state.startedAt > 60_000 ? '#d97706' : '#6b7280', margin: 0 }}>
             {state.phase === 'queued'
               ? 'Queued on fal.ai — waiting for a free GPU'
               : state.phase === 'running'
                 ? 'Running on GPU — generating video'
-                : 'Submitted — waiting for status'}
+                : Date.now() - state.startedAt > 60_000
+                  ? '⚠ Status check is failing — fal not returning a phase. See last log below.'
+                  : 'Submitted — waiting for status'}
             {' · '}
             elapsed {Math.floor((Date.now() - state.startedAt) / 1000)}s
             {state.queuePosition !== null && state.queuePosition > 0
