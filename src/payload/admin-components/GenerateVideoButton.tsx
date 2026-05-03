@@ -217,6 +217,8 @@ export function GenerateVideoButton() {
         promptUsed: curState.promptUsed,
         sourceImageUrl: curState.sourceImageUrl,
       })
+      // Notify CharacterVideos so the gallery refreshes without a page reload.
+      window.dispatchEvent(new CustomEvent('character-video-saved'))
     } catch (err) {
       setState({
         status: 'error',
