@@ -61,7 +61,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (jobStatus.status === 'pending') {
     return NextResponse.json({
       status: 'pending',
+      phase: jobStatus.phase,
       queuePosition: jobStatus.queuePosition ?? null,
+      lastLog: jobStatus.lastLog ?? null,
+      raw: jobStatus.raw ?? null,
     })
   }
 
