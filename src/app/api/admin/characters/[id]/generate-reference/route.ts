@@ -124,12 +124,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     // 832×1216 — SDXL-native portrait bucket. Comfortably clears the video
     // source threshold (768×1024) and gives WAN 2.2 i2v a tall frame to work with.
+    // 25 steps at guidance 7 keeps RealVis under ~30s on Vercel's 60s ceiling;
+    // for a clean studio reference the extra 15 steps from the old default
+    // produced no visible improvement.
     const result = await generateImage({
       prompt,
       negativePrompt,
       imageSize: { width: 832, height: 1216 },
       numImages: 1,
-      numInferenceSteps: 40,
+      numInferenceSteps: 25,
       guidanceScale: 7,
       endpoint,
     })

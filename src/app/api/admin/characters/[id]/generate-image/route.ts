@@ -1,11 +1,17 @@
-export const maxDuration = 60
+// Submit-only — Vercel Hobby caps at 60s. Polling lives in the client; the
+// /generate-image-status route handles status checks and persistence.
+export const maxDuration = 30
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { generateImage, FAL_IMAGE_ENDPOINT, FAL_ENDPOINT_LORA, FAL_ENDPOINT_IP_ADAPTER_FACE_ID, type GenerateImageResult } from '@/shared/ai/fal'
-import { persistGeneratedImage } from '@/features/media/persist-generated-image'
+import {
+  submitImageJob,
+  FAL_IMAGE_ENDPOINT,
+  FAL_ENDPOINT_LORA,
+  FAL_ENDPOINT_IP_ADAPTER_FACE_ID,
+} from '@/shared/ai/fal'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import {
   IMAGE_MODEL_OPTIONS,
@@ -13,7 +19,6 @@ import {
   DEFAULT_IMAGE_SIZE_PRESET_ID,
   resolveImageSize,
 } from '@/shared/ai/image-models'
-import { saveGeneratedImageToDisk } from '@/shared/debug/save-generated-image'
 
 const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
@@ -23,7 +28,6 @@ const SAFETY_NEGATIVE =
 const BASE_NEGATIVE =
   'low quality, blurry, deformed, bad anatomy, extra limbs, watermark, text, signature'
 
-// Pony/Illustrious SDXL checkpoints need score_ quality tokens at the front.
 const PONY_PREFIX = 'score_9, score_8_up, score_7_up, score_6_up'
 
 const VALID_MODEL_IDS = IMAGE_MODEL_OPTIONS.map((m) => m.id)
@@ -81,7 +85,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     safetyAdultMarkers?: string[]
   } | null
 
-  // Resolve which model to use: request override > character setting > default
   const requestedModel = body.modelOverride && VALID_MODEL_IDS.includes(body.modelOverride)
     ? body.modelOverride
     : null
@@ -89,8 +92,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const resolvedModel = requestedModel ?? imageModel?.primary ?? FAL_IMAGE_ENDPOINT
 
   const isHfCheckpoint = !resolvedModel.startsWith('fal-ai/')
-  const endpoint = isHfCheckpoint ? FAL_ENDPOINT_LORA : resolvedModel
-  const modelName = isHfCheckpoint ? resolvedModel : (imageModel?.checkpoint ?? undefined)
+  const fallbackEndpoint = isHfCheckpoint ? FAL_ENDPOINT_LORA : resolvedModel
+  const fallbackModelName = isHfCheckpoint ? resolvedModel : (imageModel?.checkpoint ?? undefined)
 
   const modelMeta = IMAGE_MODEL_OPTIONS.find((m) => m.id === resolvedModel)
   const isPony = modelMeta?.isPony ?? false
@@ -102,7 +105,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let prompt: string
 
   if (isFlux) {
-    // FLUX works best with natural language sentences, not SD token lists.
     const subjectDesc = appearance?.subjectTokens
       ? appearance.subjectTokens.replace(/, /g, ' with ')
       : 'a beautiful young woman'
@@ -112,8 +114,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       prompt = `Portrait of ${subjectDesc}. Photorealistic, high quality, soft natural lighting, 18+ adult woman.`
     }
   } else if (scene && appearance?.subjectTokens) {
-    // Scene-driven SD prompt: scene first (highest attention weight), then subject, then quality.
-    // Never use "portrait of" framing — it conflicts with full-body poses.
     prompt = [
       'RAW photo',
       scene,
@@ -122,12 +122,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       '8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3, photorealistic, realistic skin texture',
     ].filter(Boolean).join(', ')
   } else if (appearance?.appearancePrompt) {
-    // Portrait SD prompt (no scene hint).
-    prompt = [
-      appearance.appearancePrompt,
-      safetyMarkers,
-      scene,
-    ].filter(Boolean).join(', ')
+    prompt = [appearance.appearancePrompt, safetyMarkers, scene].filter(Boolean).join(', ')
   } else {
     prompt = [
       scene || 'portrait of a beautiful young woman, photorealistic, high detail, soft natural lighting',
@@ -136,7 +131,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ].filter(Boolean).join(', ')
   }
 
-  // Pony/Illustrious checkpoints need score_ prefix tokens for quality steering.
   if (isPony) {
     prompt = `${PONY_PREFIX}, ${prompt}`
   }
@@ -147,116 +141,48 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const referenceImageUrl = character.referenceImageUrl as string | null
 
+  // IP-Adapter is preferred when a reference exists and the model isn't FLUX.
+  // We submit a single job; the client polls. If IP-Adapter fails at submit
+  // time (rare — usually fails during inference), we fall back to plain endpoint.
+  const useIpAdapter = Boolean(referenceImageUrl) && !isFlux
+  const submitEndpoint = useIpAdapter ? FAL_ENDPOINT_IP_ADAPTER_FACE_ID : fallbackEndpoint
+  const submitModelName = useIpAdapter ? undefined : fallbackModelName
+
+  let job: Awaited<ReturnType<typeof submitImageJob>>
   try {
-    // Route through IP-Adapter when a reference image exists and the model is not FLUX.
-    // Falls back to standard generation on any IP-Adapter error.
-    let result: GenerateImageResult
-    if (referenceImageUrl && !isFlux) {
-      try {
-        result = await generateImage({
-          prompt,
-          negativePrompt,
-          imageSize: resolveImageSize(body.imageSize),
-          numImages: 1,
-          endpoint: FAL_ENDPOINT_IP_ADAPTER_FACE_ID,
-          ipAdapterImageUrl: referenceImageUrl,
-          ipAdapterScale: 0.7,
-        })
-      } catch {
-        result = await generateImage({
-          prompt,
-          negativePrompt,
-          imageSize: resolveImageSize(body.imageSize),
-          numImages: 1,
-          endpoint,
-          modelName,
-        })
-      }
-    } else {
-      result = await generateImage({
-        prompt,
-        negativePrompt,
-        imageSize: resolveImageSize(body.imageSize),
-        numImages: 1,
-        endpoint,
-        modelName,
-      })
-    }
-
-    const img = result.images[0]!
-
-    const savedPath = await saveGeneratedImageToDisk({
-      imageUrl: img.url,
-      model: result.modelName,
-      width: img.width,
-      height: img.height,
-      kind: 'gallery',
-    })
-
-    let publicUrl = img.url
-    let mediaAssetId: string | number | null = null
-
-    const persisted = await persistGeneratedImage({
-      payload,
-      fromUrl: img.url,
-      width: img.width,
-      height: img.height,
-      contentType: img.contentType,
-      kind: 'character-gallery',
-      ownerCharacterId: characterId,
-      generationMetadata: {
-        modelName: result.modelName,
-        endpoint: result.endpoint,
-        requestId: result.requestId,
-        seed: result.seed,
-        prompt,
-        negativePrompt,
-      },
-    })
-    publicUrl = persisted.publicUrl
-    mediaAssetId = persisted.mediaAssetId
-
-    // Append to galleryImageIds; optionally promote to primaryImageId.
-    const existingGallery = Array.isArray(character.galleryImageIds)
-      ? (character.galleryImageIds as Array<{ id: string | number } | string | number>).map((e) =>
-          typeof e === 'object' && e !== null && 'id' in e ? e.id : e,
-        )
-      : []
-
-    const updateData: Record<string, unknown> = {
-      galleryImageIds: [...existingGallery, mediaAssetId],
-    }
-    if (body.setPrimary) {
-      updateData.primaryImageId = mediaAssetId
-    }
-
-    await payload.update({
-      collection: 'characters',
-      id: characterId,
-      data: updateData,
-      overrideAccess: true,
-    })
-
-    return NextResponse.json({
-      ok: true,
-      url: publicUrl,
-      mediaAssetId,
-      width: img.width,
-      height: img.height,
-      latencyMs: result.latencyMs,
-      persisted: mediaAssetId !== null,
-      primarySet: body.setPrimary && mediaAssetId !== null,
-      modelUsed: resolvedModel,
-      promptUsed: prompt,
-      savedPath,
+    job = await submitImageJob({
+      prompt,
+      negativePrompt,
+      imageSize: resolveImageSize(body.imageSize),
+      numImages: 1,
+      endpoint: submitEndpoint,
+      modelName: submitModelName,
+      ...(useIpAdapter && referenceImageUrl
+        ? { ipAdapterImageUrl: referenceImageUrl, ipAdapterScale: 0.7 }
+        : {}),
     })
   } catch (err) {
     return NextResponse.json(
       {
-        error: 'generation_failed',
+        error: 'submit_failed',
         message: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },
     )
   }
+
+  return NextResponse.json({
+    ok: true,
+    requestId: job.requestId,
+    endpoint: job.endpoint,
+    modelName: job.modelName,
+    statusUrl: job.statusUrl,
+    responseUrl: job.responseUrl,
+    cancelUrl: job.cancelUrl,
+    promptUsed: prompt,
+    negativePromptUsed: negativePrompt,
+    modelUsed: resolvedModel,
+    setPrimary: body.setPrimary,
+    startedAt: Date.now(),
+  })
 }

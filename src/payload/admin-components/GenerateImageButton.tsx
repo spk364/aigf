@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useDocumentInfo } from '@payloadcms/ui'
 import {
   IMAGE_MODEL_OPTIONS,
@@ -10,9 +10,28 @@ import {
 
 type ImageSize = string
 
+type ImagePhase = 'queued' | 'running' | 'unknown'
+
+type ImageProgressState = {
+  status: 'queued' | 'polling'
+  requestId: string
+  endpoint: string
+  modelName: string
+  statusUrl: string
+  responseUrl: string
+  startedAt: number
+  promptUsed: string
+  negativePromptUsed: string
+  modelUsed: string
+  setPrimary: boolean
+  phase: ImagePhase
+  queuePosition: number | null
+  lastLog: string | null
+}
+
 type State =
   | { status: 'idle' }
-  | { status: 'loading' }
+  | ImageProgressState
   | {
       status: 'done'
       url: string
@@ -27,6 +46,8 @@ type State =
       savedPath: string | null
     }
   | { status: 'error'; message: string }
+
+const POLL_INTERVAL_MS = 3000
 
 type RefState =
   | { status: 'idle' }
@@ -81,6 +102,13 @@ export function GenerateImageButton() {
   const [modelOverride, setModelOverride] = useState(DEFAULT_IMAGE_MODEL_ID)
 
   const existingRefUrl = (savedDocumentData as Record<string, unknown> | undefined)?.referenceImageUrl as string | null | undefined
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (pollTimer.current) clearTimeout(pollTimer.current)
+    }
+  }, [])
 
   if (!id) {
     return (
@@ -90,11 +118,89 @@ export function GenerateImageButton() {
     )
   }
 
-  const loading = state.status === 'loading'
+  const isBusy = state.status === 'queued' || state.status === 'polling'
   const selectedModelInfo = IMAGE_MODEL_OPTIONS.find((m) => m.id === modelOverride)
 
+  async function pollOnce(curState: ImageProgressState) {
+    try {
+      const params = new URLSearchParams({
+        requestId: curState.requestId,
+        endpoint: curState.endpoint,
+        modelName: curState.modelName,
+        statusUrl: curState.statusUrl,
+        responseUrl: curState.responseUrl,
+        startedAt: String(curState.startedAt),
+        promptUsed: curState.promptUsed,
+        negativePromptUsed: curState.negativePromptUsed,
+        modelUsed: curState.modelUsed,
+        setPrimary: String(curState.setPrimary),
+      })
+      const res = await fetch(`/api/admin/characters/${id}/generate-image-status?${params.toString()}`)
+      const data = (await res.json()) as
+        | {
+            status: 'pending'
+            phase?: ImagePhase
+            queuePosition?: number | null
+            lastLog?: string | null
+            raw?: string | null
+          }
+        | {
+            status: 'completed'
+            url: string
+            mediaAssetId: string | number | null
+            width: number
+            height: number
+            latencyMs: number
+            persisted: boolean
+            primarySet: boolean
+            modelUsed: string
+            promptUsed: string
+            savedPath: string | null
+          }
+        | { status: 'failed'; error: string; message?: string }
+      if (data.status === 'pending') {
+        const next: ImageProgressState = {
+          ...curState,
+          status: 'polling',
+          phase: data.phase ?? 'unknown',
+          queuePosition: data.queuePosition ?? null,
+          lastLog: data.lastLog ?? null,
+        }
+        setState(next)
+        pollTimer.current = setTimeout(() => pollOnce(next), POLL_INTERVAL_MS)
+        return
+      }
+      if (data.status === 'failed') {
+        setState({
+          status: 'error',
+          message: data.message ?? data.error ?? 'Image generation failed',
+        })
+        return
+      }
+      setState({
+        status: 'done',
+        url: data.url,
+        mediaAssetId: data.mediaAssetId ?? null,
+        width: data.width,
+        height: data.height,
+        latencyMs: data.latencyMs,
+        persisted: data.persisted ?? true,
+        primarySet: data.primarySet ?? false,
+        modelUsed: data.modelUsed ?? curState.modelUsed,
+        promptUsed: data.promptUsed ?? curState.promptUsed,
+        savedPath: data.savedPath ?? null,
+      })
+    } catch (err) {
+      setState({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Status check failed',
+      })
+    }
+  }
+
   async function generate(setPrimary: boolean) {
-    setState({ status: 'loading' })
+    if (pollTimer.current) clearTimeout(pollTimer.current)
+    setState({ status: 'idle' })
     try {
       const res = await fetch(`/api/admin/characters/${id}/generate-image`, {
         method: 'POST',
@@ -107,35 +213,45 @@ export function GenerateImageButton() {
         }),
       })
       const data = (await res.json()) as {
+        ok?: boolean
         error?: string
-        url?: string
-        mediaAssetId?: string | number | null
-        width?: number
-        height?: number
-        latencyMs?: number
-        persisted?: boolean
-        primarySet?: boolean
-        modelUsed?: string
+        message?: string
+        requestId?: string
+        endpoint?: string
+        modelName?: string
+        statusUrl?: string
+        responseUrl?: string
         promptUsed?: string
-        savedPath?: string | null
+        negativePromptUsed?: string
+        modelUsed?: string
+        setPrimary?: boolean
+        startedAt?: number
       }
-      if (!res.ok) {
-        setState({ status: 'error', message: data.error ?? `HTTP ${res.status}` })
+      if (!res.ok || !data.ok || !data.requestId || !data.statusUrl || !data.responseUrl) {
+        setState({
+          status: 'error',
+          message: data.message ?? data.error ?? `HTTP ${res.status}`,
+        })
         return
       }
-      setState({
-        status: 'done',
-        url: data.url!,
-        mediaAssetId: data.mediaAssetId ?? null,
-        width: data.width!,
-        height: data.height!,
-        latencyMs: data.latencyMs!,
-        persisted: data.persisted ?? false,
-        primarySet: data.primarySet ?? false,
-        modelUsed: data.modelUsed ?? modelOverride,
+      const next: ImageProgressState = {
+        status: 'queued',
+        requestId: data.requestId,
+        endpoint: data.endpoint!,
+        modelName: data.modelName!,
+        statusUrl: data.statusUrl,
+        responseUrl: data.responseUrl,
+        startedAt: data.startedAt ?? Date.now(),
         promptUsed: data.promptUsed ?? '',
-        savedPath: data.savedPath ?? null,
-      })
+        negativePromptUsed: data.negativePromptUsed ?? '',
+        modelUsed: data.modelUsed ?? modelOverride,
+        setPrimary: data.setPrimary ?? setPrimary,
+        phase: 'unknown',
+        queuePosition: null,
+        lastLog: null,
+      }
+      setState(next)
+      pollTimer.current = setTimeout(() => pollOnce(next), POLL_INTERVAL_MS)
     } catch (err) {
       setState({
         status: 'error',
@@ -329,7 +445,7 @@ export function GenerateImageButton() {
           <select
             value={modelOverride}
             onChange={(e) => setModelOverride(e.target.value)}
-            disabled={loading}
+            disabled={isBusy}
             style={{ ...SELECT, maxWidth: '220px' }}
           >
             {IMAGE_MODEL_OPTIONS.map((m) => (
@@ -354,7 +470,7 @@ export function GenerateImageButton() {
           <select
             value={imageSize}
             onChange={(e) => setImageSize(e.target.value as ImageSize)}
-            disabled={loading}
+            disabled={isBusy}
             style={SELECT}
           >
             {SIZES.map((s) => (
@@ -374,7 +490,7 @@ export function GenerateImageButton() {
             value={sceneHint}
             onChange={(e) => setSceneHint(e.target.value)}
             placeholder="e.g. sitting on a couch in lingerie"
-            disabled={loading}
+            disabled={isBusy}
             style={{
               width: '100%',
               padding: '6px 8px',
@@ -390,29 +506,56 @@ export function GenerateImageButton() {
       <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
         <button
           onClick={() => generate(false)}
-          disabled={loading}
-          style={{ ...BTN, background: '#3b82f6', color: '#fff', opacity: loading ? 0.7 : 1 }}
+          disabled={isBusy}
+          style={{ ...BTN, background: '#3b82f6', color: '#fff', opacity: isBusy ? 0.7 : 1 }}
         >
-          {loading ? 'Generating…' : 'Generate'}
+          {isBusy ? 'Generating…' : 'Generate'}
         </button>
         <button
           onClick={() => generate(true)}
-          disabled={loading}
-          style={{ ...BTN, background: '#10b981', color: '#fff', opacity: loading ? 0.7 : 1 }}
+          disabled={isBusy}
+          style={{ ...BTN, background: '#10b981', color: '#fff', opacity: isBusy ? 0.7 : 1 }}
         >
-          {loading ? 'Generating…' : 'Generate & Set as Primary'}
+          {isBusy ? 'Generating…' : 'Generate & Set as Primary'}
         </button>
       </div>
 
-      {state.status === 'loading' && (
-        <p style={{ fontSize: '13px', color: '#6b7280' }}>
-          Generating via {selectedModelInfo?.label ?? modelOverride}
-          {selectedModelInfo?.isPony
-            ? ' — cold start may take 2–3 min…'
-            : selectedModelInfo?.isFlux
-              ? ' — ~5–60 s…'
-              : ' — ~20–60 s…'}
-        </p>
+      {(state.status === 'queued' || state.status === 'polling') && (
+        <div style={{ marginTop: '4px' }}>
+          <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
+            {state.phase === 'queued'
+              ? 'Queued on fal.ai — waiting for a free GPU'
+              : state.phase === 'running'
+                ? 'Running on GPU — generating image'
+                : 'Submitted — waiting for status'}
+            {' · '}
+            elapsed {Math.floor((Date.now() - state.startedAt) / 1000)}s
+            {state.queuePosition !== null && state.queuePosition > 0
+              ? ` · queue position #${state.queuePosition}`
+              : ''}
+          </p>
+          <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0' }}>
+            Polling every {Math.round(POLL_INTERVAL_MS / 1000)}s · {selectedModelInfo?.label ?? modelOverride}
+            {selectedModelInfo?.isPony && ' (cold start may add 2–3 min)'}
+          </p>
+          {state.lastLog && (
+            <p
+              style={{
+                fontSize: '11px',
+                color: '#6b7280',
+                margin: '4px 0 0',
+                fontFamily: 'monospace',
+                background: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '4px',
+                padding: '4px 6px',
+                wordBreak: 'break-word',
+              }}
+            >
+              {state.lastLog}
+            </p>
+          )}
+        </div>
       )}
 
       {state.status === 'error' && (
