@@ -8,6 +8,7 @@ import { fetchImageJobStatus } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { saveGeneratedImageToDisk } from '@/shared/debug/save-generated-image'
+import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
 
 const querySchema = z.object({
   requestId: z.string().min(1),
@@ -106,6 +107,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       { status: 'failed', error: 'fal returned no images' },
       { status: 500 },
     )
+  }
+
+  // Detect fal's safety-filtered black frames before we mirror to R2 and
+  // create a useless media-asset row. mean luminance < 5 + stddev < 2 is a
+  // strong signal that fal swapped the real output for a uniform black PNG.
+  try {
+    const analysis = await fetchAndAnalyzeImage(img.url)
+    const detection = detectSafetyFilteredFrame(analysis)
+    if (detection.kind === 'filtered') {
+      return NextResponse.json(
+        { status: 'failed', error: detection.reason },
+        { status: 200 },
+      )
+    }
+  } catch (err) {
+    // Analysis failure is non-fatal — fall through and persist anyway. The
+    // admin will still see the image and can flag it manually if it's bad.
+    console.warn('image analysis failed, persisting without quality gate', err)
   }
 
   const payload = await getPayload({ config })
