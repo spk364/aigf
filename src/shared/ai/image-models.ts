@@ -9,22 +9,16 @@ export type ImageModelOption = {
   isFlux?: boolean
 }
 
+// Order matters — index 0 is the default. We lead with FLUX Schnell because
+// fal's hardcoded NSFW classifier on realistic-vision/fast-sdxl returns black
+// frames on age + tattoo + piercing prompts even with enable_safety_checker
+// off; FLUX endpoints don't go through that pipeline.
 export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
   // ── Native fal.ai endpoints — always warm ────────────────────────────────
   {
-    id: 'fal-ai/realistic-vision',
-    label: 'RealVisXL',
-    note: '~20–50 s · photorealistic',
-  },
-  {
-    id: 'fal-ai/fast-sdxl',
-    label: 'Fast SDXL',
-    note: '~5–10 s · generic SDXL',
-  },
-  {
     id: 'fal-ai/flux/schnell',
-    label: 'FLUX Schnell',
-    note: '~5–10 s · fastest FLUX · natural language',
+    label: 'FLUX Schnell (recommended)',
+    note: '~5–10 s · natural language · fal NSFW filter does not trigger here',
     isFlux: true,
   },
   {
@@ -33,29 +27,41 @@ export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
     note: '~30–60 s · best FLUX quality · natural language',
     isFlux: true,
   },
+  {
+    id: 'fal-ai/realistic-vision',
+    label: 'RealVisXL',
+    note: '~20–50 s · photorealistic · ⚠ fal NSFW filter often returns black frames',
+  },
+  {
+    id: 'fal-ai/fast-sdxl',
+    label: 'Fast SDXL',
+    note: '~5–10 s · generic SDXL · ⚠ same fal NSFW filter as RealVisXL',
+  },
   // ── HuggingFace checkpoints via fal-ai/lora — 2-3 min cold start ─────────
+  // Pony/Illustrious checkpoints route through fal-ai/lora and bypass fal's
+  // NSFW classifier — no black frames, just slow first call.
   {
     id: 'John6666/cyberrealistic-pony-v110-sdxl',
     label: 'CyberRealistic Pony v110',
-    note: 'SDXL Pony · ~2–3 min cold',
+    note: 'SDXL Pony · ~2–3 min cold · NSFW-friendly',
     isPony: true,
   },
   {
     id: 'John6666/pony-realism-v22-main-sdxl',
     label: 'Pony Realism v22',
-    note: 'SDXL Pony · ~2–3 min cold',
+    note: 'SDXL Pony · ~2–3 min cold · NSFW-friendly',
     isPony: true,
   },
   {
     id: 'John6666/duchaiten-pony-real-v60-sdxl',
     label: 'DuchaiTen Pony Real v60',
-    note: 'SDXL Pony · ~2–3 min cold',
+    note: 'SDXL Pony · ~2–3 min cold · NSFW-friendly',
     isPony: true,
   },
   {
     id: 'John6666/wai-nsfw-illustrious-sdxl-v80-sdxl',
     label: 'WAI NSFW Illustrious v80',
-    note: 'Illustrious SDXL · ~2–3 min cold',
+    note: 'Illustrious SDXL · ~2–3 min cold · NSFW-friendly',
     isPony: true,
   },
 ]
