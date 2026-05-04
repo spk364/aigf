@@ -134,10 +134,20 @@ export async function submitImageJob(input: GenerateImageInput): Promise<ImageJo
     body.model_name = input.modelName
   }
   if (input.ipAdapterImageUrl) {
-    body.image_url = input.ipAdapterImageUrl
+    // fal-ai/ip-adapter-face-id wants `face_image_url`. Other IP-Adapter
+    // variants use `image_url`. Sending the wrong name returns COMPLETED at
+    // the queue level but 422 with `body.face_images_data_url required` at
+    // the response level — confusing failure mode.
+    if (endpoint === FAL_ENDPOINT_IP_ADAPTER_FACE_ID) {
+      body.face_image_url = input.ipAdapterImageUrl
+    } else {
+      body.image_url = input.ipAdapterImageUrl
+    }
     body.scale = input.ipAdapterScale ?? 0.7
   }
   body.enable_safety_checker = false
+  // Some endpoints honour different aliases for the same flag.
+  body.enable_output_safety_checker = false
 
   const submit = await fetch(`${QUEUE_BASE}/${endpoint}`, {
     method: 'POST',
@@ -230,7 +240,31 @@ export async function fetchImageJobStatus(args: {
     headers: { Authorization: `Key ${key}` },
   })
   if (!resultRes.ok) {
-    return { status: 'failed', error: `fal result fetch failed: ${resultRes.status}` }
+    // fal returns 422 with a structured `detail` array describing missing or
+    // wrong-type body fields. Surface that text so the admin sees the real
+    // reason instead of "fal result fetch failed: 422".
+    const errBody = await resultRes.text().catch(() => '')
+    let parsed: unknown
+    try { parsed = JSON.parse(errBody) } catch { parsed = null }
+    const detail = (parsed as { detail?: unknown } | null)?.detail
+    let detailMsg = ''
+    if (Array.isArray(detail)) {
+      detailMsg = detail
+        .map((d) => {
+          const dd = d as { loc?: unknown[]; msg?: string }
+          const loc = Array.isArray(dd.loc) ? dd.loc.join('.') : ''
+          return `${loc ? loc + ': ' : ''}${dd.msg ?? ''}`
+        })
+        .join('; ')
+    } else if (typeof detail === 'string') {
+      detailMsg = detail
+    } else {
+      detailMsg = errBody.slice(0, 200)
+    }
+    return {
+      status: 'failed',
+      error: `fal result HTTP ${resultRes.status}: ${detailMsg || '(empty body)'}`,
+    }
   }
   const result = (await resultRes.json()) as {
     images?: Array<{ url: string; width: number; height: number; content_type: string }>
