@@ -8,6 +8,7 @@ import { fetchImageJobStatus } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { saveGeneratedImageToDisk } from '@/shared/debug/save-generated-image'
+import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
 
 const querySchema = z.object({
   requestId: z.string().min(1),
@@ -101,6 +102,19 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       { status: 'failed', error: 'fal returned no images' },
       { status: 500 },
     )
+  }
+
+  try {
+    const analysis = await fetchAndAnalyzeImage(img.url)
+    const detection = detectSafetyFilteredFrame(analysis)
+    if (detection.kind === 'filtered') {
+      return NextResponse.json(
+        { status: 'failed', error: detection.reason },
+        { status: 200 },
+      )
+    }
+  } catch (err) {
+    console.warn('image analysis failed, persisting without quality gate', err)
   }
 
   const payload = await getPayload({ config })
