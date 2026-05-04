@@ -49,9 +49,48 @@ type State =
 
 const POLL_INTERVAL_MS = 3000
 
+// Vercel returns plain text on FUNCTION_INVOCATION_TIMEOUT etc. — JSON.parse
+// then explodes with "Unexpected token 'A'". Surface the raw text so the
+// admin sees the real reason instead of a parser stack trace.
+async function safeJson<T>(res: Response): Promise<T | { error: string; rawText: string }> {
+  const ct = res.headers.get('content-type') ?? ''
+  if (ct.includes('application/json')) {
+    try {
+      return (await res.json()) as T
+    } catch (err) {
+      const txt = await res.text().catch(() => '')
+      return {
+        error: `Bad JSON from server: ${err instanceof Error ? err.message : 'parse error'}`,
+        rawText: txt.slice(0, 300),
+      } as { error: string; rawText: string }
+    }
+  }
+  const txt = await res.text().catch(() => '')
+  return {
+    error: `Non-JSON response (HTTP ${res.status}, ${ct || 'no content-type'})`,
+    rawText: txt.slice(0, 300),
+  } as { error: string; rawText: string }
+}
+
+type RefProgressState = {
+  status: 'queued' | 'polling'
+  requestId: string
+  endpoint: string
+  modelName: string
+  statusUrl: string
+  responseUrl: string
+  startedAt: number
+  promptUsed: string
+  negativePromptUsed: string
+  setPrimary: boolean
+  phase: ImagePhase
+  queuePosition: number | null
+  lastLog: string | null
+}
+
 type RefState =
   | { status: 'idle' }
-  | { status: 'loading' }
+  | RefProgressState
   | {
       status: 'done'
       url: string
@@ -103,10 +142,12 @@ export function GenerateImageButton() {
 
   const existingRefUrl = (savedDocumentData as Record<string, unknown> | undefined)?.referenceImageUrl as string | null | undefined
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const refPollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       if (pollTimer.current) clearTimeout(pollTimer.current)
+      if (refPollTimer.current) clearTimeout(refPollTimer.current)
     }
   }, [])
 
@@ -136,7 +177,7 @@ export function GenerateImageButton() {
         setPrimary: String(curState.setPrimary),
       })
       const res = await fetch(`/api/admin/characters/${id}/generate-image-status?${params.toString()}`)
-      const data = (await res.json()) as
+      const data = await safeJson<
         | {
             status: 'pending'
             phase?: ImagePhase
@@ -158,37 +199,43 @@ export function GenerateImageButton() {
             savedPath: string | null
           }
         | { status: 'failed'; error: string; message?: string }
-      if (data.status === 'pending') {
+      >(res)
+      if ('rawText' in data) {
+        setState({ status: 'error', message: `${data.error}${data.rawText ? ` — ${data.rawText}` : ''}` })
+        return
+      }
+      const ok = data as Exclude<typeof data, { error: string; rawText: string }>
+      if (ok.status === 'pending') {
         const next: ImageProgressState = {
           ...curState,
           status: 'polling',
-          phase: data.phase ?? 'unknown',
-          queuePosition: data.queuePosition ?? null,
-          lastLog: data.lastLog ?? null,
+          phase: ok.phase ?? 'unknown',
+          queuePosition: ok.queuePosition ?? null,
+          lastLog: ok.lastLog ?? null,
         }
         setState(next)
         pollTimer.current = setTimeout(() => pollOnce(next), POLL_INTERVAL_MS)
         return
       }
-      if (data.status === 'failed') {
+      if (ok.status === 'failed') {
         setState({
           status: 'error',
-          message: data.message ?? data.error ?? 'Image generation failed',
+          message: ok.message ?? ok.error ?? 'Image generation failed',
         })
         return
       }
       setState({
         status: 'done',
-        url: data.url,
-        mediaAssetId: data.mediaAssetId ?? null,
-        width: data.width,
-        height: data.height,
-        latencyMs: data.latencyMs,
-        persisted: data.persisted ?? true,
-        primarySet: data.primarySet ?? false,
-        modelUsed: data.modelUsed ?? curState.modelUsed,
-        promptUsed: data.promptUsed ?? curState.promptUsed,
-        savedPath: data.savedPath ?? null,
+        url: ok.url,
+        mediaAssetId: ok.mediaAssetId ?? null,
+        width: ok.width,
+        height: ok.height,
+        latencyMs: ok.latencyMs,
+        persisted: ok.persisted ?? true,
+        primarySet: ok.primarySet ?? false,
+        modelUsed: ok.modelUsed ?? curState.modelUsed,
+        promptUsed: ok.promptUsed ?? curState.promptUsed,
+        savedPath: ok.savedPath ?? null,
       })
     } catch (err) {
       setState({
@@ -212,7 +259,7 @@ export function GenerateImageButton() {
           modelOverride,
         }),
       })
-      const data = (await res.json()) as {
+      const data = await safeJson<{
         ok?: boolean
         error?: string
         message?: string
@@ -226,26 +273,31 @@ export function GenerateImageButton() {
         modelUsed?: string
         setPrimary?: boolean
         startedAt?: number
+      }>(res)
+      if ('rawText' in data) {
+        setState({ status: 'error', message: `${data.error}${data.rawText ? ` — ${data.rawText}` : ''}` })
+        return
       }
-      if (!res.ok || !data.ok || !data.requestId || !data.statusUrl || !data.responseUrl) {
+      const ok = data as Exclude<typeof data, { error: string; rawText: string }>
+      if (!res.ok || !ok.ok || !ok.requestId || !ok.statusUrl || !ok.responseUrl) {
         setState({
           status: 'error',
-          message: data.message ?? data.error ?? `HTTP ${res.status}`,
+          message: ok.message ?? ok.error ?? `HTTP ${res.status}`,
         })
         return
       }
       const next: ImageProgressState = {
         status: 'queued',
-        requestId: data.requestId,
-        endpoint: data.endpoint!,
-        modelName: data.modelName!,
-        statusUrl: data.statusUrl,
-        responseUrl: data.responseUrl,
-        startedAt: data.startedAt ?? Date.now(),
-        promptUsed: data.promptUsed ?? '',
-        negativePromptUsed: data.negativePromptUsed ?? '',
-        modelUsed: data.modelUsed ?? modelOverride,
-        setPrimary: data.setPrimary ?? setPrimary,
+        requestId: ok.requestId,
+        endpoint: ok.endpoint!,
+        modelName: ok.modelName!,
+        statusUrl: ok.statusUrl,
+        responseUrl: ok.responseUrl,
+        startedAt: ok.startedAt ?? Date.now(),
+        promptUsed: ok.promptUsed ?? '',
+        negativePromptUsed: ok.negativePromptUsed ?? '',
+        modelUsed: ok.modelUsed ?? modelOverride,
+        setPrimary: ok.setPrimary ?? setPrimary,
         phase: 'unknown',
         queuePosition: null,
         lastLog: null,
@@ -260,8 +312,85 @@ export function GenerateImageButton() {
     }
   }
 
+  async function pollRefOnce(curState: RefProgressState) {
+    try {
+      const params = new URLSearchParams({
+        requestId: curState.requestId,
+        endpoint: curState.endpoint,
+        modelName: curState.modelName,
+        statusUrl: curState.statusUrl,
+        responseUrl: curState.responseUrl,
+        startedAt: String(curState.startedAt),
+        promptUsed: curState.promptUsed,
+        negativePromptUsed: curState.negativePromptUsed,
+        setPrimary: String(curState.setPrimary),
+      })
+      const res = await fetch(`/api/admin/characters/${id}/generate-reference-status?${params.toString()}`)
+      const data = await safeJson<
+        | {
+            status: 'pending'
+            phase?: ImagePhase
+            queuePosition?: number | null
+            lastLog?: string | null
+            raw?: string | null
+          }
+        | {
+            status: 'completed'
+            url: string
+            mediaAssetId: string | number | null
+            width: number
+            height: number
+            latencyMs: number
+            primarySet: boolean
+            savedPath: string | null
+          }
+        | { status: 'failed'; error: string; message?: string }
+      >(res)
+      if ('error' in data && !('status' in data)) {
+        setRefState({ status: 'error', message: `${data.error}${data.rawText ? ` — ${data.rawText}` : ''}` })
+        return
+      }
+      const ok = data as Exclude<typeof data, { error: string; rawText: string }>
+      if (ok.status === 'pending') {
+        const next: RefProgressState = {
+          ...curState,
+          status: 'polling',
+          phase: ok.phase ?? 'unknown',
+          queuePosition: ok.queuePosition ?? null,
+          lastLog: ok.lastLog ?? null,
+        }
+        setRefState(next)
+        refPollTimer.current = setTimeout(() => pollRefOnce(next), POLL_INTERVAL_MS)
+        return
+      }
+      if (ok.status === 'failed') {
+        setRefState({
+          status: 'error',
+          message: ok.message ?? ok.error ?? 'Reference generation failed',
+        })
+        return
+      }
+      setRefState({
+        status: 'done',
+        url: ok.url,
+        mediaAssetId: ok.mediaAssetId ?? null,
+        width: ok.width,
+        height: ok.height,
+        latencyMs: ok.latencyMs,
+        savedPath: ok.savedPath ?? null,
+        primarySet: !!ok.primarySet,
+      })
+    } catch (err) {
+      setRefState({
+        status: 'error',
+        message: err instanceof Error ? err.message : 'Status check failed',
+      })
+    }
+  }
+
   async function generateReference(setPrimary: boolean) {
-    setRefState({ status: 'loading' })
+    if (refPollTimer.current) clearTimeout(refPollTimer.current)
+    setRefState({ status: 'idle' })
     setRefSetPrimaryState({ status: 'idle' })
     try {
       const res = await fetch(`/api/admin/characters/${id}/generate-reference`, {
@@ -269,30 +398,49 @@ export function GenerateImageButton() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ setPrimary }),
       })
-      const data = (await res.json()) as {
+      const data = await safeJson<{
+        ok?: boolean
         error?: string
-        url?: string
-        mediaAssetId?: string | number | null
-        width?: number
-        height?: number
-        latencyMs?: number
-        savedPath?: string | null
-        primarySet?: boolean
-      }
-      if (!res.ok) {
-        setRefState({ status: 'error', message: data.error ?? `HTTP ${res.status}` })
+        message?: string
+        requestId?: string
+        endpoint?: string
+        modelName?: string
+        statusUrl?: string
+        responseUrl?: string
+        promptUsed?: string
+        negativePromptUsed?: string
+        setPrimary?: boolean
+        startedAt?: number
+      }>(res)
+      if ('rawText' in data) {
+        setRefState({ status: 'error', message: `${data.error}${data.rawText ? ` — ${data.rawText}` : ''}` })
         return
       }
-      setRefState({
-        status: 'done',
-        url: data.url!,
-        mediaAssetId: data.mediaAssetId ?? null,
-        width: data.width!,
-        height: data.height!,
-        latencyMs: data.latencyMs!,
-        savedPath: data.savedPath ?? null,
-        primarySet: !!data.primarySet,
-      })
+      const ok = data as Exclude<typeof data, { error: string; rawText: string }>
+      if (!res.ok || !ok.ok || !ok.requestId || !ok.statusUrl || !ok.responseUrl) {
+        setRefState({
+          status: 'error',
+          message: ok.message ?? ok.error ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      const next: RefProgressState = {
+        status: 'queued',
+        requestId: ok.requestId,
+        endpoint: ok.endpoint!,
+        modelName: ok.modelName!,
+        statusUrl: ok.statusUrl,
+        responseUrl: ok.responseUrl,
+        startedAt: ok.startedAt ?? Date.now(),
+        promptUsed: ok.promptUsed ?? '',
+        negativePromptUsed: ok.negativePromptUsed ?? '',
+        setPrimary: ok.setPrimary ?? setPrimary,
+        phase: 'unknown',
+        queuePosition: null,
+        lastLog: null,
+      }
+      setRefState(next)
+      refPollTimer.current = setTimeout(() => pollRefOnce(next), POLL_INTERVAL_MS)
     } catch (err) {
       setRefState({
         status: 'error',
@@ -300,6 +448,7 @@ export function GenerateImageButton() {
       })
     }
   }
+
 
   async function setReferenceAsPrimary(mediaAssetId: string | number) {
     setRefSetPrimaryState({ status: 'loading' })
@@ -328,7 +477,7 @@ export function GenerateImageButton() {
     }
   }
 
-  const refLoading = refState.status === 'loading'
+  const refLoading = refState.status === 'queued' || refState.status === 'polling'
   const currentRefUrl = refState.status === 'done' ? refState.url : existingRefUrl
 
   return (
@@ -379,6 +528,42 @@ export function GenerateImageButton() {
           {refLoading ? 'Generating…' : 'Generate & Set as Primary'}
         </button>
       </div>
+
+      {(refState.status === 'queued' || refState.status === 'polling') && (
+        <div style={{ marginBottom: '8px' }}>
+          <p style={{ fontSize: '12px', color: '#6b7280', margin: 0 }}>
+            {refState.phase === 'queued'
+              ? 'Queued on fal.ai — waiting for a free GPU'
+              : refState.phase === 'running'
+                ? 'Running on GPU — generating reference'
+                : 'Submitted — waiting for status'}
+            {' · '}elapsed {Math.floor((Date.now() - refState.startedAt) / 1000)}s
+            {refState.queuePosition !== null && refState.queuePosition > 0
+              ? ` · queue position #${refState.queuePosition}`
+              : ''}
+          </p>
+          <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0' }}>
+            Polling every {Math.round(POLL_INTERVAL_MS / 1000)}s
+          </p>
+          {refState.lastLog && (
+            <p
+              style={{
+                fontSize: '11px',
+                color: '#6b7280',
+                margin: '4px 0 0',
+                fontFamily: 'monospace',
+                background: '#f9fafb',
+                border: '1px solid #e5e7eb',
+                borderRadius: '4px',
+                padding: '4px 6px',
+                wordBreak: 'break-word',
+              }}
+            >
+              {refState.lastLog}
+            </p>
+          )}
+        </div>
+      )}
 
       {refState.status === 'error' && (
         <p style={{ fontSize: '13px', color: '#dc2626', marginBottom: '8px' }}>
