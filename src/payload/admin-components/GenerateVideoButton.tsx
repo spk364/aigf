@@ -128,8 +128,13 @@ const RESOLUTION_OPTIONS: Array<{ value: Resolution; label: string }> = [
 const POLL_INTERVAL_MS = 5000
 
 export function GenerateVideoButton() {
-  const { id, savedDocumentData } = useDocumentInfo()
+  const { id } = useDocumentInfo()
   const [state, setState] = useState<State>({ status: 'idle' })
+  const [sourceInfo, setSourceInfo] = useState<{
+    primaryImageUrl: string | null
+    referenceImageUrl: string | null
+    sourceImageUrl: string | null
+  }>({ primaryImageUrl: null, referenceImageUrl: null, sourceImageUrl: null })
   const [motionStrength, setMotionStrength] = useState<MotionStrength>('medium')
   const [mood, setMood] = useState<MotionMood>('gentle')
   const [motionDescription, setMotionDescription] = useState(
@@ -153,11 +158,45 @@ export function GenerateVideoButton() {
     [motionDescription, mood, motionStrength],
   )
 
-  const primaryImageUrl =
-    (savedDocumentData as Record<string, unknown> | undefined)?.referenceImageUrl as
-      | string
-      | null
-      | undefined
+  // Source image priority: primary > reference. We pull this live from the
+  // media endpoint instead of reading savedDocumentData, because the user can
+  // promote an image to primary via the gallery without touching Payload's
+  // form state — the saved doc snapshot would still show the old (or null)
+  // referenceImageUrl in that case and the button would falsely report
+  // "no source image yet".
+  const primaryImageUrl = sourceInfo.sourceImageUrl
+
+  // Re-fetch source info on mount and whenever the gallery dispatches a save.
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    const refresh = async () => {
+      try {
+        const res = await fetch(`/api/admin/characters/${id}/media`)
+        if (!res.ok) return
+        const data = (await res.json()) as {
+          primaryImageUrl?: string | null
+          referenceImageUrl?: string | null
+          sourceImageUrl?: string | null
+        }
+        if (cancelled) return
+        setSourceInfo({
+          primaryImageUrl: data.primaryImageUrl ?? null,
+          referenceImageUrl: data.referenceImageUrl ?? null,
+          sourceImageUrl: data.sourceImageUrl ?? null,
+        })
+      } catch {
+        // Best-effort — UI just won't show the source preview.
+      }
+    }
+    refresh()
+    const handler = () => refresh()
+    window.addEventListener('character-media-saved', handler)
+    return () => {
+      cancelled = true
+      window.removeEventListener('character-media-saved', handler)
+    }
+  }, [id])
 
   // Stop polling on unmount
   useEffect(() => {

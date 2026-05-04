@@ -62,6 +62,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const primaryImageId = relId(character.primaryImageId)
   const referenceImageId = relId(character.referenceImageId)
 
+  // Resolve current primary / reference URLs in one go so the client doesn't
+  // have to make a second round-trip to know if the character has a usable
+  // source image.
+  let primaryImageUrl: string | null = null
+  let referenceImageUrl: string | null = null
+  if (typeof character.referenceImageUrl === 'string' && character.referenceImageUrl.length > 0) {
+    referenceImageUrl = character.referenceImageUrl
+  }
+
+  // postgres-js / Drizzle has been quirky with `in` on string enums in some
+  // configurations — use explicit OR clauses so the filter is unambiguous.
   try {
     const result = await payload.find({
       collection: 'media-assets',
@@ -69,9 +80,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         and: [
           { ownerCharacterId: { equals: characterIdCoerced } },
           {
-            kind: {
-              in: ['character_reference', 'character_gallery', 'character_preview'],
-            },
+            or: [
+              { kind: { equals: 'character_reference' } },
+              { kind: { equals: 'character_gallery' } },
+              { kind: { equals: 'character_preview' } },
+            ],
           },
           { deletedAt: { equals: null } },
         ],
@@ -84,26 +97,37 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const items: CharacterMediaItem[] = result.docs.map((d) => {
       const doc = d as Record<string, unknown>
       const id = doc.id as string | number
+      const isPrimary = primaryImageId != null && String(primaryImageId) === String(id)
+      const isReference = referenceImageId != null && String(referenceImageId) === String(id)
+      const publicUrl = typeof doc.publicUrl === 'string' ? doc.publicUrl : null
+      // Pick up resolved URLs while we already have the row.
+      if (isPrimary && publicUrl) primaryImageUrl = publicUrl
+      if (isReference && publicUrl && !referenceImageUrl) referenceImageUrl = publicUrl
       return {
         id,
         kind: typeof doc.kind === 'string' ? doc.kind : 'unknown',
-        publicUrl: typeof doc.publicUrl === 'string' ? doc.publicUrl : null,
+        publicUrl,
         width: typeof doc.width === 'number' ? doc.width : null,
         height: typeof doc.height === 'number' ? doc.height : null,
         sizeBytes: typeof doc.sizeBytes === 'number' ? doc.sizeBytes : null,
         mimeType: typeof doc.mimeType === 'string' ? doc.mimeType : null,
         createdAt: typeof doc.createdAt === 'string' ? doc.createdAt : null,
-        isPrimary: primaryImageId != null && String(primaryImageId) === String(id),
-        isReference: referenceImageId != null && String(referenceImageId) === String(id),
+        isPrimary,
+        isReference,
         generationMetadata:
           (doc.generationMetadata as Record<string, unknown> | null | undefined) ?? null,
       }
     })
 
+    const sourceImageUrl = primaryImageUrl ?? referenceImageUrl ?? null
+
     return NextResponse.json({
       items,
       primaryImageId: primaryImageId != null ? String(primaryImageId) : null,
       referenceImageId: referenceImageId != null ? String(referenceImageId) : null,
+      primaryImageUrl,
+      referenceImageUrl,
+      sourceImageUrl,
     })
   } catch (err) {
     return NextResponse.json(
