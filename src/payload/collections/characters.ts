@@ -237,6 +237,15 @@ export const Characters: CollectionConfig = {
       admin: { date: { pickerAppearance: 'dayAndTime' } },
     },
     {
+      name: 'mediaGallery',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '@/payload/admin-components/CharacterMediaGallery#CharacterMediaGallery',
+        },
+      },
+    },
+    {
       name: 'generateImageAction',
       type: 'ui',
       admin: {
