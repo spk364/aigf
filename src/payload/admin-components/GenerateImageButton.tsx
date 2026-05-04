@@ -103,12 +103,6 @@ type RefState =
     }
   | { status: 'error'; message: string }
 
-type SetPrimaryState =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'done' }
-  | { status: 'error'; message: string }
-
 const BTN: React.CSSProperties = {
   padding: '8px 16px',
   border: 'none',
@@ -135,7 +129,6 @@ export function GenerateImageButton() {
   const { id, savedDocumentData } = useDocumentInfo()
   const [state, setState] = useState<State>({ status: 'idle' })
   const [refState, setRefState] = useState<RefState>({ status: 'idle' })
-  const [refSetPrimaryState, setRefSetPrimaryState] = useState<SetPrimaryState>({ status: 'idle' })
   const [imageSize, setImageSize] = useState<ImageSize>(DEFAULT_IMAGE_SIZE_PRESET_ID)
   const [sceneHint, setSceneHint] = useState('')
   const [modelOverride, setModelOverride] = useState(DEFAULT_IMAGE_MODEL_ID)
@@ -237,6 +230,7 @@ export function GenerateImageButton() {
         promptUsed: ok.promptUsed ?? curState.promptUsed,
         savedPath: ok.savedPath ?? null,
       })
+      window.dispatchEvent(new Event('character-media-saved'))
     } catch (err) {
       setState({
         status: 'error',
@@ -380,6 +374,7 @@ export function GenerateImageButton() {
         savedPath: ok.savedPath ?? null,
         primarySet: !!ok.primarySet,
       })
+      window.dispatchEvent(new Event('character-media-saved'))
     } catch (err) {
       setRefState({
         status: 'error',
@@ -391,7 +386,6 @@ export function GenerateImageButton() {
   async function generateReference(setPrimary: boolean) {
     if (refPollTimer.current) clearTimeout(refPollTimer.current)
     setRefState({ status: 'idle' })
-    setRefSetPrimaryState({ status: 'idle' })
     try {
       const res = await fetch(`/api/admin/characters/${id}/generate-reference`, {
         method: 'POST',
@@ -450,33 +444,6 @@ export function GenerateImageButton() {
   }
 
 
-  async function setReferenceAsPrimary(mediaAssetId: string | number) {
-    setRefSetPrimaryState({ status: 'loading' })
-    try {
-      const res = await fetch(`/api/admin/characters/${id}/set-primary-image`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mediaAssetId }),
-      })
-      const data = (await res.json()) as { error?: string; message?: string }
-      if (!res.ok) {
-        setRefSetPrimaryState({
-          status: 'error',
-          message: data.message ?? data.error ?? `HTTP ${res.status}`,
-        })
-        return
-      }
-      setRefSetPrimaryState({ status: 'done' })
-      // Reflect the new state in the local refState too.
-      setRefState((prev) => (prev.status === 'done' ? { ...prev, primarySet: true } : prev))
-    } catch (err) {
-      setRefSetPrimaryState({
-        status: 'error',
-        message: err instanceof Error ? err.message : 'Unknown error',
-      })
-    }
-  }
-
   const refLoading = refState.status === 'queued' || refState.status === 'polling'
   const currentRefUrl = refState.status === 'done' ? refState.url : existingRefUrl
 
@@ -512,7 +479,7 @@ export function GenerateImageButton() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+      <div style={{ marginBottom: '8px' }}>
         <button
           onClick={() => generateReference(false)}
           disabled={refLoading}
@@ -520,13 +487,9 @@ export function GenerateImageButton() {
         >
           {refLoading ? 'Generating…' : 'Generate Reference Image'}
         </button>
-        <button
-          onClick={() => generateReference(true)}
-          disabled={refLoading}
-          style={{ ...BTN, background: '#10b981', color: '#fff', opacity: refLoading ? 0.7 : 1 }}
-        >
-          {refLoading ? 'Generating…' : 'Generate & Set as Primary'}
-        </button>
+        <p style={{ fontSize: '11px', color: '#9ca3af', margin: '6px 0 0' }}>
+          Use the gallery below to promote any image to primary or reference.
+        </p>
       </div>
 
       {(refState.status === 'queued' || refState.status === 'polling') && (
@@ -584,25 +547,6 @@ export function GenerateImageButton() {
           <p style={{ fontSize: '12px', color: '#10b981', margin: '0 0 2px' }}>
             ✓ Reference saved · {refState.width}×{refState.height} · {(refState.latencyMs / 1000).toFixed(1)} s
           </p>
-          {refState.primarySet && (
-            <p style={{ fontSize: '12px', color: '#10b981', margin: '4px 0 0' }}>
-              ✓ Set as primary image
-            </p>
-          )}
-          {!refState.primarySet && refState.mediaAssetId !== null && (
-            <button
-              onClick={() => setReferenceAsPrimary(refState.mediaAssetId!)}
-              disabled={refSetPrimaryState.status === 'loading'}
-              style={{ ...BTN, background: '#10b981', color: '#fff', marginTop: '8px' }}
-            >
-              {refSetPrimaryState.status === 'loading' ? 'Setting…' : 'Set as Primary Image'}
-            </button>
-          )}
-          {refSetPrimaryState.status === 'error' && (
-            <p style={{ fontSize: '12px', color: '#dc2626', margin: '4px 0 0' }}>
-              {refSetPrimaryState.message}
-            </p>
-          )}
           {refState.savedPath && (
             <p style={{ fontSize: '11px', color: '#6b7280', margin: '4px 0 0', fontFamily: 'monospace' }}>
               {refState.savedPath}
@@ -688,7 +632,7 @@ export function GenerateImageButton() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
+      <div style={{ marginBottom: '14px' }}>
         <button
           onClick={() => generate(false)}
           disabled={isBusy}
@@ -696,13 +640,9 @@ export function GenerateImageButton() {
         >
           {isBusy ? 'Generating…' : 'Generate'}
         </button>
-        <button
-          onClick={() => generate(true)}
-          disabled={isBusy}
-          style={{ ...BTN, background: '#10b981', color: '#fff', opacity: isBusy ? 0.7 : 1 }}
-        >
-          {isBusy ? 'Generating…' : 'Generate & Set as Primary'}
-        </button>
+        <p style={{ fontSize: '11px', color: '#9ca3af', margin: '6px 0 0' }}>
+          Use the gallery below to promote any image to primary or reference.
+        </p>
       </div>
 
       {(state.status === 'queued' || state.status === 'polling') && (
@@ -793,19 +733,6 @@ export function GenerateImageButton() {
             <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px', fontFamily: 'monospace' }}>
               {state.savedPath}
             </p>
-          )}
-          {state.primarySet && (
-            <p style={{ fontSize: '12px', color: '#10b981', marginTop: '6px' }}>
-              ✓ Set as primary image
-            </p>
-          )}
-          {!state.primarySet && state.persisted && (
-            <button
-              onClick={() => generate(true)}
-              style={{ ...BTN, background: '#10b981', color: '#fff', marginTop: '8px' }}
-            >
-              Set as Primary Image
-            </button>
           )}
           <div style={{ marginTop: '8px' }}>
             <a
