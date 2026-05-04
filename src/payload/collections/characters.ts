@@ -254,5 +254,14 @@ export const Characters: CollectionConfig = {
         },
       },
     },
+    {
+      name: 'characterVideos',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '@/payload/admin-components/CharacterVideos#CharacterVideos',
+        },
+      },
+    },
   ],
 }

@@ -83,22 +83,39 @@ function isFluxEndpoint(endpoint: string): boolean {
   return endpoint.startsWith('fal-ai/flux')
 }
 
-export async function generateImage(input: GenerateImageInput): Promise<GenerateImageResult> {
+export type ImageJobHandles = {
+  requestId: string
+  endpoint: string
+  modelName: string
+  // fal-provided URLs from the submit response. Polling self-built URLs against
+  // the submission endpoint returns 405; always use what fal handed back.
+  statusUrl: string
+  responseUrl: string
+  cancelUrl: string
+}
+
+export type ImageJobStatus =
+  | {
+      status: 'pending'
+      phase: VideoJobPhase
+      queuePosition?: number
+      lastLog?: string
+      raw?: string
+    }
+  | { status: 'completed'; result: GenerateImageResult }
+  | { status: 'failed'; error: string }
+
+export async function submitImageJob(input: GenerateImageInput): Promise<ImageJobHandles> {
   const key = process.env.FAL_KEY
   if (!key) throw new Error('FAL_KEY is not set')
 
   const endpoint = input.endpoint ?? FAL_IMAGE_ENDPOINT
   const isFlux = isFluxEndpoint(endpoint)
   const isSchnell = endpoint === FAL_ENDPOINT_FLUX_SCHNELL
-  const startedAt = Date.now()
 
-  // FLUX: no negative_prompt, fewer steps, different guidance scale.
-  // SD/SDXL/LoRA: all standard parameters.
   const defaultSteps = isSchnell ? 4 : isFlux ? 25 : 35
   const defaultGuidance = isFlux ? 3.5 : 5
 
-  // fal expects image_size to be either a string preset or an object {width, height}.
-  // Pass through whichever variant the caller chose; default to SDXL-native portrait.
   const imageSizeValue: ImageSize = input.imageSize ?? { width: 832, height: 1216 }
 
   const body: Record<string, unknown> = {
@@ -110,23 +127,16 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
     ...(input.seed !== undefined ? { seed: input.seed } : {}),
   }
 
-  // FLUX ignores negative_prompt — omit it entirely to avoid API errors.
   if (!isFlux && input.negativePrompt) {
     body.negative_prompt = input.negativePrompt
   }
-
-  // model_name is only meaningful for the lora endpoint (HuggingFace checkpoint).
   if (endpoint === FAL_ENDPOINT_LORA && input.modelName) {
     body.model_name = input.modelName
   }
-
-  // IP-Adapter face consistency — pass reference image and scale.
   if (input.ipAdapterImageUrl) {
     body.image_url = input.ipAdapterImageUrl
     body.scale = input.ipAdapterScale ?? 0.7
   }
-
-  // Adult content app — safety checker always off.
   body.enable_safety_checker = false
 
   const submit = await fetch(`${QUEUE_BASE}/${endpoint}`, {
@@ -145,47 +155,132 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
 
   const submitData = (await submit.json()) as {
     request_id: string
-    status_url: string
-    response_url: string
+    status_url?: string
+    response_url?: string
+    cancel_url?: string
   }
 
-  const deadline = Date.now() + POLL_TIMEOUT_MS
-  while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-    const statusRes = await fetch(submitData.status_url, {
-      headers: { Authorization: `Key ${key}` },
-    })
-    if (!statusRes.ok) continue
-    const status = (await statusRes.json()) as { status: string }
-    if (status.status === 'COMPLETED') {
-      const resultRes = await fetch(submitData.response_url, {
-        headers: { Authorization: `Key ${key}` },
-      })
-      const result = (await resultRes.json()) as {
-        images: Array<{ url: string; width: number; height: number; content_type: string }>
-        seed: number
-        detail?: string
-      }
-      if (result.detail) throw new Error(`fal generation error: ${result.detail}`)
-      return {
-        images: result.images.map((img) => ({
-          url: img.url,
-          width: img.width,
-          height: img.height,
-          contentType: img.content_type ?? 'image/jpeg',
-        })),
-        seed: result.seed,
-        requestId: submitData.request_id,
-        modelName: endpoint === FAL_ENDPOINT_LORA ? (input.modelName ?? endpoint) : endpoint,
-        endpoint,
-        latencyMs: Date.now() - startedAt,
-      }
+  if (!submitData.request_id || !submitData.status_url || !submitData.response_url) {
+    throw new Error(
+      `fal submit response missing required URLs: ${JSON.stringify(submitData).slice(0, 300)}`,
+    )
+  }
+
+  return {
+    requestId: submitData.request_id,
+    endpoint,
+    modelName: endpoint === FAL_ENDPOINT_LORA ? (input.modelName ?? endpoint) : endpoint,
+    statusUrl: submitData.status_url,
+    responseUrl: submitData.response_url,
+    cancelUrl: submitData.cancel_url ?? `${submitData.status_url.replace(/\/status.*$/, '')}/cancel`,
+  }
+}
+
+export async function fetchImageJobStatus(args: {
+  statusUrl: string
+  responseUrl: string
+  requestId: string
+  endpoint: string
+  modelName: string
+  startedAtMs?: number
+}): Promise<ImageJobStatus> {
+  const key = process.env.FAL_KEY
+  if (!key) throw new Error('FAL_KEY is not set')
+
+  const url = args.statusUrl.includes('?')
+    ? `${args.statusUrl}&logs=1`
+    : `${args.statusUrl}?logs=1`
+  const statusRes = await fetch(url, {
+    headers: { Authorization: `Key ${key}` },
+  })
+  if (!statusRes.ok) {
+    const body = await statusRes.text().catch(() => '')
+    const summary = `fal status HTTP ${statusRes.status}${body ? `: ${body.slice(0, 200)}` : ''}`
+    if (statusRes.status === 404 || statusRes.status === 410) {
+      return { status: 'failed', error: `Job not found in fal queue (${summary}).` }
     }
-    if (status.status === 'FAILED' || status.status === 'ERROR') {
-      throw new Error(`fal job ${status.status}: ${JSON.stringify(status)}`)
+    if (statusRes.status === 401 || statusRes.status === 403) {
+      return { status: 'failed', error: `fal authentication failed (${summary}). Check FAL_KEY.` }
+    }
+    return { status: 'pending', phase: 'unknown', lastLog: summary, raw: `HTTP_${statusRes.status}` }
+  }
+
+  const status = (await statusRes.json()) as {
+    status: string
+    queue_position?: number
+    logs?: Array<{ message: string; timestamp?: string }>
+  }
+  if (status.status === 'FAILED' || status.status === 'ERROR') {
+    return { status: 'failed', error: JSON.stringify(status) }
+  }
+  if (status.status !== 'COMPLETED') {
+    const lastLog = Array.isArray(status.logs) && status.logs.length > 0
+      ? status.logs[status.logs.length - 1]?.message
+      : undefined
+    return {
+      status: 'pending',
+      phase: status.status === 'IN_QUEUE' ? 'queued' : status.status === 'IN_PROGRESS' ? 'running' : 'unknown',
+      queuePosition: status.queue_position,
+      lastLog,
+      raw: status.status,
     }
   }
-  throw new Error(`fal job timeout after ${POLL_TIMEOUT_MS}ms (request ${submitData.request_id})`)
+
+  const resultRes = await fetch(args.responseUrl, {
+    headers: { Authorization: `Key ${key}` },
+  })
+  if (!resultRes.ok) {
+    return { status: 'failed', error: `fal result fetch failed: ${resultRes.status}` }
+  }
+  const result = (await resultRes.json()) as {
+    images?: Array<{ url: string; width: number; height: number; content_type: string }>
+    seed?: number
+    detail?: string
+  }
+  if (result.detail) return { status: 'failed', error: result.detail }
+  if (!Array.isArray(result.images) || result.images.length === 0) {
+    return { status: 'failed', error: 'fal image response missing images[]' }
+  }
+
+  return {
+    status: 'completed',
+    result: {
+      images: result.images.map((img) => ({
+        url: img.url,
+        width: img.width,
+        height: img.height,
+        contentType: img.content_type ?? 'image/jpeg',
+      })),
+      seed: result.seed ?? 0,
+      requestId: args.requestId,
+      modelName: args.modelName,
+      endpoint: args.endpoint,
+      latencyMs: args.startedAtMs ? Date.now() - args.startedAtMs : 0,
+    },
+  }
+}
+
+// Sync wrapper used by callers that don't need to dodge a Vercel timeout
+// (chat regeneration, dev/test routes, builder onboarding flows). Admin
+// character flows submit + poll asynchronously instead.
+export async function generateImage(input: GenerateImageInput): Promise<GenerateImageResult> {
+  const job = await submitImageJob(input)
+  const startedAt = Date.now()
+  const deadline = startedAt + POLL_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+    const s = await fetchImageJobStatus({
+      statusUrl: job.statusUrl,
+      responseUrl: job.responseUrl,
+      requestId: job.requestId,
+      endpoint: job.endpoint,
+      modelName: job.modelName,
+      startedAtMs: startedAt,
+    })
+    if (s.status === 'completed') return s.result
+    if (s.status === 'failed') throw new Error(s.error)
+  }
+  throw new Error(`fal job timeout after ${POLL_TIMEOUT_MS}ms (request ${job.requestId})`)
 }
 
 // ── Image-to-video (WAN 2.2) ────────────────────────────────────────────────

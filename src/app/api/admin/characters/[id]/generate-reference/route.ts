@@ -1,14 +1,14 @@
-export const maxDuration = 60
+// Submit-only — Vercel Hobby caps at 60s, RealVis + queue often exceeds.
+// Polling lives in the client; /generate-reference-status finishes the job.
+export const maxDuration = 30
 
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { generateImage, FAL_ENDPOINT_REALISTIC_VISION, FAL_ENDPOINT_FAST_SDXL } from '@/shared/ai/fal'
-import { persistGeneratedImage } from '@/features/media/persist-generated-image'
+import { submitImageJob, FAL_ENDPOINT_REALISTIC_VISION, FAL_ENDPOINT_FAST_SDXL } from '@/shared/ai/fal'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { IMAGE_MODEL_OPTIONS } from '@/shared/ai/image-models'
-import { saveGeneratedImageToDisk } from '@/shared/debug/save-generated-image'
 
 const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
@@ -22,8 +22,6 @@ const REFERENCE_NEGATIVE_EXTRA =
 
 const bodySchema = z.object({
   modelOverride: z.string().optional(),
-  // When true, the freshly persisted reference asset is also written to
-  // `characters.primaryImageId` so it shows on the catalog / video flow.
   setPrimary: z.boolean().default(false),
 })
 
@@ -75,8 +73,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const artStyle = character.artStyle as string | null
   const isAnime = artStyle === 'anime'
 
-  // For reference images, always use stable, non-stylized checkpoints.
-  // modelOverride is accepted but only if it's NOT a Pony/Illustrious checkpoint.
   const VALID_MODEL_IDS = IMAGE_MODEL_OPTIONS.map((m) => m.id)
   const requestedModel = body.modelOverride && VALID_MODEL_IDS.includes(body.modelOverride)
     ? body.modelOverride
@@ -86,7 +82,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     : null
   const isPonyOverride = requestedMeta?.isPony ?? false
 
-  // If the override is a Pony/Illustrious checkpoint, ignore it — too stylized for reference.
   const endpoint = isPonyOverride || !requestedModel
     ? (isAnime ? FAL_ENDPOINT_FAST_SDXL : FAL_ENDPOINT_REALISTIC_VISION)
     : requestedModel
@@ -121,81 +116,38 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const negativePrompt = `${baseNegative}, ${SAFETY_NEGATIVE}${REFERENCE_NEGATIVE_EXTRA}`
 
+  let job: Awaited<ReturnType<typeof submitImageJob>>
   try {
-    // 832×1216 — SDXL-native portrait bucket. Comfortably clears the video
-    // source threshold (768×1024) and gives WAN 2.2 i2v a tall frame to work with.
-    const result = await generateImage({
+    job = await submitImageJob({
       prompt,
       negativePrompt,
       imageSize: { width: 832, height: 1216 },
       numImages: 1,
-      numInferenceSteps: 40,
+      numInferenceSteps: 25,
       guidanceScale: 7,
       endpoint,
-    })
-
-    const img = result.images[0]!
-
-    const savedPath = await saveGeneratedImageToDisk({
-      imageUrl: img.url,
-      model: result.modelName,
-      width: img.width,
-      height: img.height,
-      kind: 'reference',
-    })
-
-    const persisted = await persistGeneratedImage({
-      payload,
-      fromUrl: img.url,
-      width: img.width,
-      height: img.height,
-      contentType: img.contentType,
-      kind: 'character-reference',
-      ownerCharacterId: characterId,
-      generationMetadata: {
-        modelName: result.modelName,
-        endpoint: result.endpoint,
-        requestId: result.requestId,
-        seed: result.seed,
-        prompt,
-        negativePrompt,
-      },
-    })
-    const publicUrl = persisted.publicUrl
-    const mediaAssetId = persisted.mediaAssetId
-
-    const updateData: Record<string, unknown> = {
-      referenceImageId: mediaAssetId,
-      referenceImageUrl: publicUrl,
-    }
-    if (body.setPrimary) {
-      updateData.primaryImageId = mediaAssetId
-    }
-
-    await payload.update({
-      collection: 'characters',
-      id: characterId,
-      data: updateData,
-      overrideAccess: true,
-    })
-
-    return NextResponse.json({
-      ok: true,
-      url: publicUrl,
-      mediaAssetId,
-      width: img.width,
-      height: img.height,
-      latencyMs: result.latencyMs,
-      primarySet: body.setPrimary,
-      savedPath,
     })
   } catch (err) {
     return NextResponse.json(
       {
-        error: 'generation_failed',
+        error: 'submit_failed',
         message: err instanceof Error ? err.message : String(err),
       },
       { status: 500 },
     )
   }
+
+  return NextResponse.json({
+    ok: true,
+    requestId: job.requestId,
+    endpoint: job.endpoint,
+    modelName: job.modelName,
+    statusUrl: job.statusUrl,
+    responseUrl: job.responseUrl,
+    cancelUrl: job.cancelUrl,
+    promptUsed: prompt,
+    negativePromptUsed: negativePrompt,
+    setPrimary: body.setPrimary,
+    startedAt: Date.now(),
+  })
 }
