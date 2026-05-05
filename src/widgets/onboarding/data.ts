@@ -11,11 +11,32 @@ export const STYLE_OPTIONS: Option[] = [
   { value: '3d_render', label: '3D', description: 'Smooth 3D-rendered, cinematic', hue: 220 },
 ]
 
+export const AGE_RANGE_OPTIONS: Option[] = [
+  { value: 'young_adult', label: '21-25', description: 'Young adult', hue: 200 },
+  { value: 'adult', label: '25-35', description: 'In her prime', hue: 280 },
+  { value: 'mature', label: '35-45', description: 'Mature, experienced', hue: 320 },
+  { value: 'experienced', label: '45-55', description: 'Confidently mature', hue: 0 },
+]
+
 export const BODY_OPTIONS: Option[] = [
   { value: 'slender', label: 'Slim', description: 'Petite, lithe build', hue: 200 },
   { value: 'average', label: 'Athletic', description: 'Toned, balanced', hue: 160 },
   { value: 'curvy', label: 'Curvy', description: 'Full-figured, soft curves', hue: 340 },
   { value: 'voluptuous', label: 'Voluptuous', description: 'Bold, hourglass', hue: 0 },
+]
+
+export const BUST_OPTIONS: Option[] = [
+  { value: 'small', label: 'Small', description: 'Petite & natural', hue: 190 },
+  { value: 'medium', label: 'Medium', description: 'Balanced', hue: 280 },
+  { value: 'large', label: 'Large', description: 'Full', hue: 330 },
+  { value: 'huge', label: 'Huge', description: 'Bombshell', hue: 0 },
+]
+
+export const BUTT_OPTIONS: Option[] = [
+  { value: 'small', label: 'Toned', description: 'Athletic & firm', hue: 160 },
+  { value: 'medium', label: 'Round', description: 'Balanced & shapely', hue: 280 },
+  { value: 'large', label: 'Big', description: 'Full & curvy', hue: 330 },
+  { value: 'huge', label: 'Bubble', description: 'Pronounced bubble shape', hue: 0 },
 ]
 
 export const HAIR_COLOR_OPTIONS: Option[] = [
@@ -25,6 +46,17 @@ export const HAIR_COLOR_OPTIONS: Option[] = [
   { value: 'redhead', label: 'Red', hue: 10 },
   { value: 'auburn', label: 'Auburn', hue: 20 },
   { value: 'platinum', label: 'Platinum', hue: 60 },
+]
+
+export const HAIR_STYLE_OPTIONS: Option[] = [
+  { value: 'long_straight', label: 'Long & straight', description: 'Sleek, flowing', hue: 220 },
+  { value: 'long_wavy', label: 'Long & wavy', description: 'Soft beachy waves', hue: 280 },
+  { value: 'long_curly', label: 'Long & curly', description: 'Voluminous curls', hue: 340 },
+  { value: 'medium_wavy', label: 'Medium wavy', description: 'Shoulder-length waves', hue: 30 },
+  { value: 'short_bob', label: 'Short bob', description: 'Chic, modern bob', hue: 190 },
+  { value: 'pixie', label: 'Pixie', description: 'Bold, short crop', hue: 0 },
+  { value: 'ponytail', label: 'Ponytail', description: 'Sporty, gathered up', hue: 130 },
+  { value: 'updo', label: 'Updo', description: 'Elegant, swept up', hue: 260 },
 ]
 
 export const EYE_COLOR_OPTIONS: Option[] = [
@@ -90,11 +122,15 @@ export const NAME_SUGGESTIONS = [
 
 export type OnboardingChoices = {
   style?: string
+  ageRange?: string
   body?: string
+  bust?: string
+  butt?: string
   hairColor?: string
+  hairStyle?: string
   eyeColor?: string
   personality?: string
   name?: string
 }
 
-export const TOTAL_STEPS = 6
+export const TOTAL_STEPS = 10
