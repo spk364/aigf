@@ -29,6 +29,9 @@
     "upgradeCta": "Mejorar",
     "yourConversations": "Tus conversaciones",
     "startNewChat": "Iniciar un nuevo chat",
+    "backToChats": "Todos los chats",
+    "backToHome": "Inicio",
+    "dashboard": "Panel",
     "image": {
       "upgradeRequired": "Las fotos son una funcion Premium. {link} para desbloquear.",
       "tokensRequired": "Te has quedado sin tokens este mes. {link} para recargar.",

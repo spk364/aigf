@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Message = {
@@ -25,6 +26,9 @@ export type ChatStrings = {
   errorGeneric: string
   errorQuota: string
   upgradeCta: string
+  backToChats: string
+  backToHome: string
+  dashboard: string
 }
 
 type Props = {
@@ -47,6 +51,9 @@ const defaultStrings: ChatStrings = {
   errorGeneric: 'Something went wrong. Please try again.',
   errorQuota: 'You have reached your daily message limit.',
   upgradeCta: 'Upgrade',
+  backToChats: 'All chats',
+  backToHome: 'Home',
+  dashboard: 'Dashboard',
 }
 
 function parseSseChunk(raw: string): Array<{ event: string; data: string }> {
@@ -97,6 +104,42 @@ function IconClipboard() {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184"
+      />
+    </svg>
+  )
+}
+
+function IconChevronLeft() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+    </svg>
+  )
+}
+
+function IconHome() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.8}
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.25 12 12 3l9.75 9M4.5 9.75v9.75A1.5 1.5 0 0 0 6 21h3v-6h6v6h3a1.5 1.5 0 0 0 1.5-1.5V9.75"
       />
     </svg>
   )
@@ -453,12 +496,40 @@ export function ChatInterface({
   return (
     <div className="flex h-full flex-col bg-[var(--color-bg)]">
       {/* Header */}
-      <header className="flex items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
+      <header className="flex items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 sm:px-5 sm:py-4">
+        <Link
+          href={`/${locale}/chat`}
+          aria-label={s.backToChats}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+        >
+          <IconChevronLeft />
+        </Link>
         <CharacterAvatar name={characterName} photoUrl={characterPhotoUrl} size="lg" />
-        <div>
-          <p className="font-semibold text-[var(--color-text)]">{characterName}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-[var(--color-text)]">{characterName}</p>
           <p className="text-xs text-[var(--color-success)]">Online</p>
         </div>
+        <nav className="flex shrink-0 items-center gap-1">
+          <Link
+            href={`/${locale}/chat`}
+            className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] sm:inline-flex"
+          >
+            {s.backToChats}
+          </Link>
+          <Link
+            href={`/${locale}/dashboard`}
+            className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] sm:inline-flex"
+          >
+            {s.dashboard}
+          </Link>
+          <Link
+            href={`/${locale}`}
+            aria-label={s.backToHome}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+          >
+            <IconHome />
+          </Link>
+        </nav>
       </header>
 
       {/* Message list */}
