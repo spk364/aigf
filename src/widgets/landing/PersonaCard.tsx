@@ -50,7 +50,7 @@ export function PersonaCard({ character, href }: Props) {
       onMouseLeave={handleLeave}
       onFocus={handleEnter}
       onBlur={handleLeave}
-      className="group relative flex w-72 shrink-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_50px_-12px_rgba(192,116,255,0.35)]"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_50px_-12px_rgba(192,116,255,0.35)]"
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden" style={tileStyle}>
         {/* eslint-disable-next-line @next/next/no-img-element */}

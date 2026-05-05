@@ -2,6 +2,15 @@
   "common": {
     "hello": "Hola"
   },
+  "pick": {
+    "eyebrow": "Casi listo",
+    "headline": "Empieza a chatear con {name}",
+    "subheadline": "Regístrate gratis para enviar tu primer mensaje — sin tarjeta de crédito. ¿Ya tienes cuenta? Inicia sesión para continuar.",
+    "signUp": "Crear cuenta",
+    "signIn": "Iniciar sesión",
+    "noAccount": "Empieza gratis. Funciones premium disponibles más adelante.",
+    "back": "Volver al inicio"
+  },
   "dashboard": {
     "quotaToday": "Hoy: {used} / {cap} mensajes",
     "upgrade": "Mejorar plan"

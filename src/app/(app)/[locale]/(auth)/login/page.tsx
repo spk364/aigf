@@ -3,36 +3,45 @@ import { redirect } from 'next/navigation'
 import { loginAction } from '@/features/auth/actions/login'
 import { loginAsTestUserAction } from '@/features/auth/actions/test-login'
 import { TEST_USER_EMAIL, TEST_USER_PASSWORD } from '@/features/auth/test-login-config'
+import { safeNextPath } from '@/shared/auth/safe-next'
 import Link from 'next/link'
 
 type Props = {
   params: Promise<{ locale: string }>
-  searchParams: Promise<{ error?: string; oauth_error?: string }>
+  searchParams: Promise<{ error?: string; oauth_error?: string; next?: string }>
 }
 
 export default async function LoginPage({ params, searchParams }: Props) {
   const { locale } = await params
-  const { error, oauth_error } = await searchParams
+  const { error, oauth_error, next } = await searchParams
   const t = await getTranslations('auth')
 
   const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+  const safeNext = safeNextPath(next)
+  const successHref = safeNext ?? `/${locale}/dashboard`
+  const signupHref = safeNext
+    ? `/${locale}/signup?next=${encodeURIComponent(safeNext)}`
+    : `/${locale}/signup`
+  const failureHref = safeNext
+    ? `/${locale}/login?error=invalid&next=${encodeURIComponent(safeNext)}`
+    : `/${locale}/login?error=invalid`
 
   async function handleLogin(formData: FormData) {
     'use server'
     const result = await loginAction(formData)
     if (result.success) {
-      redirect(`/${locale}/dashboard`)
+      redirect(successHref)
     }
-    redirect(`/${locale}/login?error=invalid`)
+    redirect(failureHref)
   }
 
   async function handleDemoLogin() {
     'use server'
     const result = await loginAsTestUserAction()
     if (result.success) {
-      redirect(`/${locale}/dashboard`)
+      redirect(successHref)
     }
-    redirect(`/${locale}/login?error=invalid`)
+    redirect(failureHref)
   }
 
   return (
@@ -185,7 +194,7 @@ export default async function LoginPage({ params, searchParams }: Props) {
           <p className="mt-5 text-center text-sm text-[var(--color-text-muted)]">
             {t('login.noAccount')}{' '}
             <Link
-              href={`/${locale}/signup`}
+              href={signupHref}
               className="text-[var(--color-accent)] hover:text-[var(--color-accent-strong)] underline-offset-2 hover:underline"
             >
               {t('login.createAccount')}

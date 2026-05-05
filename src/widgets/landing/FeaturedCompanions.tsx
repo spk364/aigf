@@ -47,18 +47,16 @@ export async function FeaturedCompanions({ locale }: Props) {
           </Link>
         </div>
 
-        <div className="-mx-4 overflow-x-auto px-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <ul className="flex gap-4 sm:gap-5">
-            {characters.map((character) => (
-              <li key={character.id}>
-                <PersonaCard
-                  character={character}
-                  href={`/${locale}/start?companion=${character.slug}`}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
+          {characters.map((character) => (
+            <li key={character.id} className="flex">
+              <PersonaCard
+                character={character}
+                href={`/${locale}/pick/${character.slug}`}
+              />
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   )

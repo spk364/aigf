@@ -1,19 +1,24 @@
 import { getTranslations } from 'next-intl/server'
 import { redirect } from 'next/navigation'
 import { signupAction } from '@/features/auth/actions/signup'
+import { safeNextPath } from '@/shared/auth/safe-next'
 import Link from 'next/link'
 
 type Props = {
   params: Promise<{ locale: string }>
-  searchParams: Promise<{ error?: string; field?: string }>
+  searchParams: Promise<{ error?: string; field?: string; next?: string }>
 }
 
 export default async function SignupPage({ params, searchParams }: Props) {
   const { locale } = await params
-  const { error, field } = await searchParams
+  const { error, field, next } = await searchParams
   const t = await getTranslations('auth')
 
   const googleEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+  const safeNext = safeNextPath(next)
+  const loginHref = safeNext
+    ? `/${locale}/login?next=${encodeURIComponent(safeNext)}`
+    : `/${locale}/login`
 
   async function handleSignup(formData: FormData) {
     'use server'
@@ -24,6 +29,9 @@ export default async function SignupPage({ params, searchParams }: Props) {
     }
     const result = await signupAction(formData)
     if (result.success) {
+      if (safeNext) {
+        redirect(safeNext)
+      }
       if (result.claimedDraftId) {
         redirect(`/${locale}/builder/${result.claimedDraftId}`)
       }
@@ -31,6 +39,7 @@ export default async function SignupPage({ params, searchParams }: Props) {
     }
     const params = new URLSearchParams({ error: result.error })
     if ('field' in result && result.field) params.set('field', result.field)
+    if (safeNext) params.set('next', safeNext)
     redirect(`/${locale}/signup?${params.toString()}`)
   }
 
@@ -253,7 +262,7 @@ export default async function SignupPage({ params, searchParams }: Props) {
           <p className="mt-5 text-center text-sm text-[var(--color-text-muted)]">
             {t('signup.haveAccount')}{' '}
             <Link
-              href={`/${locale}/login`}
+              href={loginHref}
               className="text-[var(--color-accent)] hover:text-[var(--color-accent-strong)] underline-offset-2 hover:underline"
             >
               {t('signup.signIn')}
