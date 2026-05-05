@@ -37,7 +37,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         { isPublished: { equals: true } },
         { landingFeatured: { equals: true } },
         { contentRating: { equals: 'sfw' } },
-        { deletedAt: { equals: null } },
+        { deletedAt: { exists: false } },
       ],
     },
     sort: ['landingOrder', 'displayOrder'],

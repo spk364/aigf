@@ -86,7 +86,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
               { kind: { equals: 'character_preview' } },
             ],
           },
-          { deletedAt: { equals: null } },
+          { deletedAt: { exists: false } },
         ],
       },
       sort: '-createdAt',
@@ -121,6 +121,52 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const sourceImageUrl = primaryImageUrl ?? referenceImageUrl ?? null
 
+    // Diagnostic: count ALL media-assets owned by this character regardless
+    // of kind / deletedAt, so we can tell at a glance whether the gallery's
+    // empty result is "persist didn't bind ownerCharacterId" vs "rows exist
+    // but kind filter excludes them" vs "rows are soft-deleted".
+    let diagnostic: {
+      totalAllOwned: number
+      byKind: Record<string, number>
+      includesDeleted: boolean
+      recent: Array<{ id: string | number; kind: string; deletedAt: string | null; createdAt: string | null }>
+    } | null = null
+    try {
+      const allResult = await payload.find({
+        collection: 'media-assets',
+        where: {
+          ownerCharacterId: { equals: characterIdCoerced },
+        },
+        sort: '-createdAt',
+        limit: 200,
+        overrideAccess: true,
+      })
+      const byKind: Record<string, number> = {}
+      let includesDeleted = false
+      for (const d of allResult.docs) {
+        const doc = d as Record<string, unknown>
+        const kind = typeof doc.kind === 'string' ? doc.kind : 'unknown'
+        byKind[kind] = (byKind[kind] ?? 0) + 1
+        if (doc.deletedAt) includesDeleted = true
+      }
+      diagnostic = {
+        totalAllOwned: allResult.docs.length,
+        byKind,
+        includesDeleted,
+        recent: allResult.docs.slice(0, 5).map((d) => {
+          const doc = d as Record<string, unknown>
+          return {
+            id: doc.id as string | number,
+            kind: typeof doc.kind === 'string' ? doc.kind : 'unknown',
+            deletedAt: typeof doc.deletedAt === 'string' ? doc.deletedAt : null,
+            createdAt: typeof doc.createdAt === 'string' ? doc.createdAt : null,
+          }
+        }),
+      }
+    } catch {
+      // Diagnostic is best-effort; don't break the main response.
+    }
+
     return NextResponse.json({
       items,
       primaryImageId: primaryImageId != null ? String(primaryImageId) : null,
@@ -128,6 +174,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       primaryImageUrl,
       referenceImageUrl,
       sourceImageUrl,
+      diagnostic,
     })
   } catch (err) {
     return NextResponse.json(

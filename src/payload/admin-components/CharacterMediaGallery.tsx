@@ -15,10 +15,18 @@ type MediaItem = {
   isReference: boolean
 }
 
+type Diagnostic = {
+  totalAllOwned: number
+  byKind: Record<string, number>
+  includesDeleted: boolean
+  recent: Array<{ id: string | number; kind: string; deletedAt: string | null; createdAt: string | null }>
+} | null
+
 type ListResponse = {
   items?: MediaItem[]
   primaryImageId?: string | null
   referenceImageId?: string | null
+  diagnostic?: Diagnostic
   error?: string
   message?: string
 }
@@ -26,7 +34,7 @@ type ListResponse = {
 type ListState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'loaded'; items: MediaItem[] }
+  | { status: 'loaded'; items: MediaItem[]; diagnostic: Diagnostic }
   | { status: 'error'; message: string }
 
 const BTN: React.CSSProperties = {
@@ -71,7 +79,7 @@ export function CharacterMediaGallery() {
         setState({ status: 'error', message: data.message ?? data.error ?? `HTTP ${res.status}` })
         return
       }
-      setState({ status: 'loaded', items: data.items ?? [] })
+      setState({ status: 'loaded', items: data.items ?? [], diagnostic: data.diagnostic ?? null })
     } catch (err) {
       setState({ status: 'error', message: err instanceof Error ? err.message : 'Unknown error' })
     }
@@ -106,7 +114,7 @@ export function CharacterMediaGallery() {
       setState((prev) =>
         prev.status === 'loaded'
           ? {
-              status: 'loaded',
+              ...prev,
               items: prev.items.map((m) => ({
                 ...m,
                 isPrimary: String(m.id) === String(mediaAssetId),
@@ -138,7 +146,7 @@ export function CharacterMediaGallery() {
       setState((prev) =>
         prev.status === 'loaded'
           ? {
-              status: 'loaded',
+              ...prev,
               items: prev.items.map((m) => ({
                 ...m,
                 isReference: String(m.id) === String(mediaAssetId),
@@ -171,7 +179,7 @@ export function CharacterMediaGallery() {
       setState((prev) =>
         prev.status === 'loaded'
           ? {
-              status: 'loaded',
+              ...prev,
               items: prev.items.filter((m) => String(m.id) !== String(mediaAssetId)),
             }
           : prev,

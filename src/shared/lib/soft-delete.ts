@@ -8,11 +8,11 @@ import type { Where } from 'payload'
 
 /** Merge `deletedAt IS NULL` into an existing Where clause. */
 export function addSoftDeleteFilter(where?: Where): Where {
-  const notDeleted: Where = { deletedAt: { equals: null } }
+  const notDeleted: Where = { deletedAt: { exists: false } }
   if (!where) return notDeleted
   // Wrap in AND to preserve caller's conditions.
   return { and: [where, notDeleted] }
 }
 
 /** Short alias. */
-export const notDeleted: Where = { deletedAt: { equals: null } }
+export const notDeleted: Where = { deletedAt: { exists: false } }

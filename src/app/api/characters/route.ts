@@ -100,7 +100,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const conditions: Where[] = [
     { kind: { equals: 'preset' } },
     { isPublished: { equals: true } },
-    { deletedAt: { equals: null } },
+    { deletedAt: { exists: false } },
   ]
 
   if (artStyles.length > 0) {
