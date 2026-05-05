@@ -1,9 +1,17 @@
 import { type CSSProperties } from 'react'
 
+export type AvatarPhoto = {
+  id: string
+  name: string
+  photoUrl: string
+  hue: number
+}
+
 type Avatar = {
   id: string
   name: string
   hue: number
+  photoUrl?: string
 }
 
 const NAMES = [
@@ -45,9 +53,22 @@ const NAMES = [
   'Juno',
 ]
 
-function buildAvatars(count: number, columnIndex: number): Avatar[] {
+function buildAvatars(
+  count: number,
+  columnIndex: number,
+  photos: AvatarPhoto[],
+): Avatar[] {
   return Array.from({ length: count }, (_, i) => {
     const seed = columnIndex * 13 + i * 7
+    if (photos.length > 0) {
+      const photo = photos[(columnIndex * count + i) % photos.length]!
+      return {
+        id: `${columnIndex}-${i}-${photo.id}`,
+        name: photo.name,
+        hue: photo.hue,
+        photoUrl: photo.photoUrl,
+      }
+    }
     const name = NAMES[(seed * 3) % NAMES.length] ?? 'A'
     const hue = (seed * 47) % 360
     return {
@@ -62,7 +83,7 @@ const COLUMN_COUNT = 6
 const AVATARS_PER_COLUMN = 8
 
 function AvatarTile({ avatar }: { avatar: Avatar }) {
-  const { name, hue } = avatar
+  const { name, hue, photoUrl } = avatar
   const initial = name.charAt(0)
   const style: CSSProperties = {
     background: `linear-gradient(135deg, hsl(${hue} 70% 55%) 0%, hsl(${(hue + 40) % 360} 60% 35%) 60%, hsl(${(hue + 80) % 360} 55% 25%) 100%)`,
@@ -73,6 +94,16 @@ function AvatarTile({ avatar }: { avatar: Avatar }) {
       style={style}
       aria-hidden
     >
+      {photoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photoUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -105,13 +136,15 @@ function AvatarColumn({
   direction,
   duration,
   visibility,
+  photos,
 }: {
   columnIndex: number
   direction: 'up' | 'down'
   duration: number
   visibility: string
+  photos: AvatarPhoto[]
 }) {
-  const avatars = buildAvatars(AVATARS_PER_COLUMN, columnIndex)
+  const avatars = buildAvatars(AVATARS_PER_COLUMN, columnIndex, photos)
   const animationName =
     direction === 'up' ? 'avatar-grid-scroll-up' : 'avatar-grid-scroll-down'
 
@@ -147,12 +180,19 @@ const COLUMN_VISIBILITY = [
   'hidden lg:flex',
 ]
 
-export function AvatarGrid() {
+function shufflePhotos(photos: AvatarPhoto[], columnIndex: number): AvatarPhoto[] {
+  if (photos.length === 0) return photos
+  const offset = (columnIndex * 5) % photos.length
+  return [...photos.slice(offset), ...photos.slice(0, offset)]
+}
+
+export function AvatarGrid({ photos = [] }: { photos?: AvatarPhoto[] } = {}) {
   const columns = Array.from({ length: COLUMN_COUNT }, (_, i) => ({
     index: i,
     direction: (i % 2 === 0 ? 'up' : 'down') as 'up' | 'down',
     duration: 60 + (i % 3) * 15,
     visibility: COLUMN_VISIBILITY[i] ?? 'flex',
+    photos: shufflePhotos(photos, i),
   }))
 
   return (
@@ -184,6 +224,7 @@ export function AvatarGrid() {
             direction={col.direction}
             duration={col.duration}
             visibility={col.visibility}
+            photos={col.photos}
           />
         ))}
       </div>

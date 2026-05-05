@@ -1,1 +1,1 @@
-export { AvatarGrid } from './AvatarGrid'
+export { AvatarGrid, type AvatarPhoto } from './AvatarGrid'

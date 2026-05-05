@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
-import { AvatarGrid } from '@/widgets/avatar-grid'
+import { AvatarGrid, type AvatarPhoto } from '@/widgets/avatar-grid'
 import { SiteHeader } from '@/widgets/site-header'
 import { SiteFooter } from '@/widgets/site-footer'
 import {
@@ -11,6 +11,7 @@ import {
   FaqSection,
   FinalCta,
 } from '@/widgets/landing'
+import { getFeaturedCharacters } from '@/widgets/landing/featured-data'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -19,6 +20,13 @@ type Props = {
 export default async function HomePage({ params }: Props) {
   const { locale } = await params
   const t = await getTranslations('common')
+  const featured = await getFeaturedCharacters()
+  const avatarPhotos: AvatarPhoto[] = featured.map((c) => ({
+    id: c.id,
+    name: c.name,
+    photoUrl: c.photoUrl,
+    hue: c.hue,
+  }))
 
   return (
     <>
@@ -26,7 +34,7 @@ export default async function HomePage({ params }: Props) {
 
       <main className="flex flex-col bg-[var(--color-bg)] pt-16">
         <section className="relative flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center overflow-hidden px-4 text-center">
-          <AvatarGrid />
+          <AvatarGrid photos={avatarPhotos} />
 
           <div
             aria-hidden
