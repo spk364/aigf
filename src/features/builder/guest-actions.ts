@@ -87,10 +87,44 @@ const appearanceSchema = z.object({
   ageDisplay: z.number().min(21).max(99).optional(),
   ageRange: z.enum(['young_adult', 'adult', 'mature', 'experienced']).optional(),
   bodyType: z.enum(['slender', 'average', 'curvy', 'voluptuous']).optional(),
-  hair: z.object({ color: z.string(), length: z.string(), style: z.string() }).partial().optional(),
+  bust: z.enum(['small', 'medium', 'large', 'huge']).optional(),
+  butt: z.enum(['small', 'medium', 'large', 'huge']).optional(),
+  hair: z
+    .object({
+      color: z.string(),
+      length: z.string(),
+      style: z.string(),
+      preset: z.string(),
+    })
+    .partial()
+    .optional(),
   eyes: z.object({ color: z.string() }).partial().optional(),
   features: z.array(z.string()).optional(),
 })
+
+const BUST_FRAGMENTS: Record<string, string> = {
+  small: 'small natural bust',
+  medium: 'medium balanced bust',
+  large: 'large full bust',
+  huge: 'voluptuous large bust, ample chest',
+}
+
+const BUTT_FRAGMENTS: Record<string, string> = {
+  small: 'firm toned glutes, athletic backside',
+  medium: 'round shapely glutes, balanced curves',
+  large: 'full curvy glutes, prominent rear',
+  huge: 'voluptuous bubble butt, very pronounced curves',
+}
+
+// Map a young_adult/adult/mature/experienced range onto a representative
+// numeric age the prompt builders already understand. Floor stays >=21 to
+// keep the safety pipeline happy.
+const AGE_RANGE_TO_DISPLAY: Record<string, number> = {
+  young_adult: 23,
+  adult: 28,
+  mature: 38,
+  experienced: 48,
+}
 
 const generateInputSchema = z.object({
   appearance: appearanceSchema,
@@ -101,11 +135,21 @@ const generateInputSchema = z.object({
 // Subject tokens describing the woman's appearance from the user's onboarding
 // choices. Style-agnostic — same pieces are layered into either an SD-style
 // or anime prompt by buildPreviewPrompt.
+function resolveAge(appearance: Record<string, unknown>, fallback: number): number {
+  if (typeof appearance.ageDisplay === 'number') {
+    return Math.max(21, appearance.ageDisplay)
+  }
+  const range = String(appearance.ageRange ?? '')
+  if (range && AGE_RANGE_TO_DISPLAY[range]) {
+    return AGE_RANGE_TO_DISPLAY[range]!
+  }
+  return fallback
+}
+
 function buildSubjectTokens(appearance: Record<string, unknown>): string {
   const parts: string[] = []
 
-  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 25
-  const safeAge = Math.max(21, ageDisplay)
+  const safeAge = resolveAge(appearance, 25)
   parts.push(`${safeAge} years old`)
   parts.push('(adult woman:1.3)')
 
@@ -118,6 +162,11 @@ function buildSubjectTokens(appearance: Record<string, unknown>): string {
   const bodyType = String(appearance.bodyType ?? '')
   const bodyOpt = BODY_TYPES.find((b) => b.value === bodyType)
   if (bodyOpt?.promptFragment) parts.push(bodyOpt.promptFragment)
+
+  const bust = String(appearance.bust ?? '')
+  if (BUST_FRAGMENTS[bust]) parts.push(BUST_FRAGMENTS[bust]!)
+  const butt = String(appearance.butt ?? '')
+  if (BUTT_FRAGMENTS[butt]) parts.push(BUTT_FRAGMENTS[butt]!)
 
   const hair = (appearance.hair ?? {}) as Record<string, string>
   const hairColor = HAIR_COLORS.find((h) => h.value === hair.color)
@@ -191,8 +240,7 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
 // Produce a natural-language description for FLUX. Pulls the same option
 // fragments but rewords them as "with X" / adjectives glued into a sentence.
 function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
-  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 28
-  const safeAge = Math.max(21, ageDisplay)
+  const safeAge = resolveAge(appearance, 28)
 
   const ethnicityDescriptors: string[] = []
   const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
@@ -204,6 +252,11 @@ function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
   const bodyType = String(appearance.bodyType ?? '')
   const bodyOpt = BODY_TYPES.find((b) => b.value === bodyType)
   const bodyDesc = bodyOpt?.promptFragment ?? ''
+
+  const bust = String(appearance.bust ?? '')
+  const bustDesc = BUST_FRAGMENTS[bust] ?? ''
+  const butt = String(appearance.butt ?? '')
+  const buttDesc = BUTT_FRAGMENTS[butt] ?? ''
 
   const hair = (appearance.hair ?? {}) as Record<string, string>
   const hairColor = HAIR_COLORS.find((h) => h.value === hair.color)?.promptFragment
@@ -224,6 +277,8 @@ function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
   const descriptors = [
     ethnicityDescriptors.join(' '),
     bodyDesc,
+    bustDesc,
+    buttDesc,
     hairDesc,
     eyesDesc,
     featureBits.join(', '),

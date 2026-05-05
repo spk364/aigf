@@ -2,9 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
+  AGE_RANGE_OPTIONS,
   BODY_OPTIONS,
+  BUST_OPTIONS,
+  BUTT_OPTIONS,
   EYE_COLOR_OPTIONS,
   HAIR_COLOR_OPTIONS,
+  HAIR_STYLE_OPTIONS,
   NAME_SUGGESTIONS,
   PERSONALITY_OPTIONS,
   STYLE_OPTIONS,
@@ -23,16 +27,42 @@ type GeneratedPreview = {
   publicUrl: string
 }
 
+// Map a long+wavy / short+bob style into the (length, style) pair the builder
+// pipeline uses internally.
+const HAIR_STYLE_MAP: Record<string, { length?: string; style?: string }> = {
+  long_straight: { length: 'long', style: 'straight' },
+  long_wavy: { length: 'long', style: 'wavy' },
+  long_curly: { length: 'long', style: 'curly' },
+  medium_wavy: { length: 'medium', style: 'wavy' },
+  short_bob: { length: 'short', style: 'straight' },
+  pixie: { length: 'short', style: 'straight' },
+  ponytail: { length: 'long', style: 'straight' },
+  updo: { length: 'long', style: 'wavy' },
+}
+
 function choicesToAppearance(choices: OnboardingChoices): Record<string, unknown> {
   const appearance: Record<string, unknown> = {}
   if (choices.style) appearance.artStyle = choices.style
+  if (choices.ageRange) appearance.ageRange = choices.ageRange
   if (choices.body) appearance.bodyType = choices.body
-  if (choices.hairColor) appearance.hair = { color: choices.hairColor }
+  if (choices.bust) appearance.bust = choices.bust
+  if (choices.butt) appearance.butt = choices.butt
+
+  const hair: Record<string, string> = {}
+  if (choices.hairColor) hair.color = choices.hairColor
+  if (choices.hairStyle) {
+    const mapped = HAIR_STYLE_MAP[choices.hairStyle]
+    if (mapped?.length) hair.length = mapped.length
+    if (mapped?.style) hair.style = mapped.style
+    hair.preset = choices.hairStyle
+  }
+  if (Object.keys(hair).length > 0) appearance.hair = hair
+
   if (choices.eyeColor) appearance.eyes = { color: choices.eyeColor }
   return appearance
 }
 
-const STORAGE_KEY = 'gfai_onboarding_v1'
+const STORAGE_KEY = 'gfai_onboarding_v2'
 
 type Props = {
   locale: string
@@ -55,10 +85,31 @@ const STEPS: StepDef[] = [
     type: 'cards',
   },
   {
+    key: 'ageRange',
+    question: 'Age range',
+    subtitle: 'All companions are 21+',
+    options: AGE_RANGE_OPTIONS,
+    type: 'cards',
+  },
+  {
     key: 'body',
     question: 'Choose her body',
     subtitle: 'You can fine-tune later',
     options: BODY_OPTIONS,
+    type: 'cards',
+  },
+  {
+    key: 'bust',
+    question: 'Bust size',
+    subtitle: 'Pick the look you prefer',
+    options: BUST_OPTIONS,
+    type: 'cards',
+  },
+  {
+    key: 'butt',
+    question: 'Butt size',
+    subtitle: 'Pick the shape you prefer',
+    options: BUTT_OPTIONS,
     type: 'cards',
   },
   {
@@ -67,6 +118,13 @@ const STEPS: StepDef[] = [
     subtitle: 'Pick a shade',
     options: HAIR_COLOR_OPTIONS,
     type: 'swatches',
+  },
+  {
+    key: 'hairStyle',
+    question: 'Hair style',
+    subtitle: 'How does she wear it?',
+    options: HAIR_STYLE_OPTIONS,
+    type: 'cards',
   },
   {
     key: 'eyeColor',
