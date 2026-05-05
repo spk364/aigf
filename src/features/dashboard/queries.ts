@@ -70,7 +70,7 @@ export async function getDashboardData(opts: {
       and: [
         { kind: { equals: 'custom' } },
         { createdBy: { equals: opts.userId } },
-        { deletedAt: { equals: null } },
+        { deletedAt: { exists: false } },
       ],
     },
     sort: '-createdAt',
@@ -85,7 +85,7 @@ export async function getDashboardData(opts: {
       and: [
         { userId: { equals: opts.userId } },
         { status: { equals: 'active' } },
-        { deletedAt: { equals: null } },
+        { deletedAt: { exists: false } },
       ],
     },
     sort: '-lastMessageAt',

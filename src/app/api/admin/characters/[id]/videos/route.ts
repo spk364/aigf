@@ -39,7 +39,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         and: [
           { ownerCharacterId: { equals: coerceRelId(characterId) } },
           { kind: { equals: 'generated_video' } },
-          { deletedAt: { equals: null } },
+          { deletedAt: { exists: false } },
         ],
       },
       sort: '-createdAt',

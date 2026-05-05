@@ -597,7 +597,7 @@ export async function POST(req: NextRequest) {
       and: [
         { conversationId: { equals: conversationId } },
         { role: { in: ['user', 'assistant'] } },
-        { deletedAt: { equals: null } },
+        { deletedAt: { exists: false } },
       ],
     },
     sort: 'createdAt',
