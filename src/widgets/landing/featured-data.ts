@@ -1,6 +1,6 @@
 import 'server-only'
 import { cache } from 'react'
-import { getPayload } from 'payload'
+import { getPayload, type Where } from 'payload'
 import config from '@payload-config'
 
 export type FeaturedCharacter = {
@@ -23,8 +23,14 @@ function pickHue(seed: string): number {
   return h % 360
 }
 
-export const getFeaturedCharacters = cache(
-  async (): Promise<FeaturedCharacter[]> => {
+type FetchOpts = {
+  where: Where
+  sort: string | string[]
+  limit: number
+  locale?: 'en' | 'ru' | 'es'
+}
+
+async function fetchCharacters(opts: FetchOpts): Promise<FeaturedCharacter[]> {
   let payload
   try {
     payload = await getPayload({ config })
@@ -36,15 +42,10 @@ export const getFeaturedCharacters = cache(
   try {
     result = await payload.find({
       collection: 'characters',
-      where: {
-        and: [
-          { isPublished: { equals: true } },
-          { primaryImageId: { exists: true } },
-          { kind: { equals: 'preset' } },
-        ],
-      },
-      sort: ['landingOrder', 'displayOrder'],
-      limit: 24,
+      ...(opts.locale ? { locale: opts.locale } : {}),
+      where: opts.where,
+      sort: opts.sort,
+      limit: opts.limit,
       depth: 1,
       overrideAccess: true,
     })
@@ -74,7 +75,7 @@ export const getFeaturedCharacters = cache(
         ],
       },
       sort: '-createdAt',
-      limit: 200,
+      limit: 500,
       overrideAccess: true,
     })
   } catch {
@@ -128,5 +129,36 @@ export const getFeaturedCharacters = cache(
       hue: pickHue(id),
     }
   })
-  },
+}
+
+export const getFeaturedCharacters = cache(
+  async (): Promise<FeaturedCharacter[]> =>
+    fetchCharacters({
+      where: {
+        and: [
+          { isPublished: { equals: true } },
+          { primaryImageId: { exists: true } },
+          { kind: { equals: 'preset' } },
+        ],
+      },
+      sort: ['landingOrder', 'displayOrder'],
+      limit: 24,
+    }),
+)
+
+export const getExploreCharacters = cache(
+  async (locale: 'en' | 'ru' | 'es'): Promise<FeaturedCharacter[]> =>
+    fetchCharacters({
+      locale,
+      where: {
+        and: [
+          { isPublished: { equals: true } },
+          { primaryImageId: { exists: true } },
+          { kind: { equals: 'preset' } },
+          { deletedAt: { exists: false } },
+        ],
+      },
+      sort: ['displayOrder', 'name'],
+      limit: 100,
+    }),
 )

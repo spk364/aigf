@@ -11,6 +11,26 @@
     "noAccount": "Free to start. Premium features available later.",
     "back": "Back to home"
   },
+  "explore": {
+    "eyebrow": "Catalog",
+    "title": "Explore companions",
+    "subtitle": "Browse hand-crafted personalities. Pick the one that catches your eye and start chatting in seconds.",
+    "searchPlaceholder": "Search by name, vibe, or tag…",
+    "allTags": "All",
+    "resultsCount": "{count} companions",
+    "empty": "No companions match your filters.",
+    "clearFilters": "Clear filters",
+    "noneTitle": "Catalog is being prepared",
+    "noneSubtitle": "Featured companions will appear here soon. In the meantime, design one yourself.",
+    "createTitle": "Don't see her? Create your own",
+    "createSubtitle": "Build a one-of-a-kind companion in 60 seconds — choose her look, voice, and personality.",
+    "createCta": "Create my companion",
+    "sort": {
+      "featured": "Featured",
+      "name": "Name (A–Z)",
+      "random": "Surprise me"
+    }
+  },
   "dashboard": {
     "quotaToday": "Today: {used} / {cap} messages",
     "upgrade": "Upgrade"

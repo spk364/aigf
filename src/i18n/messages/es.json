@@ -11,6 +11,26 @@
     "noAccount": "Empieza gratis. Funciones premium disponibles más adelante.",
     "back": "Volver al inicio"
   },
+  "explore": {
+    "eyebrow": "Catálogo",
+    "title": "Explora compañeras",
+    "subtitle": "Personalidades creadas a mano. Elige la que te llame y empieza a chatear en segundos.",
+    "searchPlaceholder": "Busca por nombre, vibe o etiqueta…",
+    "allTags": "Todas",
+    "resultsCount": "{count} compañeras",
+    "empty": "Ninguna coincide con tus filtros.",
+    "clearFilters": "Limpiar filtros",
+    "noneTitle": "Catálogo en preparación",
+    "noneSubtitle": "Pronto aparecerán compañeras destacadas. Mientras tanto, diseña la tuya.",
+    "createTitle": "¿No la ves? Crea la tuya",
+    "createSubtitle": "Compañera única en 60 segundos — elige su look, voz y personalidad.",
+    "createCta": "Crear mi compañera",
+    "sort": {
+      "featured": "Destacadas",
+      "name": "Nombre (A–Z)",
+      "random": "Sorpréndeme"
+    }
+  },
   "dashboard": {
     "quotaToday": "Hoy: {used} / {cap} mensajes",
     "upgrade": "Mejorar plan"
