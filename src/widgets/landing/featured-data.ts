@@ -1,4 +1,5 @@
 import 'server-only'
+import { cache } from 'react'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 
@@ -22,7 +23,8 @@ function pickHue(seed: string): number {
   return h % 360
 }
 
-export async function getFeaturedCharacters(): Promise<FeaturedCharacter[]> {
+export const getFeaturedCharacters = cache(
+  async (): Promise<FeaturedCharacter[]> => {
   let payload
   try {
     payload = await getPayload({ config })
@@ -126,4 +128,5 @@ export async function getFeaturedCharacters(): Promise<FeaturedCharacter[]> {
       hue: pickHue(id),
     }
   })
-}
+  },
+)
