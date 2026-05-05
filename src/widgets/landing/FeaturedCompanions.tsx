@@ -1,12 +1,16 @@
 import Link from 'next/link'
-import { FEATURED_PERSONAS } from './personas'
 import { PersonaCard } from './PersonaCard'
+import { getFeaturedCharacters } from './featured-data'
 
 type Props = {
   locale: string
 }
 
-export function FeaturedCompanions({ locale }: Props) {
+export async function FeaturedCompanions({ locale }: Props) {
+  const characters = await getFeaturedCharacters()
+
+  if (characters.length === 0) return null
+
   return (
     <section className="relative w-full bg-[var(--color-bg)] py-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -19,8 +23,7 @@ export function FeaturedCompanions({ locale }: Props) {
               Meet someone new today
             </h2>
             <p className="mt-2 max-w-xl text-[var(--color-text-muted)]">
-              Twelve unique personalities — from shy students to confident leaders, from poets to
-              succubi. Pick anyone to start a conversation, or build your own.
+              Hand-picked personalities, ready to chat. Hover any card to see her in motion.
             </p>
           </div>
           <Link
@@ -46,11 +49,11 @@ export function FeaturedCompanions({ locale }: Props) {
 
         <div className="-mx-4 overflow-x-auto px-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <ul className="flex gap-4 sm:gap-5">
-            {FEATURED_PERSONAS.map((persona) => (
-              <li key={persona.slug}>
+            {characters.map((character) => (
+              <li key={character.id}>
                 <PersonaCard
-                  persona={persona}
-                  href={`/${locale}/start?companion=${persona.slug}`}
+                  character={character}
+                  href={`/${locale}/start?companion=${character.slug}`}
                 />
               </li>
             ))}
