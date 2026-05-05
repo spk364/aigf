@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDocumentInfo } from '@payloadcms/ui'
 import { buildVideoPrompt, VIDEO_NEGATIVE_PROMPT } from '@/features/video/motion-presets'
+import { saveJob, loadJob, clearJob } from './job-persistence'
 
 type MotionStrength = 'subtle' | 'medium' | 'strong'
 type MotionMood = 'gentle' | 'playful' | 'intimate'
@@ -205,6 +206,46 @@ export function GenerateVideoButton() {
     }
   }, [])
 
+  // On mount, if there's a pending video job for this character saved in
+  // localStorage from a previous tab/reload, resume polling. Without this
+  // the fal job continues server-side but no one mirrors the result to R2,
+  // so the asset is silently dropped — exactly the "видео не сохранилось
+  // после перезагрузки" complaint.
+  useEffect(() => {
+    if (!id) return
+    const pending = loadJob(id, 'video')
+    if (!pending || !pending.requestId || !pending.cancelUrl) return
+    const allowedMotionStrengths: MotionStrength[] = ['subtle', 'medium', 'strong']
+    const allowedMoods: MotionMood[] = ['gentle', 'playful', 'intimate']
+    const resumed: ProgressState = {
+      status: 'polling',
+      requestId: pending.requestId,
+      endpoint: pending.endpoint,
+      statusUrl: pending.statusUrl,
+      responseUrl: pending.responseUrl,
+      cancelUrl: pending.cancelUrl,
+      startedAt: pending.startedAt,
+      promptUsed: pending.promptUsed ?? '',
+      motionStrength:
+        pending.motionStrength &&
+        allowedMotionStrengths.includes(pending.motionStrength as MotionStrength)
+          ? (pending.motionStrength as MotionStrength)
+          : 'medium',
+      mood:
+        pending.mood && allowedMoods.includes(pending.mood as MotionMood)
+          ? (pending.mood as MotionMood)
+          : 'gentle',
+      resolutionWarning: pending.resolutionWarning ?? null,
+      queuePosition: null,
+      phase: 'unknown',
+      lastLog: null,
+      sourceImageUrl: pending.sourceImageUrl ?? '',
+    }
+    setState(resumed)
+    pollTimer.current = setTimeout(() => pollOnce(resumed), POLL_INTERVAL_MS)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
   if (!id) {
     return (
       <p style={{ padding: '12px', color: '#888', fontSize: '13px' }}>
@@ -246,8 +287,10 @@ export function GenerateVideoButton() {
           status: 'error',
           message: data.message ?? data.error ?? 'Video generation failed',
         })
+        if (id) clearJob(id, 'video')
         return
       }
+      if (id) clearJob(id, 'video')
       setState({
         status: 'done',
         url: data.video.url,
@@ -279,6 +322,7 @@ export function GenerateVideoButton() {
     } catch {
       // best-effort — even if the API call fails, stop polling locally
     }
+    if (id) clearJob(id, 'video')
     setState({
       status: 'error',
       message: 'Cancelled',
@@ -339,6 +383,21 @@ export function GenerateVideoButton() {
         sourceImageUrl: data.sourceImageUrl,
       }
       setState(next)
+      if (id) {
+        saveJob(id, 'video', {
+          requestId: next.requestId,
+          endpoint: next.endpoint,
+          statusUrl: next.statusUrl,
+          responseUrl: next.responseUrl,
+          cancelUrl: next.cancelUrl,
+          startedAt: next.startedAt,
+          promptUsed: next.promptUsed,
+          motionStrength: next.motionStrength,
+          mood: next.mood,
+          resolutionWarning: next.resolutionWarning,
+          sourceImageUrl: next.sourceImageUrl,
+        })
+      }
       pollTimer.current = setTimeout(() => pollOnce(next), POLL_INTERVAL_MS)
     } catch (err) {
       setState({
