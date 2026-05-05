@@ -266,26 +266,72 @@ export async function fetchImageJobStatus(args: {
       error: `fal result HTTP ${resultRes.status}: ${detailMsg || '(empty body)'}`,
     }
   }
-  const result = (await resultRes.json()) as {
-    images?: Array<{ url: string; width: number; height: number; content_type: string }>
+  // fal endpoints don't agree on the shape of their result. RealVisXL,
+  // fast-sdxl, FLUX, and most LoRA endpoints return `{ images: [...] }`.
+  // ip-adapter-face-id and a few others return a singular `{ image: {...} }`
+  // and sometimes nest the actual image inside `output` or `result`. Normalise
+  // here instead of forcing each caller to know.
+  type FalImage = {
+    url: string
+    width?: number
+    height?: number
+    content_type?: string
+  }
+  const rawResult = (await resultRes.json()) as {
+    images?: FalImage[]
+    image?: FalImage
+    output?: { images?: FalImage[]; image?: FalImage }
+    result?: { images?: FalImage[]; image?: FalImage }
     seed?: number
     detail?: string
+    error?: string
+    has_nsfw_concepts?: boolean[]
   }
-  if (result.detail) return { status: 'failed', error: result.detail }
-  if (!Array.isArray(result.images) || result.images.length === 0) {
-    return { status: 'failed', error: 'fal image response missing images[]' }
+  if (rawResult.detail) return { status: 'failed', error: rawResult.detail }
+  if (rawResult.error) return { status: 'failed', error: rawResult.error }
+
+  const images: FalImage[] = (() => {
+    if (Array.isArray(rawResult.images) && rawResult.images.length > 0) return rawResult.images
+    if (rawResult.image?.url) return [rawResult.image]
+    if (Array.isArray(rawResult.output?.images) && rawResult.output!.images!.length > 0) {
+      return rawResult.output!.images!
+    }
+    if (rawResult.output?.image?.url) return [rawResult.output.image]
+    if (Array.isArray(rawResult.result?.images) && rawResult.result!.images!.length > 0) {
+      return rawResult.result!.images!
+    }
+    if (rawResult.result?.image?.url) return [rawResult.result.image]
+    return []
+  })()
+
+  if (images.length === 0) {
+    // Common fal failure mode: NSFW filter fires, no images, no detail/error.
+    if (Array.isArray(rawResult.has_nsfw_concepts) && rawResult.has_nsfw_concepts.some(Boolean)) {
+      return {
+        status: 'failed',
+        error:
+          'fal NSFW filter blocked the output. Adjust the prompt or switch model. (no images returned)',
+      }
+    }
+    // Surface a snippet of the raw response so the admin can see what fal
+    // actually replied — much more debuggable than "missing images[]".
+    const snippet = JSON.stringify(rawResult).slice(0, 400)
+    return {
+      status: 'failed',
+      error: `fal image response had no usable image. Raw: ${snippet}`,
+    }
   }
 
   return {
     status: 'completed',
     result: {
-      images: result.images.map((img) => ({
+      images: images.map((img) => ({
         url: img.url,
-        width: img.width,
-        height: img.height,
+        width: img.width ?? 0,
+        height: img.height ?? 0,
         contentType: img.content_type ?? 'image/jpeg',
       })),
-      seed: result.seed ?? 0,
+      seed: rawResult.seed ?? 0,
       requestId: args.requestId,
       modelName: args.modelName,
       endpoint: args.endpoint,
