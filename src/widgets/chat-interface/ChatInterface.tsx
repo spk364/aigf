@@ -33,6 +33,7 @@ type Props = {
   initialMessages: Message[]
   locale: string
   characterName?: string
+  characterPhotoUrl?: string
   strings?: Partial<ChatStrings>
 }
 
@@ -121,6 +122,46 @@ function IconArrowPath() {
   )
 }
 
+function CharacterAvatar({
+  name,
+  photoUrl,
+  size,
+}: {
+  name: string
+  photoUrl?: string
+  size: 'sm' | 'md' | 'lg'
+}) {
+  const dimensions =
+    size === 'lg' ? 'h-11 w-11' : size === 'md' ? 'h-9 w-9' : 'h-7 w-7'
+  const fontSize = size === 'lg' ? 'text-base' : size === 'md' ? 'text-sm' : 'text-xs'
+
+  if (photoUrl) {
+    return (
+      <div className={`${dimensions} shrink-0 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={photoUrl}
+          alt={name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={`${dimensions} ${fontSize} flex shrink-0 items-center justify-center rounded-xl font-bold text-[var(--color-bg)]`}
+      style={{
+        background: 'linear-gradient(135deg, var(--color-accent-strong), var(--color-accent))',
+      }}
+      aria-hidden
+    >
+      {name.charAt(0).toUpperCase()}
+    </div>
+  )
+}
+
 function TypingDots() {
   return (
     <span className="inline-flex items-center gap-1" aria-label="typing">
@@ -141,6 +182,7 @@ export function ChatInterface({
   initialMessages,
   locale,
   characterName = 'Anna',
+  characterPhotoUrl,
   strings: stringsProp,
 }: Props) {
   const s = { ...defaultStrings, ...stringsProp }
@@ -412,15 +454,7 @@ export function ChatInterface({
     <div className="flex h-full flex-col bg-[var(--color-bg)]">
       {/* Header */}
       <header className="flex items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4">
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-[var(--color-bg)]"
-          style={{
-            background: 'linear-gradient(135deg, var(--color-accent-strong), var(--color-accent))',
-          }}
-          aria-hidden
-        >
-          {characterName.charAt(0).toUpperCase()}
-        </div>
+        <CharacterAvatar name={characterName} photoUrl={characterPhotoUrl} size="lg" />
         <div>
           <p className="font-semibold text-[var(--color-text)]">{characterName}</p>
           <p className="text-xs text-[var(--color-success)]">Online</p>
@@ -437,15 +471,12 @@ export function ChatInterface({
             >
               {/* Avatar for assistant */}
               {msg.role === 'assistant' && (
-                <div
-                  className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-[var(--color-bg)]"
-                  style={{
-                    background:
-                      'linear-gradient(135deg, var(--color-accent-strong), var(--color-accent))',
-                  }}
-                  aria-hidden
-                >
-                  {characterName.charAt(0).toUpperCase()}
+                <div className="mb-1">
+                  <CharacterAvatar
+                    name={characterName}
+                    photoUrl={characterPhotoUrl}
+                    size="sm"
+                  />
                 </div>
               )}
 
@@ -501,15 +532,12 @@ export function ChatInterface({
           {/* Streaming draft */}
           {draft && (
             <div className="flex items-end gap-2.5">
-              <div
-                className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-[var(--color-bg)]"
-                style={{
-                  background:
-                    'linear-gradient(135deg, var(--color-accent-strong), var(--color-accent))',
-                }}
-                aria-hidden
-              >
-                {characterName.charAt(0).toUpperCase()}
+              <div className="mb-1">
+                <CharacterAvatar
+                  name={characterName}
+                  photoUrl={characterPhotoUrl}
+                  size="sm"
+                />
               </div>
               <div className="max-w-[78%] rounded-2xl rounded-bl-sm bg-[var(--color-surface-2)] px-4 py-3 text-sm leading-relaxed text-[var(--color-text)]">
                 <span className="whitespace-pre-wrap">{draft}</span>
@@ -520,15 +548,12 @@ export function ChatInterface({
           {/* Typing indicator */}
           {showTyping && (
             <div className="flex items-end gap-2.5">
-              <div
-                className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-[var(--color-bg)]"
-                style={{
-                  background:
-                    'linear-gradient(135deg, var(--color-accent-strong), var(--color-accent))',
-                }}
-                aria-hidden
-              >
-                {characterName.charAt(0).toUpperCase()}
+              <div className="mb-1">
+                <CharacterAvatar
+                  name={characterName}
+                  photoUrl={characterPhotoUrl}
+                  size="sm"
+                />
               </div>
               <div className="rounded-2xl rounded-bl-sm bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text-muted)]">
                 <TypingDots />

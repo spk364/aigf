@@ -2,6 +2,15 @@
   "common": {
     "hello": "Hello"
   },
+  "pick": {
+    "eyebrow": "Almost there",
+    "headline": "Start chatting with {name}",
+    "subheadline": "Sign up free to send your first message — no credit card required. Already have an account? Sign in to jump back in.",
+    "signUp": "Sign up free",
+    "signIn": "Sign in",
+    "noAccount": "Free to start. Premium features available later.",
+    "back": "Back to home"
+  },
   "dashboard": {
     "quotaToday": "Today: {used} / {cap} messages",
     "upgrade": "Upgrade"
