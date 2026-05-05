@@ -7,6 +7,7 @@ import {
   IMAGE_SIZE_PRESETS,
   DEFAULT_IMAGE_SIZE_PRESET_ID,
 } from '@/shared/ai/image-models'
+import { saveJob, loadJob, clearJob } from './job-persistence'
 
 type ImageSize = string
 
@@ -144,6 +145,56 @@ export function GenerateImageButton() {
     }
   }, [])
 
+  // On mount, if there's a pending image / reference job for this character
+  // saved in localStorage, resume polling from where the previous tab left
+  // off. This keeps generated assets from being orphaned when the admin
+  // reloads mid-generation.
+  useEffect(() => {
+    if (!id) return
+    const pendingImage = loadJob(id, 'image')
+    if (pendingImage && pendingImage.requestId) {
+      const resumed: ImageProgressState = {
+        status: 'polling',
+        requestId: pendingImage.requestId,
+        endpoint: pendingImage.endpoint,
+        modelName: pendingImage.modelName ?? '',
+        statusUrl: pendingImage.statusUrl,
+        responseUrl: pendingImage.responseUrl,
+        startedAt: pendingImage.startedAt,
+        promptUsed: pendingImage.promptUsed ?? '',
+        negativePromptUsed: pendingImage.negativePromptUsed ?? '',
+        modelUsed: pendingImage.modelUsed ?? '',
+        setPrimary: pendingImage.setPrimary ?? false,
+        phase: 'unknown',
+        queuePosition: null,
+        lastLog: null,
+      }
+      setState(resumed)
+      pollTimer.current = setTimeout(() => pollOnce(resumed), POLL_INTERVAL_MS)
+    }
+    const pendingRef = loadJob(id, 'reference')
+    if (pendingRef && pendingRef.requestId) {
+      const resumed: RefProgressState = {
+        status: 'polling',
+        requestId: pendingRef.requestId,
+        endpoint: pendingRef.endpoint,
+        modelName: pendingRef.modelName ?? '',
+        statusUrl: pendingRef.statusUrl,
+        responseUrl: pendingRef.responseUrl,
+        startedAt: pendingRef.startedAt,
+        promptUsed: pendingRef.promptUsed ?? '',
+        negativePromptUsed: pendingRef.negativePromptUsed ?? '',
+        setPrimary: pendingRef.setPrimary ?? false,
+        phase: 'unknown',
+        queuePosition: null,
+        lastLog: null,
+      }
+      setRefState(resumed)
+      refPollTimer.current = setTimeout(() => pollRefOnce(resumed), POLL_INTERVAL_MS)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
   if (!id) {
     return (
       <p style={{ padding: '12px', color: '#888', fontSize: '13px' }}>
@@ -215,8 +266,10 @@ export function GenerateImageButton() {
           status: 'error',
           message: ok.message ?? ok.error ?? 'Image generation failed',
         })
+        if (id) clearJob(id, 'image')
         return
       }
+      if (id) clearJob(id, 'image')
       setState({
         status: 'done',
         url: ok.url,
@@ -297,6 +350,20 @@ export function GenerateImageButton() {
         lastLog: null,
       }
       setState(next)
+      if (id) {
+        saveJob(id, 'image', {
+          requestId: next.requestId,
+          endpoint: next.endpoint,
+          modelName: next.modelName,
+          statusUrl: next.statusUrl,
+          responseUrl: next.responseUrl,
+          startedAt: next.startedAt,
+          promptUsed: next.promptUsed,
+          negativePromptUsed: next.negativePromptUsed,
+          modelUsed: next.modelUsed,
+          setPrimary: next.setPrimary,
+        })
+      }
       pollTimer.current = setTimeout(() => pollOnce(next), POLL_INTERVAL_MS)
     } catch (err) {
       setState({
@@ -362,8 +429,10 @@ export function GenerateImageButton() {
           status: 'error',
           message: ok.message ?? ok.error ?? 'Reference generation failed',
         })
+        if (id) clearJob(id, 'reference')
         return
       }
+      if (id) clearJob(id, 'reference')
       setRefState({
         status: 'done',
         url: ok.url,
@@ -434,6 +503,19 @@ export function GenerateImageButton() {
         lastLog: null,
       }
       setRefState(next)
+      if (id) {
+        saveJob(id, 'reference', {
+          requestId: next.requestId,
+          endpoint: next.endpoint,
+          modelName: next.modelName,
+          statusUrl: next.statusUrl,
+          responseUrl: next.responseUrl,
+          startedAt: next.startedAt,
+          promptUsed: next.promptUsed,
+          negativePromptUsed: next.negativePromptUsed,
+          setPrimary: next.setPrimary,
+        })
+      }
       refPollTimer.current = setTimeout(() => pollRefOnce(next), POLL_INTERVAL_MS)
     } catch (err) {
       setRefState({
