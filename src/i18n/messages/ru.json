@@ -29,6 +29,9 @@
     "upgradeCta": "Улучшить",
     "yourConversations": "Твои разговоры",
     "startNewChat": "Начать новый чат",
+    "backToChats": "Все чаты",
+    "backToHome": "Главная",
+    "dashboard": "Кабинет",
     "image": {
       "upgradeRequired": "Фотографии доступны только на Premium-плане. {link}, чтобы открыть.",
       "tokensRequired": "У тебя закончились токены в этом месяце. {link}, чтобы пополнить.",
