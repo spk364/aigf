@@ -288,7 +288,7 @@ function chooseFraming(appearance: Record<string, unknown>): string {
     : 'portrait, head and shoulders, looking at camera'
 }
 
-export function buildPreviewPrompt(appearance: Record<string, unknown>): string {
+function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const parts: string[] = []
 
   const artStyle = String(appearance.artStyle ?? 'realistic')
