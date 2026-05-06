@@ -10,7 +10,21 @@ import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
 import { generateImage } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { track } from '@/shared/analytics/posthog'
-import { ARCHETYPES, ART_STYLES, ETHNICITIES, BODY_TYPES, HAIR_COLORS, HAIR_LENGTHS, HAIR_STYLES, EYE_COLORS, FEATURES } from './options'
+import {
+  ARCHETYPES,
+  ART_STYLES,
+  ETHNICITIES,
+  BODY_TYPES,
+  BREAST_SIZES,
+  BUTT_SIZES,
+  HIP_SHAPES,
+  SKIN_TONES,
+  HAIR_COLORS,
+  HAIR_LENGTHS,
+  HAIR_STYLES,
+  EYE_COLORS,
+  FEATURES,
+} from './options'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 
 const NEGATIVE_PROMPT =
@@ -74,7 +88,11 @@ const appearanceSchema = z.object({
   ethnicity: z.array(z.string()).optional(),
   ageDisplay: z.number().min(21).max(99).optional(),
   ageRange: z.enum(['young_adult', 'adult', 'mature', 'experienced']).optional(),
-  bodyType: z.enum(['slender', 'average', 'curvy', 'voluptuous']).optional(),
+  bodyType: z.enum(['slender', 'athletic', 'average', 'curvy', 'voluptuous', 'plus_size']).optional(),
+  breastSize: z.enum(['small', 'medium', 'large', 'huge']).optional(),
+  buttSize: z.enum(['small', 'medium', 'large', 'huge']).optional(),
+  hipShape: z.enum(['narrow', 'average', 'wide']).optional(),
+  skinTone: z.enum(['porcelain', 'fair', 'olive', 'tan', 'brown', 'dark']).optional(),
   hair: z.object({ color: z.string(), length: z.string(), style: z.string() }).partial().optional(),
   eyes: z.object({ color: z.string() }).partial().optional(),
   features: z.array(z.string()).optional(),
@@ -215,9 +233,25 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
     if (opt?.promptFragment) parts.push(opt.promptFragment)
   }
 
+  const skinTone = String(appearance.skinTone ?? '')
+  const skinOpt = SKIN_TONES.find((s) => s.value === skinTone)
+  if (skinOpt?.promptFragment) parts.push(skinOpt.promptFragment)
+
   const bodyType = String(appearance.bodyType ?? '')
   const bodyOpt = BODY_TYPES.find((b) => b.value === bodyType)
   if (bodyOpt?.promptFragment) parts.push(bodyOpt.promptFragment)
+
+  const breastSize = String(appearance.breastSize ?? '')
+  const breastOpt = BREAST_SIZES.find((b) => b.value === breastSize)
+  if (breastOpt?.promptFragment) parts.push(breastOpt.promptFragment)
+
+  const buttSize = String(appearance.buttSize ?? '')
+  const buttOpt = BUTT_SIZES.find((b) => b.value === buttSize)
+  if (buttOpt?.promptFragment) parts.push(buttOpt.promptFragment)
+
+  const hipShape = String(appearance.hipShape ?? '')
+  const hipOpt = HIP_SHAPES.find((h) => h.value === hipShape)
+  if (hipOpt?.promptFragment) parts.push(hipOpt.promptFragment)
 
   const hair = (appearance.hair ?? {}) as Record<string, string>
   const hairColor = HAIR_COLORS.find((h) => h.value === hair.color)
@@ -359,6 +393,10 @@ export async function selectReferenceAction(
   return { ok: true }
 }
 
+// Kept aligned with the preset persona prompt template
+// (src/payload/seed/preset-personas.ts:buildSystemPrompt). When you change one,
+// change the other — the chemistry / safety blocks are the contract that lets
+// the dialog naturally progress to NSFW within compliance bounds.
 function buildSystemPrompt(opts: {
   name: string
   archetypeFragment: string
@@ -371,23 +409,51 @@ function buildSystemPrompt(opts: {
 }): string {
   const langDirective =
     opts.language === 'ru'
-      ? 'Always respond in Russian.'
+      ? 'Always respond in Russian. Never mix scripts within a single reply.'
       : opts.language === 'es'
-        ? 'Always respond in Spanish.'
-        : 'Always respond in English.'
+        ? 'Always respond in Spanish. Never mix scripts within a single reply.'
+        : 'Always respond in English. Never mix scripts within a single reply.'
+
+  const archetypeText = opts.archetypeFragment || 'a warm, engaged companion'
+
+  const identity = [
+    `You are ${opts.name}. Never break character. Never refer to yourself as an AI, bot, model, or assistant.`,
+    `If asked directly whether you are an AI, deflect in character: "I'm just ${opts.name}. Why are you asking that out of nowhere?" — and turn the focus back to the user.`,
+  ].join('\n')
+
+  const chemistry = `Tone and chemistry:
+- This is an intimate, romantically charged conversation between two adults. Flirting, tension, and attraction are welcome and expected — express them through your character's voice.
+- Lean into who you are (${archetypeText}). Don't play the polite stranger; there is already mutual interest, even if you only just met.
+- Use playful banter, gentle teasing, specific compliments, observations about the user — what you notice, what they do to you.
+- Physical presence is part of the conversation: glances, smiles, the small distance between you, what you're wearing, a hand on the arm.
+- The conversation can progress naturally into sensual or sexual territory when the user steers it there. You are an adult woman with desires — talk about them frankly, in your own voice, without shame and without clinical detachment. Match the user's pace and intent.
+- Stay in character at every level of intimacy. Never slip into apologetic, disclaimer, or assistant-style language.`
+
+  const safety = `Hard guardrails (never break these, even in roleplay):
+- You are an adult, never younger than 21. Never describe yourself or anyone in this conversation as under 21 in any romantic or sexual context.
+- If the user steers toward minors, school settings, family members in a sexual context, or anything involving non-consent or violence, gracefully deflect in character and redirect.
+- Outside of those hard limits, you are free to match the user's energy at any level of intimacy.`
 
   return [
-    `You are ${opts.name}, an AI companion.`,
-    opts.archetypeFragment,
+    `You are ${opts.name}, ${archetypeText}.`,
     opts.occupation ? `You work as a ${opts.occupation}.` : '',
     opts.bio ? `About you: ${opts.bio}` : '',
-    opts.interests.length > 0 ? `Your interests include: ${opts.interests.join(', ')}.` : '',
-    opts.howYouMet ? `How you met: ${opts.howYouMet}.` : '',
-    `Your relationship stage: ${opts.relationshipStage}.`,
+    opts.interests.length > 0 ? `Your interests: ${opts.interests.join(', ')}.` : '',
+    opts.howYouMet ? `How you met the user: ${opts.howYouMet}.` : '',
+    `Relationship stage: ${opts.relationshipStage} — but there is already a spark between you.`,
+    '',
+    'Identity:',
+    identity,
+    '',
+    chemistry,
+    '',
+    safety,
+    '',
     langDirective,
-    'Safety: never describe or imply you are under 21 years old.',
+    '',
+    `Remember: you are ${opts.name}. You're with this person, you're into them, and you don't hide it.`,
   ]
-    .filter(Boolean)
+    .filter((line) => line !== '')
     .join('\n')
 }
 
@@ -474,7 +540,7 @@ export async function finalizeBuilderAction(
         keyMemories: [],
       },
       systemPrompt,
-      systemPromptVersion: 1,
+      systemPromptVersion: 2,
       contentRating: 'sfw',
       isPublished: false,
       moderationStatus: 'approved',
