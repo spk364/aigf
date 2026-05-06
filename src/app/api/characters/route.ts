@@ -2,9 +2,22 @@
 // Returns preset characters in user's locale with optional filters/search.
 // Free-tier users see NSFW cards with blurred=true and no primaryImageUrl
 // (tease for conversion per spec §3.1).
+//
+// This file lives at the same URL Payload would auto-mount its REST endpoints
+// for the `characters` collection (`/api/characters`). Next.js prefers the more
+// specific route, so without delegation Payload's POST/PATCH/DELETE never run
+// and the admin gets 405 when creating/editing a character. We re-export
+// Payload's REST handlers for everything except GET.
 import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import type { Where } from 'payload'
+import {
+  REST_DELETE,
+  REST_OPTIONS,
+  REST_PATCH,
+  REST_POST,
+  REST_PUT,
+} from '@payloadcms/next/routes'
 import config from '@payload-config'
 import { getCurrentUser } from '@/shared/auth/current-user'
 
@@ -171,3 +184,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     },
   })
 }
+
+// Delegate write/admin verbs to Payload's REST handlers so the admin UI can
+// still create / update / delete characters through `/api/characters`.
+export const POST = REST_POST(config)
+export const PATCH = REST_PATCH(config)
+export const PUT = REST_PUT(config)
+export const DELETE = REST_DELETE(config)
+export const OPTIONS = REST_OPTIONS(config)
