@@ -1121,7 +1121,7 @@ export const PERSONAS: Persona[] = [
         ethnicity: 'caucasian',
         ageAppearance: 'young_adult',
         bodyType: 'petite',
-        breastSize: 'medium',
+        breastSize: 'large',
         buttSize: 'medium',
         hairColor: 'light_brown',
         hairLength: 'long',
