@@ -316,57 +316,83 @@ function CardsGrid({
 }) {
   return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
-      {options.map((opt) => {
-        const isSelected = selected === opt.value
-        const hue = opt.hue ?? 290
-        const tileStyle: CSSProperties = {
-          background: `linear-gradient(155deg, hsl(${hue} 70% 55%) 0%, hsl(${(hue + 35) % 360} 60% 38%) 60%, hsl(${(hue + 70) % 360} 55% 22%) 100%)`,
-        }
-        return (
-          <li key={opt.value}>
-            <button
-              type="button"
-              onClick={() => onSelect(opt.value)}
-              className={`group relative flex w-full flex-col overflow-hidden rounded-2xl border-2 text-left transition-all ${
-                isSelected
-                  ? 'border-[var(--color-accent-strong)] shadow-[0_18px_50px_-12px_rgba(192,116,255,0.55)]'
-                  : 'border-transparent hover:-translate-y-0.5 hover:border-[var(--color-border)]'
-              }`}
-            >
-              <div className="relative aspect-[3/4] w-full" style={tileStyle}>
-                <div
-                  className="pointer-events-none absolute inset-0"
-                  style={{
-                    background:
-                      'radial-gradient(circle at 30% 22%, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 50%)',
-                  }}
-                />
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/0 to-black/0" />
-                {isSelected && (
-                  <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-[var(--color-accent-strong)] text-[var(--color-bg)] shadow-lg">
-                    <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-4 w-4">
-                      <path
-                        fillRule="evenodd"
-                        d="M16.704 5.29a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 011.06-1.06L8.674 12.26l6.97-6.97a.75.75 0 011.06 0z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </span>
-                )}
-              </div>
-              <div className="bg-[var(--color-surface)] p-3">
-                <p className="text-base font-bold text-[var(--color-text)]">{opt.label}</p>
-                {opt.description && (
-                  <p className="mt-0.5 text-xs leading-snug text-[var(--color-text-muted)]">
-                    {opt.description}
-                  </p>
-                )}
-              </div>
-            </button>
-          </li>
-        )
-      })}
+      {options.map((opt) => (
+        <li key={opt.value}>
+          <CardTile
+            option={opt}
+            isSelected={selected === opt.value}
+            onClick={() => onSelect(opt.value)}
+          />
+        </li>
+      ))}
     </ul>
+  )
+}
+
+function CardTile({
+  option,
+  isSelected,
+  onClick,
+}: {
+  option: Option
+  isSelected: boolean
+  onClick: () => void
+}) {
+  const [imageOk, setImageOk] = useState(true)
+  const hue = option.hue ?? 290
+  const tileStyle: CSSProperties = {
+    background: `linear-gradient(155deg, hsl(${hue} 70% 55%) 0%, hsl(${(hue + 35) % 360} 60% 38%) 60%, hsl(${(hue + 70) % 360} 55% 22%) 100%)`,
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group relative flex w-full flex-col overflow-hidden rounded-2xl border-2 text-left transition-all ${
+        isSelected
+          ? 'border-[var(--color-accent-strong)] shadow-[0_18px_50px_-12px_rgba(192,116,255,0.55)]'
+          : 'border-transparent hover:-translate-y-0.5 hover:border-[var(--color-border)]'
+      }`}
+    >
+      <div className="relative aspect-[3/4] w-full" style={tileStyle}>
+        {option.imagePath && imageOk && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={option.imagePath}
+            alt={option.label}
+            loading="lazy"
+            onError={() => setImageOk(false)}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(circle at 30% 22%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 50%)',
+          }}
+        />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/0 to-black/0" />
+        {isSelected && (
+          <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-[var(--color-accent-strong)] text-[var(--color-bg)] shadow-lg">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-4 w-4">
+              <path
+                fillRule="evenodd"
+                d="M16.704 5.29a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 011.06-1.06L8.674 12.26l6.97-6.97a.75.75 0 011.06 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </span>
+        )}
+      </div>
+      <div className="bg-[var(--color-surface)] p-3">
+        <p className="text-base font-bold text-[var(--color-text)]">{option.label}</p>
+        {option.description && (
+          <p className="mt-0.5 text-xs leading-snug text-[var(--color-text-muted)]">
+            {option.description}
+          </p>
+        )}
+      </div>
+    </button>
   )
 }
 
@@ -381,42 +407,68 @@ function SwatchesGrid({
 }) {
   return (
     <ul className="mx-auto grid max-w-xl grid-cols-3 gap-3 sm:grid-cols-6 sm:gap-4">
-      {options.map((opt) => {
-        const isSelected = selected === opt.value
-        const hue = opt.hue ?? 290
-        const swatchStyle: CSSProperties = {
-          background: `linear-gradient(135deg, hsl(${hue} 70% 50%) 0%, hsl(${hue} 60% 30%) 100%)`,
-        }
-        return (
-          <li key={opt.value} className="flex flex-col items-center">
-            <button
-              type="button"
-              onClick={() => onSelect(opt.value)}
-              aria-label={opt.label}
-              className={`relative h-20 w-20 overflow-hidden rounded-full border-4 transition-all sm:h-24 sm:w-24 ${
-                isSelected
-                  ? 'border-[var(--color-accent-strong)] shadow-[0_8px_30px_-6px_rgba(192,116,255,0.7)]'
-                  : 'border-[var(--color-border)] hover:scale-105 hover:border-[var(--color-text-muted)]'
-              }`}
-              style={swatchStyle}
-            >
-              {isSelected && (
-                <span className="absolute inset-0 grid place-items-center bg-black/30">
-                  <svg viewBox="0 0 20 20" fill="white" aria-hidden className="h-6 w-6">
-                    <path
-                      fillRule="evenodd"
-                      d="M16.704 5.29a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 011.06-1.06L8.674 12.26l6.97-6.97a.75.75 0 011.06 0z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </span>
-              )}
-            </button>
-            <span className="mt-2 text-sm font-medium text-[var(--color-text)]">{opt.label}</span>
-          </li>
-        )
-      })}
+      {options.map((opt) => (
+        <li key={opt.value} className="flex flex-col items-center">
+          <SwatchTile
+            option={opt}
+            isSelected={selected === opt.value}
+            onClick={() => onSelect(opt.value)}
+          />
+          <span className="mt-2 text-sm font-medium text-[var(--color-text)]">{opt.label}</span>
+        </li>
+      ))}
     </ul>
+  )
+}
+
+function SwatchTile({
+  option,
+  isSelected,
+  onClick,
+}: {
+  option: Option
+  isSelected: boolean
+  onClick: () => void
+}) {
+  const [imageOk, setImageOk] = useState(true)
+  const hue = option.hue ?? 290
+  const swatchStyle: CSSProperties = {
+    background: `linear-gradient(135deg, hsl(${hue} 70% 50%) 0%, hsl(${hue} 60% 30%) 100%)`,
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={option.label}
+      className={`relative h-20 w-20 overflow-hidden rounded-full border-4 transition-all sm:h-24 sm:w-24 ${
+        isSelected
+          ? 'border-[var(--color-accent-strong)] shadow-[0_8px_30px_-6px_rgba(192,116,255,0.7)]'
+          : 'border-[var(--color-border)] hover:scale-105 hover:border-[var(--color-text-muted)]'
+      }`}
+      style={swatchStyle}
+    >
+      {option.imagePath && imageOk && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={option.imagePath}
+          alt={option.label}
+          loading="lazy"
+          onError={() => setImageOk(false)}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+      {isSelected && (
+        <span className="absolute inset-0 grid place-items-center bg-black/30">
+          <svg viewBox="0 0 20 20" fill="white" aria-hidden className="h-6 w-6">
+            <path
+              fillRule="evenodd"
+              d="M16.704 5.29a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06 0l-3.5-3.5a.75.75 0 011.06-1.06L8.674 12.26l6.97-6.97a.75.75 0 011.06 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </span>
+      )}
+    </button>
   )
 }
 
