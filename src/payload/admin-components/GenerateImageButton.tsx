@@ -133,6 +133,11 @@ export function GenerateImageButton() {
   const [imageSize, setImageSize] = useState<ImageSize>(DEFAULT_IMAGE_SIZE_PRESET_ID)
   const [sceneHint, setSceneHint] = useState('')
   const [modelOverride, setModelOverride] = useState(DEFAULT_IMAGE_MODEL_ID)
+  // Step 1 keeps its own model choice — defaults to "auto" (let the server
+  // pick RealVisXL for realistic / fast-sdxl for anime), but the user can
+  // pin a specific model when they need to e.g. dodge fal's NSFW filter or
+  // try a Pony checkpoint for the locked-in face.
+  const [refModelOverride, setRefModelOverride] = useState<string>('')
 
   const existingRefUrl = (savedDocumentData as Record<string, unknown> | undefined)?.referenceImageUrl as string | null | undefined
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -459,7 +464,10 @@ export function GenerateImageButton() {
       const res = await fetch(`/api/admin/characters/${id}/generate-reference`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ setPrimary }),
+        body: JSON.stringify({
+          setPrimary,
+          ...(refModelOverride ? { modelOverride: refModelOverride } : {}),
+        }),
       })
       const data = await safeJson<{
         ok?: boolean
@@ -560,6 +568,36 @@ export function GenerateImageButton() {
           />
         </div>
       )}
+
+      <div style={{ marginBottom: '10px' }}>
+        <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', color: '#6b7280' }}>
+          Model
+        </label>
+        <select
+          value={refModelOverride}
+          onChange={(e) => setRefModelOverride(e.target.value)}
+          disabled={refLoading}
+          style={{ ...SELECT, maxWidth: '260px' }}
+        >
+          <option value="">Auto (RealVisXL / Fast SDXL by art style)</option>
+          {IMAGE_MODEL_OPTIONS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+        {refModelOverride && (() => {
+          const info = IMAGE_MODEL_OPTIONS.find((m) => m.id === refModelOverride)
+          if (!info) return null
+          return (
+            <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '3px' }}>
+              {info.note}
+              {info.isPony && ' · Pony score_ tokens auto-added'}
+              {info.isFlux && ' · negative prompt ignored by FLUX'}
+            </div>
+          )
+        })()}
+      </div>
 
       <div style={{ marginBottom: '8px' }}>
         <button
