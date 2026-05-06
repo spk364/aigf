@@ -146,18 +146,51 @@
     "draftsHeading": "Tus borradores",
     "upgradeRequired": "Has alcanzado el limite del plan gratuito: 1 personaje.",
     "previewsRemaining": "{used} / {max} conjuntos de preview usados",
+    "stepCounter": "Paso {current} de {total}",
+    "phases": {
+      "appearance": "Apariencia",
+      "identity": "Identidad",
+      "backstory": "Historia",
+      "review": "Final"
+    },
     "steps": {
       "appearance": "Apariencia",
       "identity": "Identidad",
       "backstory": "Historia",
       "review": "Revision"
     },
+    "questions": {
+      "artStyle": "Elige un estilo",
+      "ethnicity": "Elige una etnia",
+      "ageRange": "Elige una edad",
+      "skinTone": "Tono de piel",
+      "bodyType": "Tipo de cuerpo",
+      "breastSize": "Tamaño del busto",
+      "buttSize": "Tamaño de glúteos",
+      "hipShape": "Forma de caderas",
+      "hairColor": "Color del cabello",
+      "hairLength": "Largo del cabello",
+      "hairStyle": "Estilo del cabello",
+      "eyeColor": "Color de ojos",
+      "features": "Detalles especiales",
+      "preview": "Genera su foto",
+      "name": "¿Cómo se llama?",
+      "archetype": "Su personalidad",
+      "personality": "Ajusta su carácter",
+      "bio": "Cuenta su historia",
+      "howYouMet": "¿Cómo se conocieron?",
+      "review": "Conócela"
+    },
     "fields": {
       "artStyle": "Estilo de arte",
       "ethnicity": "Etnicidad",
-      "ageRange": "Rango de edad",
+      "ageRange": "Edad",
       "ageDisplay": "Edad mostrada",
       "bodyType": "Tipo de cuerpo",
+      "breastSize": "Busto",
+      "buttSize": "Glúteos",
+      "hipShape": "Caderas",
+      "skinTone": "Tono de piel",
       "hairColor": "Color de cabello",
       "hairLength": "Largo de cabello",
       "hairStyle": "Estilo de cabello",
@@ -171,6 +204,13 @@
       "interests": "Intereses",
       "howYouMet": "Como se conocieron",
       "relationshipStage": "Etapa de la relacion"
+    },
+    "hints": {
+      "multiSelect": "Elige uno o varios",
+      "singleSelect": "Elige uno",
+      "optional": "Opcional",
+      "ageMin": "Mínimo 21 (requisito legal)",
+      "previewIntro": "Genera hasta 5 sets de 4 fotos. Elige la que más te guste — así se verá durante todo el chat."
     },
     "options": {
       "artStyle": {
@@ -189,16 +229,43 @@
         "mixed": "Mixta"
       },
       "ageRange": {
-        "young_adult": "Adulto joven",
-        "adult": "Adulto",
-        "mature": "Maduro",
-        "experienced": "Experimentado"
+        "young_adult": "Adulta joven",
+        "adult": "Adulta",
+        "mature": "Madura",
+        "experienced": "Experimentada"
       },
       "bodyType": {
         "slender": "Esbelta",
+        "athletic": "Atlética",
         "average": "Promedio",
         "curvy": "Con curvas",
-        "voluptuous": "Voluptuosa"
+        "voluptuous": "Voluptuosa",
+        "plus_size": "Talla grande"
+      },
+      "breastSize": {
+        "small": "Pequeño",
+        "medium": "Mediano",
+        "large": "Grande",
+        "huge": "Enorme"
+      },
+      "buttSize": {
+        "small": "Pequeño",
+        "medium": "Mediano",
+        "large": "Grande",
+        "huge": "Enorme"
+      },
+      "hipShape": {
+        "narrow": "Estrechas",
+        "average": "Promedio",
+        "wide": "Anchas"
+      },
+      "skinTone": {
+        "porcelain": "Porcelana",
+        "fair": "Clara",
+        "olive": "Oliva",
+        "tan": "Bronceada",
+        "brown": "Morena",
+        "dark": "Oscura"
       },
       "hairColor": {
         "blonde": "Rubia",
@@ -218,7 +285,10 @@
       "hairStyle": {
         "straight": "Liso",
         "wavy": "Ondulado",
-        "curly": "Rizado"
+        "curly": "Rizado",
+        "ponytail": "Coleta",
+        "braided": "Trenzado",
+        "bun": "Recogido"
       },
       "eyeColor": {
         "blue": "Azul",
@@ -226,7 +296,8 @@
         "green": "Verde",
         "hazel": "Avellana",
         "amber": "Ambar",
-        "gray": "Gris"
+        "gray": "Gris",
+        "violet": "Violeta"
       },
       "features": {
         "freckles": "Pecas",
@@ -234,7 +305,9 @@
         "glasses": "Gafas",
         "tattoos": "Tatuajes",
         "beauty_mark": "Lunar",
-        "piercings": "Piercings"
+        "piercings": "Piercings",
+        "lip_piercing": "Piercing en labio",
+        "septum": "Septum"
       },
       "archetype": {
         "sweet_girlfriend": "Novia dulce",
@@ -244,7 +317,9 @@
         "shy_romantic": "Romantica timida",
         "intellectual": "Intelectual",
         "free_spirit": "Espiritu libre",
-        "caretaker": "Cuidadora"
+        "caretaker": "Cuidadora",
+        "dominant_temptress": "Tentadora dominante",
+        "playful_brat": "Pícara juguetona"
       },
       "meetScenario": {
         "coffee_shop": "Cafeteria",
@@ -252,6 +327,8 @@
         "dating_app": "App de citas",
         "neighbors": "Vecinos",
         "colleagues": "Compañeros de trabajo",
+        "gym": "Gimnasio",
+        "club": "Club nocturno",
         "custom": "Historia propia"
       },
       "relationshipStage": {
@@ -261,15 +338,23 @@
         "long_term": "Largo plazo"
       }
     },
+    "personality": {
+      "shyBold": { "label": "Energía", "left": "Tímida", "right": "Atrevida" },
+      "playfulSerious": { "label": "Ánimo", "left": "Juguetona", "right": "Seria" },
+      "submissiveDominant": { "label": "Postura", "left": "Sumisa", "right": "Dominante" },
+      "romanticCasual": { "label": "Conexión", "left": "Romántica", "right": "Casual" },
+      "sweetSarcastic": { "label": "Tono", "left": "Dulce", "right": "Sarcástica" },
+      "traditionalAdventurous": { "label": "Estilo de vida", "left": "Tradicional", "right": "Aventurera" }
+    },
     "actions": {
-      "generatePreviews": "Generar vistas previas",
+      "generatePreviews": "Generar foto",
       "regenerate": "Regenerar",
       "selectReference": "Seleccionado",
       "saveDraft": "Guardando",
       "prev": "Atras",
       "next": "Siguiente",
       "finalize": "Finalizar",
-      "meetHer": "Conocerla"
+      "meetHer": "Empezar el chat"
     },
     "errors": {
       "nameChildlike": "Este nombre no esta permitido.",

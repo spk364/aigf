@@ -146,11 +146,40 @@
     "draftsHeading": "Your drafts",
     "upgradeRequired": "You have reached the free tier limit of 1 custom character.",
     "previewsRemaining": "{used} / {max} preview sets used",
+    "stepCounter": "Step {current} of {total}",
+    "phases": {
+      "appearance": "Appearance",
+      "identity": "Identity",
+      "backstory": "Backstory",
+      "review": "Review"
+    },
     "steps": {
       "appearance": "Appearance",
       "identity": "Identity",
       "backstory": "Backstory",
       "review": "Review"
+    },
+    "questions": {
+      "artStyle": "Choose an art style",
+      "ethnicity": "Pick an ethnicity",
+      "ageRange": "Choose an age",
+      "skinTone": "Pick a skin tone",
+      "bodyType": "Choose a body type",
+      "breastSize": "Choose a chest size",
+      "buttSize": "Choose a hip / butt size",
+      "hipShape": "Choose hip shape",
+      "hairColor": "Pick a hair color",
+      "hairLength": "Pick hair length",
+      "hairStyle": "Pick a hair style",
+      "eyeColor": "Pick eye color",
+      "features": "Add some signature features",
+      "preview": "Generate her photo",
+      "name": "What's her name?",
+      "archetype": "Pick her vibe",
+      "personality": "Fine-tune her personality",
+      "bio": "Tell her story",
+      "howYouMet": "How did you meet?",
+      "review": "Meet her"
     },
     "fields": {
       "artStyle": "Art style",
@@ -158,6 +187,10 @@
       "ageRange": "Age range",
       "ageDisplay": "Displayed age",
       "bodyType": "Body type",
+      "breastSize": "Chest size",
+      "buttSize": "Butt size",
+      "hipShape": "Hip shape",
+      "skinTone": "Skin tone",
       "hairColor": "Hair color",
       "hairLength": "Hair length",
       "hairStyle": "Hair style",
@@ -171,6 +204,13 @@
       "interests": "Interests",
       "howYouMet": "How you met",
       "relationshipStage": "Relationship stage"
+    },
+    "hints": {
+      "multiSelect": "Pick one or more",
+      "singleSelect": "Pick one",
+      "optional": "Optional",
+      "ageMin": "Minimum 21 (legal requirement)",
+      "previewIntro": "Generate up to 5 sets of 4 photos. Pick the one you love — she'll look like that throughout your chat."
     },
     "options": {
       "artStyle": {
@@ -196,9 +236,36 @@
       },
       "bodyType": {
         "slender": "Slender",
+        "athletic": "Athletic",
         "average": "Average",
         "curvy": "Curvy",
-        "voluptuous": "Voluptuous"
+        "voluptuous": "Voluptuous",
+        "plus_size": "Plus size"
+      },
+      "breastSize": {
+        "small": "Small",
+        "medium": "Medium",
+        "large": "Large",
+        "huge": "Huge"
+      },
+      "buttSize": {
+        "small": "Small",
+        "medium": "Medium",
+        "large": "Large",
+        "huge": "Huge"
+      },
+      "hipShape": {
+        "narrow": "Narrow",
+        "average": "Average",
+        "wide": "Wide"
+      },
+      "skinTone": {
+        "porcelain": "Porcelain",
+        "fair": "Fair",
+        "olive": "Olive",
+        "tan": "Tan",
+        "brown": "Brown",
+        "dark": "Dark"
       },
       "hairColor": {
         "blonde": "Blonde",
@@ -218,7 +285,10 @@
       "hairStyle": {
         "straight": "Straight",
         "wavy": "Wavy",
-        "curly": "Curly"
+        "curly": "Curly",
+        "ponytail": "Ponytail",
+        "braided": "Braided",
+        "bun": "Bun"
       },
       "eyeColor": {
         "blue": "Blue",
@@ -226,7 +296,8 @@
         "green": "Green",
         "hazel": "Hazel",
         "amber": "Amber",
-        "gray": "Gray"
+        "gray": "Gray",
+        "violet": "Violet"
       },
       "features": {
         "freckles": "Freckles",
@@ -234,7 +305,9 @@
         "glasses": "Glasses",
         "tattoos": "Tattoos",
         "beauty_mark": "Beauty mark",
-        "piercings": "Piercings"
+        "piercings": "Piercings",
+        "lip_piercing": "Lip piercing",
+        "septum": "Septum"
       },
       "archetype": {
         "sweet_girlfriend": "Sweet girlfriend",
@@ -244,7 +317,9 @@
         "shy_romantic": "Shy romantic",
         "intellectual": "Intellectual",
         "free_spirit": "Free spirit",
-        "caretaker": "Caretaker"
+        "caretaker": "Caretaker",
+        "dominant_temptress": "Dominant temptress",
+        "playful_brat": "Playful brat"
       },
       "meetScenario": {
         "coffee_shop": "Coffee shop",
@@ -252,6 +327,8 @@
         "dating_app": "Dating app",
         "neighbors": "Neighbors",
         "colleagues": "Colleagues",
+        "gym": "Gym",
+        "club": "Club",
         "custom": "Custom story"
       },
       "relationshipStage": {
@@ -261,15 +338,23 @@
         "long_term": "Long-term"
       }
     },
+    "personality": {
+      "shyBold": { "label": "Energy", "left": "Shy", "right": "Bold" },
+      "playfulSerious": { "label": "Mood", "left": "Playful", "right": "Serious" },
+      "submissiveDominant": { "label": "Stance", "left": "Submissive", "right": "Dominant" },
+      "romanticCasual": { "label": "Connection", "left": "Romantic", "right": "Casual" },
+      "sweetSarcastic": { "label": "Tone", "left": "Sweet", "right": "Sarcastic" },
+      "traditionalAdventurous": { "label": "Lifestyle", "left": "Traditional", "right": "Adventurous" }
+    },
     "actions": {
-      "generatePreviews": "Generate previews",
+      "generatePreviews": "Generate her photo",
       "regenerate": "Regenerate",
       "selectReference": "Selected",
       "saveDraft": "Saving",
       "prev": "Back",
-      "next": "Next",
+      "next": "Continue",
       "finalize": "Finalize",
-      "meetHer": "Meet her"
+      "meetHer": "Start chatting"
     },
     "errors": {
       "nameChildlike": "This name is not allowed.",
