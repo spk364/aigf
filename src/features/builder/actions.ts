@@ -7,16 +7,17 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { z } from 'zod'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
-import { generateImage } from '@/shared/ai/fal'
+import {
+  generateImage,
+  FAL_ENDPOINT_REALISTIC_VISION,
+  FAL_ENDPOINT_FAST_SDXL,
+} from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { track } from '@/shared/analytics/posthog'
 import {
   ARCHETYPES,
   ART_STYLES,
   ETHNICITIES,
-  BODY_TYPES,
-  BREAST_SIZES,
-  BUTT_SIZES,
   HIP_SHAPES,
   SKIN_TONES,
   HAIR_COLORS,
@@ -27,8 +28,16 @@ import {
 } from './options'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 
-const NEGATIVE_PROMPT =
-  'low quality, blurry, deformed, bad anatomy, extra limbs, extra fingers, watermark, text, signature, multiple people, child, minor, underage, young, teen, juvenile'
+// Quality + safety baseline applied to every preview generation. The age
+// markers carry high weights because RealVisXL/SDXL bias young when prompted
+// with "beautiful" — push back hard.
+const SAFETY_NEGATIVE =
+  '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), ' +
+  '(school uniform:1.3), (underage:1.5), (minor:1.5), (childlike features:1.5)'
+
+const QUALITY_NEGATIVE =
+  'low quality, worst quality, blurry, deformed, bad anatomy, extra limbs, ' +
+  'extra fingers, watermark, text, signature, multiple people, ugly, mutated'
 
 const LLM_MODEL = OPENROUTER_MODEL
 const LLM_TEMPERATURE = 1.3
@@ -214,66 +223,174 @@ export async function saveDraftStepAction(
   return { ok: true, currentStep: newStep }
 }
 
+// Map breast size → SD attention syntax. Both `large` and `huge` get a strong
+// weight because RealVisXL biases medium otherwise. Also returns the opposite
+// terms for the negative prompt so the model doesn't compromise toward the
+// average.
+const BREAST_PROMPT: Record<string, { positive: string; negative: string }> = {
+  small: {
+    positive: '(small breasts:1.3), (modest chest:1.2), petite bust',
+    negative: '(huge breasts:1.4), (large breasts:1.3), busty',
+  },
+  medium: {
+    positive: '(medium breasts:1.2), balanced chest',
+    negative: '(huge breasts:1.3), (very small breasts:1.2)',
+  },
+  large: {
+    positive: '(large breasts:1.4), full chest, busty',
+    negative: '(small breasts:1.3), (flat chest:1.4)',
+  },
+  huge: {
+    positive: '(huge breasts:1.5), (very large breasts:1.4), busty figure',
+    negative: '(small breasts:1.4), (flat chest:1.5), (medium breasts:1.2)',
+  },
+}
+
+const BUTT_PROMPT: Record<string, { positive: string; negative: string }> = {
+  small: {
+    positive: '(slim hips:1.2), (small butt:1.2), narrow waist',
+    negative: '(big butt:1.4), (wide hips:1.3), (thick thighs:1.3)',
+  },
+  medium: {
+    positive: '(medium hips:1.2), proportional butt',
+    negative: '(huge butt:1.3), (very narrow hips:1.2)',
+  },
+  large: {
+    positive: '(large butt:1.4), (round hips:1.3), curvy hips',
+    negative: '(small butt:1.3), (narrow hips:1.3)',
+  },
+  huge: {
+    positive: '(huge butt:1.5), (big bubble butt:1.4), wide round hips, thick thighs',
+    negative: '(small butt:1.4), (narrow hips:1.4), (slim figure:1.2)',
+  },
+}
+
+const BODY_TYPE_WEIGHT: Record<string, string> = {
+  slender: '(slender build:1.3), slim figure',
+  athletic: '(athletic build:1.3), toned figure, fit body',
+  average: 'average build',
+  curvy: '(curvy figure:1.3), hourglass shape',
+  voluptuous: '(voluptuous figure:1.4), full curves, thick body',
+  plus_size: '(plus-size figure:1.3), full-bodied',
+}
+
+// Decide framing based on which attributes the user picked. If they selected
+// breast/butt/body type, we want a fuller view than a head-and-shoulders
+// portrait — otherwise the model crops out the things the user just chose.
+function chooseFraming(appearance: Record<string, unknown>): string {
+  const hasBody =
+    !!appearance.bodyType ||
+    !!appearance.breastSize ||
+    !!appearance.buttSize ||
+    !!appearance.hipShape
+  return hasBody
+    ? 'cowboy shot, head to thigh, full upper body visible, looking at camera'
+    : 'portrait, head and shoulders, looking at camera'
+}
+
 function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const parts: string[] = []
 
   const artStyle = String(appearance.artStyle ?? 'realistic')
   const artOption = ART_STYLES.find((a) => a.value === artStyle)
+  // Style first — early tokens get more attention from the U-Net.
   parts.push(artOption?.promptFragment ?? 'photorealistic, high detail, soft lighting')
 
-  parts.push('portrait of a woman')
-
-  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 24
+  // Subject anchoring with explicit single-subject + adult markers.
+  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 28
   const safeAge = Math.max(21, ageDisplay)
-  parts.push(`${safeAge} years old`)
+  parts.push(
+    `1girl, solo, beautiful adult woman, (${safeAge} year old:1.2)`,
+    '(mature adult features:1.2)',
+  )
 
+  // Ethnicity + skin tone — face-defining, keep early.
   const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
   for (const eth of ethnicities) {
     const opt = ETHNICITIES.find((e) => e.value === eth)
     if (opt?.promptFragment) parts.push(opt.promptFragment)
   }
-
   const skinTone = String(appearance.skinTone ?? '')
   const skinOpt = SKIN_TONES.find((s) => s.value === skinTone)
-  if (skinOpt?.promptFragment) parts.push(skinOpt.promptFragment)
+  if (skinOpt?.promptFragment) parts.push(`(${skinOpt.promptFragment}:1.2)`)
 
+  // Body shape — weighted, in priority order.
   const bodyType = String(appearance.bodyType ?? '')
-  const bodyOpt = BODY_TYPES.find((b) => b.value === bodyType)
-  if (bodyOpt?.promptFragment) parts.push(bodyOpt.promptFragment)
+  if (BODY_TYPE_WEIGHT[bodyType]) parts.push(BODY_TYPE_WEIGHT[bodyType]!)
 
   const breastSize = String(appearance.breastSize ?? '')
-  const breastOpt = BREAST_SIZES.find((b) => b.value === breastSize)
-  if (breastOpt?.promptFragment) parts.push(breastOpt.promptFragment)
+  if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.positive)
 
   const buttSize = String(appearance.buttSize ?? '')
-  const buttOpt = BUTT_SIZES.find((b) => b.value === buttSize)
-  if (buttOpt?.promptFragment) parts.push(buttOpt.promptFragment)
+  if (BUTT_PROMPT[buttSize]) parts.push(BUTT_PROMPT[buttSize]!.positive)
 
   const hipShape = String(appearance.hipShape ?? '')
   const hipOpt = HIP_SHAPES.find((h) => h.value === hipShape)
-  if (hipOpt?.promptFragment) parts.push(hipOpt.promptFragment)
+  if (hipOpt?.promptFragment) parts.push(`(${hipOpt.promptFragment}:1.2)`)
 
+  // Hair — fold color + length + style into one weighted phrase so SD doesn't
+  // treat each piece independently. "(long wavy blonde hair:1.3)" reads
+  // better than three separate clauses.
   const hair = (appearance.hair ?? {}) as Record<string, string>
-  const hairColor = HAIR_COLORS.find((h) => h.value === hair.color)
-  const hairLength = HAIR_LENGTHS.find((h) => h.value === hair.length)
-  const hairStyle = HAIR_STYLES.find((h) => h.value === hair.style)
-  if (hairStyle?.promptFragment) parts.push(hairStyle.promptFragment)
-  if (hairLength?.promptFragment) parts.push(hairLength.promptFragment)
-  if (hairColor?.promptFragment) parts.push(hairColor.promptFragment)
+  const hairLengthOpt = HAIR_LENGTHS.find((h) => h.value === hair.length)
+  const hairStyleOpt = HAIR_STYLES.find((h) => h.value === hair.style)
+  const hairColorOpt = HAIR_COLORS.find((h) => h.value === hair.color)
+  const hairBits = [
+    hairLengthOpt?.promptFragment,
+    hairStyleOpt?.promptFragment,
+    hairColorOpt?.promptFragment,
+  ].filter(Boolean)
+  if (hairBits.length > 0) {
+    // Re-collapse: the fragments already say "long hair", "wavy hair", "blonde
+    // hair". Strip the duplicate "hair" so we get "long wavy blonde hair".
+    const collapsed = hairBits.map((h) => String(h).replace(/\s*hair\b/, '').trim()).filter(Boolean)
+    parts.push(`(${collapsed.join(' ')} hair:1.3)`)
+  }
 
+  // Eyes — weighted, model often loses these without emphasis.
   const eyes = (appearance.eyes ?? {}) as Record<string, string>
   const eyeOpt = EYE_COLORS.find((e) => e.value === eyes.color)
-  if (eyeOpt?.promptFragment) parts.push(eyeOpt.promptFragment)
+  if (eyeOpt?.promptFragment) parts.push(`(${eyeOpt.promptFragment}:1.3)`)
 
+  // Optional facial features.
   const features = Array.isArray(appearance.features) ? (appearance.features as string[]) : []
   for (const feat of features) {
     const opt = FEATURES.find((f) => f.value === feat)
     if (opt?.promptFragment) parts.push(opt.promptFragment)
   }
 
-  parts.push('4k, professional photography, detailed face')
+  // Framing + quality tags last.
+  parts.push(chooseFraming(appearance))
+  parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
 
   return parts.join(', ')
+}
+
+// Builds an adversarial negative prompt: pushes back against the opposite of
+// whatever sizes the user picked. This is the trick that stops "huge breasts"
+// from rendering as "medium" because the model averaged everything out.
+function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string {
+  const parts: string[] = [QUALITY_NEGATIVE, SAFETY_NEGATIVE]
+  const breastSize = String(appearance.breastSize ?? '')
+  if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.negative)
+  const buttSize = String(appearance.buttSize ?? '')
+  if (BUTT_PROMPT[buttSize]) parts.push(BUTT_PROMPT[buttSize]!.negative)
+  return parts.filter(Boolean).join(', ')
+}
+
+// Maps art style → fal endpoint. RealVisXL handles photoreal best; fast-sdxl
+// handles anime / 3d / stylized passably and is cheap. FLUX is excluded
+// because it ignores negative_prompt — we rely on adversarial negatives.
+function pickEndpointForStyle(artStyle: string): string {
+  switch (artStyle) {
+    case 'anime':
+    case '3d_render':
+    case 'stylized':
+      return FAL_ENDPOINT_FAST_SDXL
+    case 'realistic':
+    default:
+      return FAL_ENDPOINT_REALISTIC_VISION
+  }
 }
 
 export type GeneratePreviewsResult =
@@ -301,14 +418,22 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
   const appearance = (draftData.appearance ?? {}) as Record<string, unknown>
 
   const prompt = buildPreviewPrompt(appearance)
+  const negativePrompt = buildPreviewNegativePrompt(appearance)
+  const endpoint = pickEndpointForStyle(String(appearance.artStyle ?? 'realistic'))
 
   let result: Awaited<ReturnType<typeof generateImage>>
   try {
     result = await generateImage({
       prompt,
-      negativePrompt: NEGATIVE_PROMPT,
-      imageSize: 'portrait_4_3',
+      negativePrompt,
+      // Native SDXL bucket — RealVisXL/fast-sdxl render their best at 832×1216.
+      imageSize: { width: 832, height: 1216 },
       numImages: 4,
+      endpoint,
+      // Higher guidance pulls the result closer to the prompt (vs. the model's
+      // priors). 6.5 is a good ceiling before details start to over-cook.
+      guidanceScale: 6.5,
+      numInferenceSteps: endpoint === FAL_ENDPOINT_REALISTIC_VISION ? 35 : 30,
     })
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Image generation failed' }
