@@ -62,24 +62,21 @@ export async function submitAtlasImageJob(
     return `${input.imageSize.width}*${input.imageSize.height}`
   })()
 
-  // Atlas's text-to-image / image-edit endpoints share a single `generateImage`
-  // entry point. WAN 2.6 t2i takes prompt + size; image-edit additionally
-  // takes image_url. We just send everything we have and let Atlas ignore
-  // unknown fields (it returns 422 with `detail` if it doesn't).
+  // Atlas's gateway forwards the body verbatim to the Alibaba/ByteDance
+  // worker, which uses a strict Pydantic schema (additional properties
+  // forbidden — sending unknown keys returns 400 "Extra inputs are not
+  // permitted"). Verified against the live API for wan-2.2-turbo-spicy:
+  //   accepted at ROOT: model, image, prompt, resolution, seed
+  //   rejected: enable_safety_checker, image_url, aspect_ratio, input{}
+  // Spicy/uncensored variants have no safety gate by design.
+  const isImageEdit = input.endpoint.includes('image-edit')
   const body: Record<string, unknown> = {
     model: input.endpoint,
     prompt: input.prompt,
-    ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
     ...(size ? { size } : {}),
-    ...(input.numImages !== undefined ? { num_images: input.numImages } : {}),
-    ...(input.numInferenceSteps !== undefined
-      ? { num_inference_steps: input.numInferenceSteps }
-      : {}),
-    ...(input.guidanceScale !== undefined ? { guidance_scale: input.guidanceScale } : {}),
     ...(input.seed !== undefined ? { seed: input.seed } : {}),
-    // Image-edit / IP-Adapter-style flows — Atlas accepts image_url at root.
-    ...(input.ipAdapterImageUrl ? { image_url: input.ipAdapterImageUrl } : {}),
-    enable_safety_checker: false,
+    // image-edit endpoints take a source image; t2i does not.
+    ...(isImageEdit && input.ipAdapterImageUrl ? { image: input.ipAdapterImageUrl } : {}),
   }
 
   const submit = await fetch(`${ATLAS_BASE}/model/generateImage`, {
@@ -141,10 +138,23 @@ export async function fetchAtlasImageJobStatus(args: {
         error: `atlas job ${args.requestId} not found (HTTP ${res.status}).`,
       }
     }
+    // Atlas wraps worker-level 4xx validation errors in a 500 of the form
+    //   {"code":500,"message":"unexpected http status code: 400, body: {...}"}
+    // Those are terminal — the input was rejected, polling won't recover.
+    // Look at the message body and fail fast so the admin sees the reason.
+    const looksLikeUpstream4xx =
+      /unexpected http status code:\s*4\d\d/i.test(body) ||
+      /Invalid request parameters/i.test(body)
+    if (looksLikeUpstream4xx) {
+      return {
+        status: 'failed',
+        error: `atlas worker rejected input (HTTP ${res.status}): ${body.slice(0, 600)}`,
+      }
+    }
     return {
       status: 'pending',
       phase: 'unknown',
-      lastLog: `atlas status HTTP ${res.status}: ${body.slice(0, 200)}`,
+      lastLog: `atlas status HTTP ${res.status}: ${body.slice(0, 600)}`,
       raw: `HTTP_${res.status}`,
     }
   }
@@ -210,42 +220,21 @@ export async function submitAtlasVideoJob(
 ): Promise<VideoJobHandles> {
   if (!input.endpoint) throw new Error('Atlas video submit requires an endpoint (model id)')
 
-  const isTurbo = input.endpoint.includes('turbo-spicy')
-
-  // Turbo Spicy is the distilled fast variant — ignore tuning knobs and let
-  // the model use its own optimised schedule. Match what we already do for
-  // fal's WAN Turbo to avoid 422s on rejected fields.
-  const body: Record<string, unknown> = isTurbo
-    ? {
-        model: input.endpoint,
-        image_url: input.imageUrl,
-        prompt: input.prompt,
-        ...(input.resolution ? { resolution: input.resolution } : {}),
-        ...(input.aspectRatio && input.aspectRatio !== 'auto'
-          ? { aspect_ratio: input.aspectRatio }
-          : {}),
-        ...(input.seed !== undefined ? { seed: input.seed } : {}),
-        enable_safety_checker: false,
-      }
-    : {
-        model: input.endpoint,
-        image_url: input.imageUrl,
-        prompt: input.prompt,
-        ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
-        ...(input.numFrames !== undefined ? { num_frames: input.numFrames } : {}),
-        ...(input.fps !== undefined ? { frames_per_second: input.fps } : {}),
-        ...(input.resolution ? { resolution: input.resolution } : {}),
-        ...(input.aspectRatio && input.aspectRatio !== 'auto'
-          ? { aspect_ratio: input.aspectRatio }
-          : {}),
-        ...(input.numInferenceSteps !== undefined
-          ? { num_inference_steps: input.numInferenceSteps }
-          : {}),
-        ...(input.guidanceScale !== undefined ? { guidance_scale: input.guidanceScale } : {}),
-        ...(input.shift !== undefined ? { shift: input.shift } : {}),
-        ...(input.seed !== undefined ? { seed: input.seed } : {}),
-        enable_safety_checker: false,
-      }
+  // Atlas's gateway forwards the body verbatim to the Alibaba/ByteDance
+  // worker, which uses a strict Pydantic schema (additional properties
+  // forbidden). Verified against the live API for wan-2.2-turbo-spicy:
+  //   accepted at ROOT: model, image, prompt, resolution, seed
+  //   rejected: enable_safety_checker, image_url, aspect_ratio, input{}
+  // Spicy/uncensored variants have no safety gate by design — never send
+  // safety flags. Tuning params (num_frames, shift, guidance_scale, ...) are
+  // not part of the Spicy worker schemas; rely on the model's defaults.
+  const body: Record<string, unknown> = {
+    model: input.endpoint,
+    image: input.imageUrl,
+    prompt: input.prompt,
+    ...(input.resolution ? { resolution: input.resolution } : {}),
+    ...(input.seed !== undefined ? { seed: input.seed } : {}),
+  }
 
   const submit = await fetch(`${ATLAS_BASE}/model/generateVideo`, {
     method: 'POST',
@@ -301,10 +290,23 @@ export async function fetchAtlasVideoJobStatus(args: {
         error: `atlas job ${args.requestId} not found (HTTP ${res.status}).`,
       }
     }
+    // Atlas wraps worker-level 4xx validation errors in a 500 of the form
+    //   {"code":500,"message":"unexpected http status code: 400, body: {...}"}
+    // Those are terminal — the input was rejected, polling won't recover.
+    // Look at the message body and fail fast so the admin sees the reason.
+    const looksLikeUpstream4xx =
+      /unexpected http status code:\s*4\d\d/i.test(body) ||
+      /Invalid request parameters/i.test(body)
+    if (looksLikeUpstream4xx) {
+      return {
+        status: 'failed',
+        error: `atlas worker rejected input (HTTP ${res.status}): ${body.slice(0, 600)}`,
+      }
+    }
     return {
       status: 'pending',
       phase: 'unknown',
-      lastLog: `atlas status HTTP ${res.status}: ${body.slice(0, 200)}`,
+      lastLog: `atlas status HTTP ${res.status}: ${body.slice(0, 600)}`,
       raw: `HTTP_${res.status}`,
     }
   }
