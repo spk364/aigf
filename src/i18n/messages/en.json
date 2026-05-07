@@ -2,6 +2,41 @@
   "common": {
     "hello": "Hello"
   },
+  "explore": {
+    "eyebrow": "Browse companions",
+    "title": "Find someone who fits your vibe",
+    "subtitle": "Filter by archetype, art style, tags, and age. Sort by what's hot right now.",
+    "resultCount": "{count, plural, =0 {No companions match} one {# companion} other {# companions}}",
+    "emptyTitle": "No companions match these filters",
+    "emptySubtitle": "Try removing a few filters or clearing the search.",
+    "clearFilters": "Clear all filters",
+    "filters": {
+      "searchPlaceholder": "Search by name, tag, vibe…",
+      "sortLabel": "Sort:",
+      "sort": {
+        "featured": "Featured",
+        "popular": "Popular",
+        "new": "New",
+        "random": "Random"
+      },
+      "archetype": "Archetype",
+      "artStyle": "Art style",
+      "tags": "Tags",
+      "age": "Age",
+      "ageMin": "Min age",
+      "ageMax": "Max age",
+      "clear": "Clear"
+    }
+  },
+  "landing": {
+    "shelves": {
+      "eyebrow": "Companions",
+      "title": "Pick a vibe, meet a person",
+      "subtitle": "Hand-picked personalities, grouped by archetype. Hover any card to see her in motion.",
+      "browseAll": "Browse all",
+      "seeAll": "See all"
+    }
+  },
   "pick": {
     "eyebrow": "Almost there",
     "headline": "Start chatting with {name}",

@@ -2,6 +2,41 @@
   "common": {
     "hello": "Hola"
   },
+  "explore": {
+    "eyebrow": "Explorar",
+    "title": "Encuentra a la indicada",
+    "subtitle": "Filtra por arquetipo, estilo, etiquetas y edad. Ordena como prefieras.",
+    "resultCount": "{count, plural, =0 {Ninguna coincide} one {# compañera} other {# compañeras}}",
+    "emptyTitle": "Ninguna coincide con estos filtros",
+    "emptySubtitle": "Prueba a quitar algún filtro o borrar la búsqueda.",
+    "clearFilters": "Limpiar filtros",
+    "filters": {
+      "searchPlaceholder": "Buscar por nombre, etiqueta, vibra…",
+      "sortLabel": "Orden:",
+      "sort": {
+        "featured": "Destacadas",
+        "popular": "Populares",
+        "new": "Nuevas",
+        "random": "Aleatorio"
+      },
+      "archetype": "Arquetipo",
+      "artStyle": "Estilo",
+      "tags": "Etiquetas",
+      "age": "Edad",
+      "ageMin": "Mínima",
+      "ageMax": "Máxima",
+      "clear": "Limpiar"
+    }
+  },
+  "landing": {
+    "shelves": {
+      "eyebrow": "Compañeras",
+      "title": "Elige tu vibra, conoce a alguien",
+      "subtitle": "Personajes seleccionados, agrupados por arquetipo. Pasa el cursor por una tarjeta para verla en movimiento.",
+      "browseAll": "Ver todas",
+      "seeAll": "Ver todas"
+    }
+  },
   "pick": {
     "eyebrow": "Casi listo",
     "headline": "Empieza a chatear con {name}",
