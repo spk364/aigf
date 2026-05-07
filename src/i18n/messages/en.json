@@ -29,12 +29,12 @@
     }
   },
   "landing": {
-    "shelves": {
+    "featured": {
       "eyebrow": "Companions",
-      "title": "Pick a vibe, meet a person",
-      "subtitle": "Hand-picked personalities, grouped by archetype. Hover any card to see her in motion.",
+      "title": "Meet someone new today",
+      "subtitle": "Hand-picked personalities, ready to chat. Hover any card to see her in motion.",
       "browseAll": "Browse all",
-      "seeAll": "See all"
+      "chipAll": "All"
     }
   },
   "pick": {

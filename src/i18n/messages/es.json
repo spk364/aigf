@@ -29,12 +29,12 @@
     }
   },
   "landing": {
-    "shelves": {
+    "featured": {
       "eyebrow": "Compañeras",
-      "title": "Elige tu vibra, conoce a alguien",
-      "subtitle": "Personajes seleccionados, agrupados por arquetipo. Pasa el cursor por una tarjeta para verla en movimiento.",
+      "title": "Conoce a alguien nuevo",
+      "subtitle": "Personajes seleccionados, listas para chatear. Pasa el cursor por una tarjeta para verla en movimiento.",
       "browseAll": "Ver todas",
-      "seeAll": "Ver todas"
+      "chipAll": "Todas"
     }
   },
   "pick": {
