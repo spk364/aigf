@@ -4,7 +4,7 @@ import { AvatarGrid, type AvatarPhoto } from '@/widgets/avatar-grid'
 import { SiteHeader } from '@/widgets/site-header'
 import { SiteFooter } from '@/widgets/site-footer'
 import {
-  ArchetypeShelves,
+  FeaturedGrid,
   HowItWorks,
   PricingTeaser,
   TrustStrip,
@@ -86,7 +86,7 @@ export default async function HomePage({ params }: Props) {
         </section>
 
         <TrustStrip />
-        <ArchetypeShelves locale={locale} />
+        <FeaturedGrid locale={locale} />
         <HowItWorks />
         <PricingTeaser locale={locale} />
         <FaqSection />
