@@ -1,4 +1,4 @@
-export { ArchetypeShelves } from './ArchetypeShelves'
+export { FeaturedGrid } from './FeaturedGrid'
 export { HowItWorks } from './HowItWorks'
 export { PricingTeaser } from './PricingTeaser'
 export { TrustStrip } from './TrustStrip'
