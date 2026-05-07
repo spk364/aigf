@@ -8,15 +8,18 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import {
   submitImageJob,
-  FAL_IMAGE_ENDPOINT,
   FAL_ENDPOINT_LORA,
   FAL_ENDPOINT_IP_ADAPTER_FACE_ID,
 } from '@/shared/ai/fal'
+import { submitAtlasImageJob } from '@/shared/ai/atlas'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import {
   IMAGE_MODEL_OPTIONS,
+  DEFAULT_IMAGE_MODEL_ID,
   IMAGE_SIZE_PRESETS,
   DEFAULT_IMAGE_SIZE_PRESET_ID,
+  detectImageProvider,
+  findImageModel,
   resolveImageSize,
 } from '@/shared/ai/image-models'
 
@@ -89,15 +92,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ? body.modelOverride
     : null
   const imageModel = character.imageModel as { primary?: string; checkpoint?: string } | null
-  const resolvedModel = requestedModel ?? imageModel?.primary ?? FAL_IMAGE_ENDPOINT
+  const resolvedModel = requestedModel ?? imageModel?.primary ?? DEFAULT_IMAGE_MODEL_ID
 
-  const isHfCheckpoint = !resolvedModel.startsWith('fal-ai/')
-  const fallbackEndpoint = isHfCheckpoint ? FAL_ENDPOINT_LORA : resolvedModel
-  const fallbackModelName = isHfCheckpoint ? resolvedModel : (imageModel?.checkpoint ?? undefined)
-
-  const modelMeta = IMAGE_MODEL_OPTIONS.find((m) => m.id === resolvedModel)
+  const modelMeta = findImageModel(resolvedModel)
+  const provider = modelMeta?.provider ?? detectImageProvider(resolvedModel)
   const isPony = modelMeta?.isPony ?? false
   const isFlux = modelMeta?.isFlux ?? false
+
+  // For fal, slugs starting with `fal-ai/` are native endpoints; everything
+  // else (HF repo ids like `John6666/...`) routes through fal-ai/lora with
+  // model_name set to the slug. Atlas uses the slug as the `model` field.
+  const falLooksLikeHfRepo = provider === 'fal' && !resolvedModel.startsWith('fal-ai/')
+  const falEndpoint = falLooksLikeHfRepo ? FAL_ENDPOINT_LORA : resolvedModel
+  const falModelName = falLooksLikeHfRepo
+    ? resolvedModel
+    : (imageModel?.checkpoint ?? undefined)
 
   const safetyMarkers = appearance?.safetyAdultMarkers?.join(', ') ?? ''
   const scene = body.sceneHint?.trim() ?? ''
@@ -141,26 +150,45 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const referenceImageUrl = character.referenceImageUrl as string | null
 
-  // IP-Adapter is preferred when a reference exists and the model isn't FLUX.
-  // We submit a single job; the client polls. If IP-Adapter fails at submit
-  // time (rare — usually fails during inference), we fall back to plain endpoint.
-  const useIpAdapter = Boolean(referenceImageUrl) && !isFlux
-  const submitEndpoint = useIpAdapter ? FAL_ENDPOINT_IP_ADAPTER_FACE_ID : fallbackEndpoint
-  const submitModelName = useIpAdapter ? undefined : fallbackModelName
+  // IP-Adapter face-id is fal-only and incompatible with FLUX. When provider
+  // is Atlas, we drop face consistency and rely on the prompt + subject tokens
+  // — Atlas image-edit models are a different concept (edit-this-image rather
+  // than match-this-face). Document the regression in the response.
+  const useIpAdapter =
+    provider === 'fal' && Boolean(referenceImageUrl) && !isFlux
 
   let job: Awaited<ReturnType<typeof submitImageJob>>
   try {
-    job = await submitImageJob({
-      prompt,
-      negativePrompt,
-      imageSize: resolveImageSize(body.imageSize),
-      numImages: 1,
-      endpoint: submitEndpoint,
-      modelName: submitModelName,
-      ...(useIpAdapter && referenceImageUrl
-        ? { ipAdapterImageUrl: referenceImageUrl, ipAdapterScale: 0.7 }
-        : {}),
-    })
+    if (provider === 'atlas') {
+      // For Atlas image-edit endpoints, pass the reference as the source
+      // image. For text-to-image endpoints, ipAdapterImageUrl is ignored
+      // by the adapter (it only adds image_url when present).
+      const isImageEdit = resolvedModel.includes('image-edit')
+      job = await submitAtlasImageJob({
+        prompt,
+        negativePrompt,
+        imageSize: resolveImageSize(body.imageSize),
+        numImages: 1,
+        endpoint: resolvedModel,
+        ...(isImageEdit && referenceImageUrl
+          ? { ipAdapterImageUrl: referenceImageUrl }
+          : {}),
+      })
+    } else {
+      const submitEndpoint = useIpAdapter ? FAL_ENDPOINT_IP_ADAPTER_FACE_ID : falEndpoint
+      const submitModelName = useIpAdapter ? undefined : falModelName
+      job = await submitImageJob({
+        prompt,
+        negativePrompt,
+        imageSize: resolveImageSize(body.imageSize),
+        numImages: 1,
+        endpoint: submitEndpoint,
+        modelName: submitModelName,
+        ...(useIpAdapter && referenceImageUrl
+          ? { ipAdapterImageUrl: referenceImageUrl, ipAdapterScale: 0.7 }
+          : {}),
+      })
+    }
   } catch (err) {
     return NextResponse.json(
       {
@@ -175,6 +203,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ok: true,
     requestId: job.requestId,
     endpoint: job.endpoint,
+    provider,
     modelName: job.modelName,
     statusUrl: job.statusUrl,
     responseUrl: job.responseUrl,

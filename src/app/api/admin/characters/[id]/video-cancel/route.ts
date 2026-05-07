@@ -3,6 +3,7 @@ export const maxDuration = 30
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { cancelFalJob } from '@/shared/ai/fal'
+import { cancelAtlasJob } from '@/shared/ai/atlas'
 import { getCurrentUser } from '@/shared/auth/current-user'
 
 const bodySchema = z.object({
@@ -25,13 +26,19 @@ export async function POST(req: Request) {
     )
   }
 
-  // Only accept fal queue cancel URLs to prevent SSRF.
-  if (!body.cancelUrl.startsWith('https://queue.fal.run/')) {
+  // SSRF guard — only accept queue cancel URLs from providers we use.
+  const isFalCancel = body.cancelUrl.startsWith('https://queue.fal.run/')
+  const isAtlasCancel = body.cancelUrl.startsWith('https://api.atlascloud.ai/')
+  if (!isFalCancel && !isAtlasCancel) {
     return NextResponse.json({ error: 'invalid_cancel_url' }, { status: 400 })
   }
 
   try {
-    const result = await cancelFalJob(body.cancelUrl)
+    // Atlas does not expose a cancel endpoint — cancelAtlasJob is a no-op
+    // that returns ok=true so the UI flow is consistent across providers.
+    const result = isAtlasCancel
+      ? await cancelAtlasJob()
+      : await cancelFalJob(body.cancelUrl)
     return NextResponse.json({
       ok: result.ok,
       status: result.status,

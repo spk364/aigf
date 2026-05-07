@@ -9,20 +9,27 @@ import {
 } from '@/shared/ai/image-models'
 import { saveJob, loadJob, clearJob } from './job-persistence'
 
-// Grouped view for the dropdown — keeps native warm endpoints separate from
-// the cold-start LoRA checkpoints, and splits realism vs anime styles.
+// Grouped view for the dropdown — provider first, then style/cold-start tier.
 const IMAGE_MODEL_GROUPED = [
   {
-    label: 'Native fal endpoints (warm)',
-    items: IMAGE_MODEL_OPTIONS.filter((m) => !m.isCold),
+    label: 'Atlas Cloud — NSFW-friendly, no prompt filter',
+    items: IMAGE_MODEL_OPTIONS.filter((m) => m.provider === 'atlas'),
   },
   {
-    label: 'Realism — NSFW-strong (cold start ~2–3 min)',
-    items: IMAGE_MODEL_OPTIONS.filter((m) => m.isCold && m.style === 'realism'),
+    label: 'fal — native endpoints (warm)',
+    items: IMAGE_MODEL_OPTIONS.filter((m) => m.provider === 'fal' && !m.isCold),
   },
   {
-    label: 'Anime / Illustrious — NSFW-strong (cold start ~2–3 min)',
-    items: IMAGE_MODEL_OPTIONS.filter((m) => m.isCold && m.style === 'anime'),
+    label: 'fal LoRA — Realism NSFW-strong (cold start ~2–3 min)',
+    items: IMAGE_MODEL_OPTIONS.filter(
+      (m) => m.provider === 'fal' && m.isCold && m.style === 'realism',
+    ),
+  },
+  {
+    label: 'fal LoRA — Anime / Illustrious NSFW-strong (cold start ~2–3 min)',
+    items: IMAGE_MODEL_OPTIONS.filter(
+      (m) => m.provider === 'fal' && m.isCold && m.style === 'anime',
+    ),
   },
 ]
 

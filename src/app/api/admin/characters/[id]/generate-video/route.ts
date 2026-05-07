@@ -5,7 +5,12 @@ import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { submitVideoJob } from '@/shared/ai/fal'
-import { DEFAULT_VIDEO_MODEL_ID, isAllowedVideoEndpoint } from '@/shared/ai/video-models'
+import { submitAtlasVideoJob } from '@/shared/ai/atlas'
+import {
+  DEFAULT_VIDEO_MODEL_ID,
+  detectVideoProvider,
+  findVideoModel,
+} from '@/shared/ai/video-models'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import {
   MOTION_PRESETS,
@@ -196,29 +201,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
 
   const endpoint = body.endpoint ?? DEFAULT_VIDEO_MODEL_ID
-  if (!isAllowedVideoEndpoint(endpoint)) {
-    return NextResponse.json(
-      {
-        error: 'invalid_endpoint',
-        message: `Endpoint "${endpoint}" is not in the allowed video model list.`,
-      },
-      { status: 400 },
-    )
+  // The id IS the provider-specific endpoint slug. Look it up; if it's not
+  // in our curated list (legacy stored value, admin-typed override) fall back
+  // to prefix detection so we still route to the right provider.
+  const provider = findVideoModel(endpoint)?.provider ?? detectVideoProvider(endpoint)
+
+  const submitInput = {
+    imageUrl: sourceImageUrl,
+    prompt,
+    negativePrompt,
+    numFrames: preset.numFrames,
+    guidanceScale: preset.guidanceScale,
+    shift: preset.shift,
+    numInferenceSteps: preset.numInferenceSteps,
+    resolution: body.resolution,
+    endpoint,
   }
 
   let submission: Awaited<ReturnType<typeof submitVideoJob>>
   try {
-    submission = await submitVideoJob({
-      imageUrl: sourceImageUrl,
-      prompt,
-      negativePrompt,
-      numFrames: preset.numFrames,
-      guidanceScale: preset.guidanceScale,
-      shift: preset.shift,
-      numInferenceSteps: preset.numInferenceSteps,
-      resolution: body.resolution,
-      endpoint,
-    })
+    submission =
+      provider === 'atlas'
+        ? await submitAtlasVideoJob(submitInput)
+        : await submitVideoJob(submitInput)
   } catch (err) {
     return NextResponse.json(
       {
@@ -233,6 +238,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ok: true,
     requestId: submission.requestId,
     endpoint: submission.endpoint,
+    provider,
     statusUrl: submission.statusUrl,
     responseUrl: submission.responseUrl,
     cancelUrl: submission.cancelUrl,

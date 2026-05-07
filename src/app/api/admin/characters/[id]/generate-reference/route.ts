@@ -6,9 +6,19 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { submitImageJob, FAL_ENDPOINT_REALISTIC_VISION, FAL_ENDPOINT_FAST_SDXL } from '@/shared/ai/fal'
+import {
+  submitImageJob,
+  FAL_ENDPOINT_REALISTIC_VISION,
+  FAL_ENDPOINT_FAST_SDXL,
+  FAL_ENDPOINT_LORA,
+} from '@/shared/ai/fal'
+import { submitAtlasImageJob } from '@/shared/ai/atlas'
 import { getCurrentUser } from '@/shared/auth/current-user'
-import { IMAGE_MODEL_OPTIONS } from '@/shared/ai/image-models'
+import {
+  IMAGE_MODEL_OPTIONS,
+  detectImageProvider,
+  findImageModel,
+} from '@/shared/ai/image-models'
 
 const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
@@ -77,14 +87,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const requestedModel = body.modelOverride && VALID_MODEL_IDS.includes(body.modelOverride)
     ? body.modelOverride
     : null
-  const requestedMeta = requestedModel
-    ? IMAGE_MODEL_OPTIONS.find((m) => m.id === requestedModel)
-    : null
+  const requestedMeta = requestedModel ? findImageModel(requestedModel) : null
   const isPonyOverride = requestedMeta?.isPony ?? false
 
-  const endpoint = isPonyOverride || !requestedModel
-    ? (isAnime ? FAL_ENDPOINT_FAST_SDXL : FAL_ENDPOINT_REALISTIC_VISION)
-    : requestedModel
+  // For references we want a plain neutral portrait. Pony/Illustrious LoRAs
+  // overfit to NSFW poses and aren't ideal for the SFW reference sheet, so
+  // when the user picks one (or makes no choice), fall back to a clean
+  // checkpoint by art style. Anime → Fast SDXL (no Pony tokens needed),
+  // realism → RealVisXL.
+  const resolvedModelId =
+    isPonyOverride || !requestedModel
+      ? isAnime ? FAL_ENDPOINT_FAST_SDXL : FAL_ENDPOINT_REALISTIC_VISION
+      : requestedModel
+
+  const provider = findImageModel(resolvedModelId)?.provider ?? detectImageProvider(resolvedModelId)
 
   const safetyMarkers = appearance?.safetyAdultMarkers?.join(', ') ?? 'adult woman, (18+ years old:1.3)'
   const subjectTokens = appearance?.subjectTokens ?? 'beautiful young woman'
@@ -116,17 +132,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const negativePrompt = `${baseNegative}, ${SAFETY_NEGATIVE}${REFERENCE_NEGATIVE_EXTRA}`
 
+  // For fal HF-repo ids route through fal-ai/lora; native fal endpoints stay
+  // as-is. Atlas takes the slug verbatim.
+  const falLooksLikeHfRepo =
+    provider === 'fal' && !resolvedModelId.startsWith('fal-ai/')
+  const falEndpoint = falLooksLikeHfRepo ? FAL_ENDPOINT_LORA : resolvedModelId
+  const falModelName = falLooksLikeHfRepo ? resolvedModelId : undefined
+
+  const submitInput = {
+    prompt,
+    negativePrompt,
+    imageSize: { width: 832, height: 1216 } as const,
+    numImages: 1,
+    numInferenceSteps: 25,
+    guidanceScale: 7,
+  }
+
   let job: Awaited<ReturnType<typeof submitImageJob>>
   try {
-    job = await submitImageJob({
-      prompt,
-      negativePrompt,
-      imageSize: { width: 832, height: 1216 },
-      numImages: 1,
-      numInferenceSteps: 25,
-      guidanceScale: 7,
-      endpoint,
-    })
+    job =
+      provider === 'atlas'
+        ? await submitAtlasImageJob({ ...submitInput, endpoint: resolvedModelId })
+        : await submitImageJob({
+            ...submitInput,
+            endpoint: falEndpoint,
+            modelName: falModelName,
+          })
   } catch (err) {
     return NextResponse.json(
       {
@@ -141,11 +172,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ok: true,
     requestId: job.requestId,
     endpoint: job.endpoint,
+    provider,
     modelName: job.modelName,
     statusUrl: job.statusUrl,
     responseUrl: job.responseUrl,
     cancelUrl: job.cancelUrl,
     promptUsed: prompt,
+    modelUsed: resolvedModelId,
     negativePromptUsed: negativePrompt,
     setPrimary: body.setPrimary,
     startedAt: Date.now(),
