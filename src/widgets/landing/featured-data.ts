@@ -41,6 +41,7 @@ export const getFeaturedCharacters = cache(
           { isPublished: { equals: true } },
           { primaryImageId: { exists: true } },
           { kind: { equals: 'preset' } },
+          { deletedAt: { exists: false } },
         ],
       },
       sort: ['landingOrder', 'displayOrder'],
@@ -71,6 +72,11 @@ export const getFeaturedCharacters = cache(
           { ownerCharacterId: { in: characterIds } },
           { kind: { equals: 'generated_video' } },
           { publicUrl: { exists: true } },
+          // Soft-deleted videos must drop out of the landing-page hover rotation,
+          // otherwise an admin-deleted clip keeps showing on /[locale] until a
+          // newer one is uploaded. Project-wide convention is the standard
+          // `deletedAt: { exists: false }` filter — see soft-delete.ts.
+          { deletedAt: { exists: false } },
         ],
       },
       sort: '-createdAt',
