@@ -1,4 +1,4 @@
-export { FeaturedCompanions } from './FeaturedCompanions'
+export { ArchetypeShelves } from './ArchetypeShelves'
 export { HowItWorks } from './HowItWorks'
 export { PricingTeaser } from './PricingTeaser'
 export { TrustStrip } from './TrustStrip'
