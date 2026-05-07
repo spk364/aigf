@@ -1,8 +1,7 @@
-import {
-  FAL_ENDPOINT_WAN_V22_I2V,
-  FAL_ENDPOINT_WAN_V22_I2V_TURBO,
-  FAL_ENDPOINT_WAN_V22_5B_I2V,
-} from './fal'
+// Endpoint slugs are duplicated as literals here (rather than imported from
+// `./fal`) because `fal.ts` is `server-only` and this file gets pulled into
+// the admin client bundle through GenerateVideoButton. Keep these in sync
+// with FAL_ENDPOINT_WAN_V22_* in `./fal`.
 
 export type VideoModelStyle = 'realism' | 'anime' | 'mixed'
 
@@ -25,7 +24,7 @@ export type VideoModelOption = {
 // 2.2 14B weights as the premium variant.
 export const VIDEO_MODEL_OPTIONS: VideoModelOption[] = [
   {
-    id: FAL_ENDPOINT_WAN_V22_I2V_TURBO,
+    id: 'fal-ai/wan/v2.2-a14b/image-to-video/turbo',
     label: 'WAN 2.2 14B Turbo (recommended)',
     note: '~30–60 s · $0.05/$0.075/$0.10 fixed per video (480/580/720p) · realism + anime · NSFW-friendly',
     pricingMode: 'per-video',
@@ -33,7 +32,7 @@ export const VIDEO_MODEL_OPTIONS: VideoModelOption[] = [
     nsfwFriendly: true,
   },
   {
-    id: FAL_ENDPOINT_WAN_V22_I2V,
+    id: 'fal-ai/wan/v2.2-a14b/image-to-video',
     label: 'WAN 2.2 14B (premium quality)',
     note: '~3–6 min/720p · $0.04/$0.06/$0.08 per second · best fidelity · NSFW-friendly',
     pricingMode: 'per-second',
@@ -41,7 +40,7 @@ export const VIDEO_MODEL_OPTIONS: VideoModelOption[] = [
     nsfwFriendly: true,
   },
   {
-    id: FAL_ENDPOINT_WAN_V22_5B_I2V,
+    id: 'fal-ai/wan/v2.2-5b/image-to-video',
     label: 'WAN 2.2 5B (budget / preview)',
     note: 'faster, cheaper · weaker identity preservation · NSFW-friendly · good for previews / free-tier',
     pricingMode: 'per-second',
