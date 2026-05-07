@@ -149,6 +149,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     : `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}`
 
   const referenceImageUrl = character.referenceImageUrl as string | null
+  // Primary gallery image — the obvious "current scene" Atlas image-edit
+  // would operate on. We try reference first (cleaner subject anchor) and
+  // fall back to primary so admins don't need to lock a face just to edit.
+  const primaryImagePublicUrl = (() => {
+    const primary = character.primaryImageId
+    if (primary && typeof primary === 'object' && 'publicUrl' in primary) {
+      const url = (primary as { publicUrl?: unknown }).publicUrl
+      return typeof url === 'string' && url.length > 0 ? url : null
+    }
+    return null
+  })()
+  const sourceImageUrl = referenceImageUrl ?? primaryImagePublicUrl
 
   // IP-Adapter face-id is fal-only and incompatible with FLUX. When provider
   // is Atlas, we drop face consistency and rely on the prompt + subject tokens
@@ -157,12 +169,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const useIpAdapter =
     provider === 'fal' && Boolean(referenceImageUrl) && !isFlux
 
+  // Atlas image-edit REQUIRES a source image. Fail fast with a clear error
+  // before burning a request — otherwise Atlas returns a 400 deep in the
+  // polling loop ("images field is required") and the admin sees a generic
+  // "pending → failed" cycle.
+  const isAtlasImageEdit = provider === 'atlas' && resolvedModel.includes('image-edit')
+  if (isAtlasImageEdit && !sourceImageUrl) {
+    return NextResponse.json(
+      {
+        error: 'no_source_image',
+        message:
+          `Model "${resolvedModel}" is image-edit and needs a source image. ` +
+          'Generate a reference (Step 1) or a primary gallery image first, ' +
+          'or pick a text-to-image model (e.g. WAN 2.6 text-to-image).',
+      },
+      { status: 400 },
+    )
+  }
+
   let job: Awaited<ReturnType<typeof submitImageJob>>
   try {
     if (provider === 'atlas') {
-      // For Atlas image-edit endpoints, pass the reference as the source
-      // image. For text-to-image endpoints, ipAdapterImageUrl is ignored
-      // by the adapter (it only adds image_url when present).
+      // For Atlas image-edit endpoints, pass the source image (reference or
+      // primary). For text-to-image endpoints, the adapter ignores
+      // ipAdapterImageUrl entirely — schema doesn't accept image fields.
       const isImageEdit = resolvedModel.includes('image-edit')
       job = await submitAtlasImageJob({
         prompt,
@@ -170,8 +200,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         imageSize: resolveImageSize(body.imageSize),
         numImages: 1,
         endpoint: resolvedModel,
-        ...(isImageEdit && referenceImageUrl
-          ? { ipAdapterImageUrl: referenceImageUrl }
+        ...(isImageEdit && sourceImageUrl
+          ? { ipAdapterImageUrl: sourceImageUrl }
           : {}),
       })
     } else {
