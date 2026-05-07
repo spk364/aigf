@@ -62,24 +62,28 @@ export async function submitAtlasImageJob(
     return `${input.imageSize.width}*${input.imageSize.height}`
   })()
 
-  // Atlas's text-to-image / image-edit endpoints share a single `generateImage`
-  // entry point. WAN 2.6 t2i takes prompt + size; image-edit additionally
-  // takes image_url. We just send everything we have and let Atlas ignore
-  // unknown fields (it returns 422 with `detail` if it doesn't).
-  const body: Record<string, unknown> = {
-    model: input.endpoint,
+  // Atlas wraps all per-model parameters under `input`. The schema is strict
+  // (additional properties forbidden) — sending unknown keys returns 400 with
+  // "Extra inputs are not permitted". Spicy/uncensored variants don't accept
+  // enable_safety_checker at all (no safety gate by design), so we omit it.
+  const isImageEdit = input.endpoint.includes('image-edit')
+  const inner: Record<string, unknown> = {
     prompt: input.prompt,
     ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
     ...(size ? { size } : {}),
-    ...(input.numImages !== undefined ? { num_images: input.numImages } : {}),
     ...(input.numInferenceSteps !== undefined
       ? { num_inference_steps: input.numInferenceSteps }
       : {}),
     ...(input.guidanceScale !== undefined ? { guidance_scale: input.guidanceScale } : {}),
     ...(input.seed !== undefined ? { seed: input.seed } : {}),
-    // Image-edit / IP-Adapter-style flows — Atlas accepts image_url at root.
-    ...(input.ipAdapterImageUrl ? { image_url: input.ipAdapterImageUrl } : {}),
-    enable_safety_checker: false,
+    // image-edit endpoints take a source image; t2i does not.
+    ...(isImageEdit && input.ipAdapterImageUrl
+      ? { image_url: input.ipAdapterImageUrl }
+      : {}),
+  }
+  const body: Record<string, unknown> = {
+    model: input.endpoint,
+    input: inner,
   }
 
   const submit = await fetch(`${ATLAS_BASE}/model/generateImage`, {
@@ -141,10 +145,23 @@ export async function fetchAtlasImageJobStatus(args: {
         error: `atlas job ${args.requestId} not found (HTTP ${res.status}).`,
       }
     }
+    // Atlas wraps worker-level 4xx validation errors in a 500 of the form
+    //   {"code":500,"message":"unexpected http status code: 400, body: {...}"}
+    // Those are terminal — the input was rejected, polling won't recover.
+    // Look at the message body and fail fast so the admin sees the reason.
+    const looksLikeUpstream4xx =
+      /unexpected http status code:\s*4\d\d/i.test(body) ||
+      /Invalid request parameters/i.test(body)
+    if (looksLikeUpstream4xx) {
+      return {
+        status: 'failed',
+        error: `atlas worker rejected input (HTTP ${res.status}): ${body.slice(0, 600)}`,
+      }
+    }
     return {
       status: 'pending',
       phase: 'unknown',
-      lastLog: `atlas status HTTP ${res.status}: ${body.slice(0, 200)}`,
+      lastLog: `atlas status HTTP ${res.status}: ${body.slice(0, 600)}`,
       raw: `HTTP_${res.status}`,
     }
   }
@@ -212,12 +229,17 @@ export async function submitAtlasVideoJob(
 
   const isTurbo = input.endpoint.includes('turbo-spicy')
 
+  // Atlas wraps all per-model parameters under `input`. The schema is strict
+  // (additional properties forbidden) — sending unknown keys returns 400 with
+  // "Extra inputs are not permitted". Spicy/uncensored variants don't accept
+  // enable_safety_checker at all (no safety gate by design), so we omit it.
+  //
   // Turbo Spicy is the distilled fast variant — ignore tuning knobs and let
-  // the model use its own optimised schedule. Match what we already do for
-  // fal's WAN Turbo to avoid 422s on rejected fields.
-  const body: Record<string, unknown> = isTurbo
+  // the model use its own optimised schedule. Mirrors what we do for fal's
+  // WAN Turbo. Full Spicy accepts the WAN tuning surface but the fields are
+  // still nested under `input`.
+  const inner: Record<string, unknown> = isTurbo
     ? {
-        model: input.endpoint,
         image_url: input.imageUrl,
         prompt: input.prompt,
         ...(input.resolution ? { resolution: input.resolution } : {}),
@@ -225,10 +247,8 @@ export async function submitAtlasVideoJob(
           ? { aspect_ratio: input.aspectRatio }
           : {}),
         ...(input.seed !== undefined ? { seed: input.seed } : {}),
-        enable_safety_checker: false,
       }
     : {
-        model: input.endpoint,
         image_url: input.imageUrl,
         prompt: input.prompt,
         ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
@@ -244,8 +264,11 @@ export async function submitAtlasVideoJob(
         ...(input.guidanceScale !== undefined ? { guidance_scale: input.guidanceScale } : {}),
         ...(input.shift !== undefined ? { shift: input.shift } : {}),
         ...(input.seed !== undefined ? { seed: input.seed } : {}),
-        enable_safety_checker: false,
       }
+  const body: Record<string, unknown> = {
+    model: input.endpoint,
+    input: inner,
+  }
 
   const submit = await fetch(`${ATLAS_BASE}/model/generateVideo`, {
     method: 'POST',
@@ -301,10 +324,23 @@ export async function fetchAtlasVideoJobStatus(args: {
         error: `atlas job ${args.requestId} not found (HTTP ${res.status}).`,
       }
     }
+    // Atlas wraps worker-level 4xx validation errors in a 500 of the form
+    //   {"code":500,"message":"unexpected http status code: 400, body: {...}"}
+    // Those are terminal — the input was rejected, polling won't recover.
+    // Look at the message body and fail fast so the admin sees the reason.
+    const looksLikeUpstream4xx =
+      /unexpected http status code:\s*4\d\d/i.test(body) ||
+      /Invalid request parameters/i.test(body)
+    if (looksLikeUpstream4xx) {
+      return {
+        status: 'failed',
+        error: `atlas worker rejected input (HTTP ${res.status}): ${body.slice(0, 600)}`,
+      }
+    }
     return {
       status: 'pending',
       phase: 'unknown',
-      lastLog: `atlas status HTTP ${res.status}: ${body.slice(0, 200)}`,
+      lastLog: `atlas status HTTP ${res.status}: ${body.slice(0, 600)}`,
       raw: `HTTP_${res.status}`,
     }
   }
