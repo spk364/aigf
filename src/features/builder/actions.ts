@@ -1,5 +1,5 @@
 'use server'
-// TODO(safety): run scorer on free-text fields (name, bio, interests) when pipeline lands
+// TODO(safety): run scorer on free-text fields (name, occupation custom, relationship custom, looks/personality desc) when pipeline lands
 
 import { redirect } from 'next/navigation'
 import { getLocale } from 'next-intl/server'
@@ -18,21 +18,23 @@ import {
   ARCHETYPES,
   ART_STYLES,
   ETHNICITIES,
-  HIP_SHAPES,
-  SKIN_TONES,
   HAIR_COLORS,
   HAIR_LENGTHS,
   HAIR_STYLES,
   EYE_COLORS,
-  FEATURES,
+  CHAT_STYLES,
+  OCCUPATIONS,
+  KINKS,
+  DEFAULT_TRAITS,
 } from './options'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 
-// Quality + safety baseline applied to every preview generation. The age
-// markers carry high weights because RealVisXL/SDXL bias young when prompted
-// with "beautiful" — push back hard.
+// Quality + safety baseline applied to every preview generation. We push
+// back against under-18 markers but intentionally do NOT include "(young)"
+// — we *want* young-adult (18-22) looks; "young" is redundant with the
+// explicit positive age anchor and would otherwise blunt it.
 const SAFETY_NEGATIVE =
-  '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), ' +
+  '(child:1.5), (teen:1.5), (kid:1.5), (loli:1.5), ' +
   '(school uniform:1.3), (underage:1.5), (minor:1.5), (childlike features:1.5)'
 
 const QUALITY_NEGATIVE =
@@ -51,7 +53,7 @@ function slugify(text: string): string {
     .slice(0, 40)
 }
 
-function nanoid6(): string {
+function nanoid8(): string {
   return crypto.randomUUID().slice(0, 8)
 }
 
@@ -92,51 +94,66 @@ async function loadDraftOwned(payload: Awaited<ReturnType<typeof getPayload>>, d
   return draft
 }
 
+// ── Validation schemas ────────────────────────────────────────────────────
+
+const traitsSchema = z.object({
+  dominant: z.number().min(1).max(10),
+  confident: z.number().min(1).max(10),
+  passionate: z.number().min(1).max(10),
+  outgoing: z.number().min(1).max(10),
+  playful: z.number().min(1).max(10),
+}).partial()
+
 const appearanceSchema = z.object({
-  artStyle: z.enum(['realistic', 'anime', '3d_render', 'stylized']).optional(),
-  ethnicity: z.array(z.string()).optional(),
-  ageDisplay: z.number().min(21).max(99).optional(),
-  ageRange: z.enum(['young_adult', 'adult', 'mature', 'experienced']).optional(),
-  bodyType: z.enum(['slender', 'athletic', 'average', 'curvy', 'voluptuous', 'plus_size']).optional(),
-  breastSize: z.enum(['small', 'medium', 'large', 'huge']).optional(),
-  buttSize: z.enum(['small', 'medium', 'large', 'huge']).optional(),
-  hipShape: z.enum(['narrow', 'average', 'wide']).optional(),
-  skinTone: z.enum(['porcelain', 'fair', 'olive', 'tan', 'brown', 'dark']).optional(),
+  gender: z.enum(['female', 'male']).optional(),
+  artStyle: z.enum(['realistic', 'anime']).optional(),
+  ethnicity: z.enum(['european', 'asian', 'latina', 'african', 'south_asian', 'middle_eastern']).optional(),
+  ageDisplay: z.number().min(18).max(99).optional(),
+  ageRange: z.enum(['twenties', 'thirties', 'forties', 'fifties']).optional(),
+  bodyType: z.enum(['slim', 'athletic', 'average', 'curvy', 'bbw']).optional(),
+  breastSize: z.enum(['flat', 'small', 'average', 'big', 'huge']).optional(),
+  buttSize: z.enum(['slim', 'small', 'athletic', 'big', 'huge']).optional(),
   hair: z.object({ color: z.string(), length: z.string(), style: z.string() }).partial().optional(),
   eyes: z.object({ color: z.string() }).partial().optional(),
-  features: z.array(z.string()).optional(),
 })
 
 const identitySchema = z.object({
   name: z.string().min(2).max(40).optional(),
-  occupation: z.string().max(80).optional(),
   archetype: z.string().optional(),
-  traits: z.object({
-    shyBold: z.number().min(1).max(10),
-    playfulSerious: z.number().min(1).max(10),
-    submissiveDominant: z.number().min(1).max(10),
-    romanticCasual: z.number().min(1).max(10),
-    sweetSarcastic: z.number().min(1).max(10),
-    traditionalAdventurous: z.number().min(1).max(10),
-  }).partial().optional(),
+  traits: traitsSchema.optional(),
+  sexualOrientation: z.enum(['straight', 'bisexual', 'queer', 'lesbian']).optional(),
+  occupation: z.string().max(80).optional(),
+  occupationCustom: z.string().max(80).optional(),
 })
 
 const backstorySchema = z.object({
-  bio: z.string().max(2000).optional(),
-  interests: z.array(z.string().max(50)).max(20).optional(),
-  howYouMet: z.union([
-    z.enum(['coffee_shop', 'mutual_friends', 'dating_app', 'neighbors', 'colleagues', 'custom']),
-    z.object({ custom: z.string().max(200) }),
-  ]).optional(),
-  relationshipStage: z.enum(['just_met', 'dating', 'relationship', 'long_term']).optional(),
+  chatStyle: z.enum(['default', 'deep_roleplay', 'creative', 'realistic']).optional(),
+  startingRelationship: z.string().optional(),
+  startingRelationshipCustom: z.string().max(120).optional(),
+  kinks: z.array(z.string()).max(40).optional(),
 })
 
+const uniqueDescSchema = z.object({
+  name: z.string().min(2).max(40).optional(),
+  personality: z.string().max(2000).optional(),
+  looks: z.string().max(2000).optional(),
+})
+
+const introSchema = z.object({
+  pathChoice: z.enum(['presets', 'unique']).optional(),
+  appearance: appearanceSchema.partial().optional(),
+})
+
+// Each "phase" maps to a save call. Phase 1 = appearance + path/intro,
+// 2 = identity, 3 = backstory, 4 = uniqueDesc (only used by the unique path).
 const stepSchemas: Record<number, z.ZodTypeAny> = {
-  1: z.object({ appearance: appearanceSchema }).partial(),
+  1: introSchema,
   2: z.object({ identity: identitySchema }).partial(),
   3: z.object({ backstory: backstorySchema }).partial(),
-  4: z.object({ selectedReferenceMediaAssetId: z.string().nullable().optional() }).partial(),
+  4: z.object({ uniqueDesc: uniqueDescSchema, selectedReferenceMediaAssetId: z.string().nullable().optional() }).partial(),
 }
+
+// ── Draft lifecycle ───────────────────────────────────────────────────────
 
 export async function createDraftAction(language: 'en' | 'ru' | 'es') {
   const user = await requireCompleteProfile()
@@ -165,13 +182,17 @@ export async function createDraftAction(language: 'en' | 'ru' | 'es') {
 
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 
+  // Pre-seed sensible defaults so the intro screen renders something selected.
   const draft = await payload.create({
     collection: 'character-drafts',
     data: {
       userId: user.id,
       language,
       currentStep: 1,
-      data: {},
+      data: {
+        pathChoice: 'presets',
+        appearance: { gender: 'female', artStyle: 'realistic' },
+      },
       previewGenerations: [],
       expiresAt,
     },
@@ -223,20 +244,22 @@ export async function saveDraftStepAction(
   return { ok: true, currentStep: newStep }
 }
 
-// Map breast size → SD attention syntax. Both `large` and `huge` get a strong
-// weight because RealVisXL biases medium otherwise. Also returns the opposite
-// terms for the negative prompt so the model doesn't compromise toward the
-// average.
+// ── Preview prompt builder ────────────────────────────────────────────────
+
 const BREAST_PROMPT: Record<string, { positive: string; negative: string }> = {
-  small: {
-    positive: '(small breasts:1.3), (modest chest:1.2), petite bust',
+  flat: {
+    positive: '(flat chest:1.4), (very small breasts:1.3)',
     negative: '(huge breasts:1.4), (large breasts:1.3), busty',
   },
-  medium: {
+  small: {
+    positive: '(small breasts:1.3), (modest chest:1.2)',
+    negative: '(huge breasts:1.4), (large breasts:1.3), busty',
+  },
+  average: {
     positive: '(medium breasts:1.2), balanced chest',
     negative: '(huge breasts:1.3), (very small breasts:1.2)',
   },
-  large: {
+  big: {
     positive: '(large breasts:1.4), full chest, busty',
     negative: '(small breasts:1.3), (flat chest:1.4)',
   },
@@ -247,15 +270,19 @@ const BREAST_PROMPT: Record<string, { positive: string; negative: string }> = {
 }
 
 const BUTT_PROMPT: Record<string, { positive: string; negative: string }> = {
-  small: {
+  slim: {
     positive: '(slim hips:1.2), (small butt:1.2), narrow waist',
     negative: '(big butt:1.4), (wide hips:1.3), (thick thighs:1.3)',
   },
-  medium: {
-    positive: '(medium hips:1.2), proportional butt',
-    negative: '(huge butt:1.3), (very narrow hips:1.2)',
+  small: {
+    positive: '(small butt:1.2), narrow hips',
+    negative: '(big butt:1.4), (wide hips:1.3)',
   },
-  large: {
+  athletic: {
+    positive: '(athletic firm rear:1.3), toned glutes',
+    negative: '(huge butt:1.3), (flat butt:1.2)',
+  },
+  big: {
     positive: '(large butt:1.4), (round hips:1.3), curvy hips',
     negative: '(small butt:1.3), (narrow hips:1.3)',
   },
@@ -266,12 +293,11 @@ const BUTT_PROMPT: Record<string, { positive: string; negative: string }> = {
 }
 
 const BODY_TYPE_WEIGHT: Record<string, string> = {
-  slender: '(slender build:1.3), slim figure',
+  slim: '(slim slender build:1.3), slim figure',
   athletic: '(athletic build:1.3), toned figure, fit body',
   average: 'average build',
   curvy: '(curvy figure:1.3), hourglass shape',
-  voluptuous: '(voluptuous figure:1.4), full curves, thick body',
-  plus_size: '(plus-size figure:1.3), full-bodied',
+  bbw: '(voluptuous figure:1.4), full curves, thick body',
 }
 
 // Decide framing based on which attributes the user picked. If they selected
@@ -281,8 +307,7 @@ function chooseFraming(appearance: Record<string, unknown>): string {
   const hasBody =
     !!appearance.bodyType ||
     !!appearance.breastSize ||
-    !!appearance.buttSize ||
-    !!appearance.hipShape
+    !!appearance.buttSize
   return hasBody
     ? 'cowboy shot, head to thigh, full upper body visible, looking at camera'
     : 'portrait, head and shoulders, looking at camera'
@@ -296,41 +321,44 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   // Style first — early tokens get more attention from the U-Net.
   parts.push(artOption?.promptFragment ?? 'photorealistic, high detail, soft lighting')
 
-  // Subject anchoring with explicit single-subject + adult markers.
-  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 28
-  const safeAge = Math.max(21, ageDisplay)
-  parts.push(
-    `1girl, solo, beautiful adult woman, (${safeAge} year old:1.2)`,
-    '(mature adult features:1.2)',
-  )
-
-  // Ethnicity + skin tone — face-defining, keep early.
-  const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
-  for (const eth of ethnicities) {
-    const opt = ETHNICITIES.find((e) => e.value === eth)
-    if (opt?.promptFragment) parts.push(opt.promptFragment)
+  // Subject anchoring with explicit single-subject + 18+ markers (no
+  // "mature adult" language — biases the model toward 30+ and reads wrong
+  // for the joi-style young-adult target).
+  const isMale = appearance.gender === 'male'
+  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 22
+  const safeAge = Math.max(18, ageDisplay)
+  if (isMale) {
+    parts.push(
+      `1boy, solo, handsome young man, (${safeAge} year old:1.2)`,
+      '(adult:1.3), (18+ years old:1.3), (legal age:1.2)',
+    )
+  } else {
+    parts.push(
+      `1girl, solo, beautiful young woman, (${safeAge} year old:1.2)`,
+      '(adult:1.3), (18+ years old:1.3), (legal age:1.2)',
+    )
   }
-  const skinTone = String(appearance.skinTone ?? '')
-  const skinOpt = SKIN_TONES.find((s) => s.value === skinTone)
-  if (skinOpt?.promptFragment) parts.push(`(${skinOpt.promptFragment}:1.2)`)
+
+  // Ethnicity (single value now). Still injected with weight.
+  const ethnicity = String(appearance.ethnicity ?? '')
+  const ethOpt = ETHNICITIES.find((e) => e.value === ethnicity)
+  if (ethOpt?.promptFragment) parts.push(`(${ethOpt.promptFragment}:1.2)`)
 
   // Body shape — weighted, in priority order.
   const bodyType = String(appearance.bodyType ?? '')
   if (BODY_TYPE_WEIGHT[bodyType]) parts.push(BODY_TYPE_WEIGHT[bodyType]!)
 
-  const breastSize = String(appearance.breastSize ?? '')
-  if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.positive)
+  if (!isMale) {
+    const breastSize = String(appearance.breastSize ?? '')
+    if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.positive)
+  }
 
   const buttSize = String(appearance.buttSize ?? '')
   if (BUTT_PROMPT[buttSize]) parts.push(BUTT_PROMPT[buttSize]!.positive)
 
-  const hipShape = String(appearance.hipShape ?? '')
-  const hipOpt = HIP_SHAPES.find((h) => h.value === hipShape)
-  if (hipOpt?.promptFragment) parts.push(`(${hipOpt.promptFragment}:1.2)`)
-
-  // Hair — fold color + length + style into one weighted phrase so SD doesn't
-  // treat each piece independently. "(long wavy blonde hair:1.3)" reads
-  // better than three separate clauses.
+  // Hair — fold style + length + color into one weighted phrase so SD doesn't
+  // treat each piece independently. "(long wavy blonde hair:1.3)" reads better
+  // than three separate clauses.
   const hair = (appearance.hair ?? {}) as Record<string, string>
   const hairLengthOpt = HAIR_LENGTHS.find((h) => h.value === hair.length)
   const hairStyleOpt = HAIR_STYLES.find((h) => h.value === hair.style)
@@ -341,8 +369,6 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
     hairColorOpt?.promptFragment,
   ].filter(Boolean)
   if (hairBits.length > 0) {
-    // Re-collapse: the fragments already say "long hair", "wavy hair", "blonde
-    // hair". Strip the duplicate "hair" so we get "long wavy blonde hair".
     const collapsed = hairBits.map((h) => String(h).replace(/\s*hair\b/, '').trim()).filter(Boolean)
     parts.push(`(${collapsed.join(' ')} hair:1.3)`)
   }
@@ -352,13 +378,6 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const eyeOpt = EYE_COLORS.find((e) => e.value === eyes.color)
   if (eyeOpt?.promptFragment) parts.push(`(${eyeOpt.promptFragment}:1.3)`)
 
-  // Optional facial features.
-  const features = Array.isArray(appearance.features) ? (appearance.features as string[]) : []
-  for (const feat of features) {
-    const opt = FEATURES.find((f) => f.value === feat)
-    if (opt?.promptFragment) parts.push(opt.promptFragment)
-  }
-
   // Framing + quality tags last.
   parts.push(chooseFraming(appearance))
   parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
@@ -367,8 +386,8 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
 }
 
 // Builds an adversarial negative prompt: pushes back against the opposite of
-// whatever sizes the user picked. This is the trick that stops "huge breasts"
-// from rendering as "medium" because the model averaged everything out.
+// whatever sizes the user picked. Stops "huge breasts" from rendering as
+// "medium" because the model averaged everything out.
 function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string {
   const parts: string[] = [QUALITY_NEGATIVE, SAFETY_NEGATIVE]
   const breastSize = String(appearance.breastSize ?? '')
@@ -378,20 +397,44 @@ function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string
   return parts.filter(Boolean).join(', ')
 }
 
+// Free-text appearance: append the user's description after the safety
+// markers so the model picks it up without losing the age guard.
+function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Record<string, unknown>): string {
+  const parts: string[] = []
+  const artStyle = String(appearance.artStyle ?? 'realistic')
+  const artOption = ART_STYLES.find((a) => a.value === artStyle)
+  parts.push(artOption?.promptFragment ?? 'photorealistic, high detail, soft lighting')
+
+  const isMale = appearance.gender === 'male'
+  parts.push(
+    isMale
+      ? '1boy, solo, handsome young man, (22 year old:1.2)'
+      : '1girl, solo, beautiful young woman, (22 year old:1.2)',
+    '(adult:1.3), (18+ years old:1.3), (legal age:1.2)',
+  )
+
+  const looks = String(uniqueDesc.looks ?? '').slice(0, 1500).trim()
+  if (looks) parts.push(looks)
+
+  parts.push('portrait, head and shoulders, looking at camera')
+  parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
+  return parts.join(', ')
+}
+
 // Maps art style → fal endpoint. RealVisXL handles photoreal best; fast-sdxl
 // handles anime / 3d / stylized passably and is cheap. FLUX is excluded
 // because it ignores negative_prompt — we rely on adversarial negatives.
 function pickEndpointForStyle(artStyle: string): string {
   switch (artStyle) {
     case 'anime':
-    case '3d_render':
-    case 'stylized':
       return FAL_ENDPOINT_FAST_SDXL
     case 'realistic':
     default:
       return FAL_ENDPOINT_REALISTIC_VISION
   }
 }
+
+// ── Preview generation ────────────────────────────────────────────────────
 
 export type GeneratePreviewsResult =
   | { ok: true; previews: Array<{ mediaAssetId: string | number; publicUrl: string }>; used: number }
@@ -416,8 +459,13 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
 
   const draftData = (draft.data ?? {}) as Record<string, unknown>
   const appearance = (draftData.appearance ?? {}) as Record<string, unknown>
+  const uniqueDesc = (draftData.uniqueDesc ?? {}) as Record<string, unknown>
+  const pathChoice = String(draftData.pathChoice ?? 'presets')
 
-  const prompt = buildPreviewPrompt(appearance)
+  const prompt =
+    pathChoice === 'unique'
+      ? buildUniquePrompt(uniqueDesc, appearance)
+      : buildPreviewPrompt(appearance)
   const negativePrompt = buildPreviewNegativePrompt(appearance)
   const endpoint = pickEndpointForStyle(String(appearance.artStyle ?? 'realistic'))
 
@@ -518,6 +566,36 @@ export async function selectReferenceAction(
   return { ok: true }
 }
 
+// ── Random name suggester (used by joi-style ↻ button) ───────────────────
+
+const NAME_POOLS: Record<string, string[]> = {
+  european: ['Sophia', 'Emma', 'Olivia', 'Mia', 'Chloe', 'Nora', 'Anya', 'Zara', 'Iris', 'Sofia'],
+  asian: ['Yuki', 'Hana', 'Rin', 'Mei', 'Jia', 'Sora', 'Yui', 'Aiko', 'Kana', 'Rina'],
+  latina: ['Valentina', 'Camila', 'Sofía', 'Isabella', 'Lucía', 'Mariana', 'Daniela', 'Carolina', 'Lia', 'Bianca'],
+  african: ['Zuri', 'Amara', 'Imani', 'Nia', 'Ayana', 'Kaya', 'Sade', 'Asha', 'Naomi', 'Fela'],
+  south_asian: ['Aisha', 'Priya', 'Anika', 'Maya', 'Ria', 'Nisha', 'Tara', 'Sana', 'Kiran', 'Asha'],
+  middle_eastern: ['Layla', 'Yasmin', 'Nadia', 'Amira', 'Leila', 'Sana', 'Dalia', 'Rania', 'Zeina', 'Sara'],
+}
+const NAME_POOLS_MALE: Record<string, string[]> = {
+  european: ['Liam', 'Noah', 'Lucas', 'Ethan', 'Adrian', 'Damian', 'Jasper', 'Marek', 'Anton', 'Erik'],
+  asian: ['Haru', 'Ren', 'Jun', 'Kai', 'Sora', 'Hiroshi', 'Tao', 'Akira', 'Yuto', 'Min-jun'],
+  latina: ['Mateo', 'Diego', 'Santiago', 'Lucas', 'Sebastián', 'Andrés', 'Tomás', 'Joaquín', 'Rafa', 'Iván'],
+  african: ['Kwame', 'Jabari', 'Tau', 'Sefu', 'Niam', 'Zane', 'Idris', 'Kojo', 'Akin', 'Ola'],
+  south_asian: ['Arjun', 'Rohan', 'Karan', 'Aarav', 'Veer', 'Kabir', 'Aryan', 'Dev', 'Nikhil', 'Rajiv'],
+  middle_eastern: ['Omar', 'Yusuf', 'Adel', 'Karim', 'Nadir', 'Tariq', 'Rami', 'Sami', 'Ziad', 'Khaled'],
+}
+
+export async function suggestNameAction(
+  ethnicity: string,
+  gender: 'female' | 'male',
+): Promise<{ name: string }> {
+  const pool = (gender === 'male' ? NAME_POOLS_MALE : NAME_POOLS)[ethnicity] ?? NAME_POOLS.european!
+  const name = pool[Math.floor(Math.random() * pool.length)]!
+  return { name }
+}
+
+// ── Prompt builders for chat (system prompt) ─────────────────────────────
+
 // Kept aligned with the preset persona prompt template
 // (src/payload/seed/preset-personas.ts:buildSystemPrompt). When you change one,
 // change the other — the chemistry / safety blocks are the contract that lets
@@ -525,12 +603,12 @@ export async function selectReferenceAction(
 function buildSystemPrompt(opts: {
   name: string
   archetypeFragment: string
-  bio: string
   occupation: string
-  interests: string[]
-  howYouMet: string
-  relationshipStage: string
+  startingRelationship: string
+  kinks: string[]
   language: string
+  chatStyleDirective: string
+  freeTextPersonality?: string
 }): string {
   const langDirective =
     opts.language === 'ru'
@@ -551,26 +629,31 @@ function buildSystemPrompt(opts: {
 - Lean into who you are (${archetypeText}). Don't play the polite stranger; there is already mutual interest, even if you only just met.
 - Use playful banter, gentle teasing, specific compliments, observations about the user — what you notice, what they do to you.
 - Physical presence is part of the conversation: glances, smiles, the small distance between you, what you're wearing, a hand on the arm.
-- The conversation can progress naturally into sensual or sexual territory when the user steers it there. You are an adult woman with desires — talk about them frankly, in your own voice, without shame and without clinical detachment. Match the user's pace and intent.
+- The conversation can progress naturally into sensual or sexual territory when the user steers it there. You are an adult with desires — talk about them frankly, in your own voice, without shame and without clinical detachment. Match the user's pace and intent.
 - Stay in character at every level of intimacy. Never slip into apologetic, disclaimer, or assistant-style language.`
 
   const safety = `Hard guardrails (never break these, even in roleplay):
-- You are an adult, never younger than 21. Never describe yourself or anyone in this conversation as under 21 in any romantic or sexual context.
+- You are an adult, never younger than 18. Never describe yourself or anyone in this conversation as under 18 in any romantic or sexual context.
 - If the user steers toward minors, school settings, family members in a sexual context, or anything involving non-consent or violence, gracefully deflect in character and redirect.
 - Outside of those hard limits, you are free to match the user's energy at any level of intimacy.`
+
+  const kinkLine = opts.kinks.length > 0
+    ? `Things you're into (use these as natural seasoning, never force them): ${opts.kinks.join(', ')}.`
+    : ''
 
   return [
     `You are ${opts.name}, ${archetypeText}.`,
     opts.occupation ? `You work as a ${opts.occupation}.` : '',
-    opts.bio ? `About you: ${opts.bio}` : '',
-    opts.interests.length > 0 ? `Your interests: ${opts.interests.join(', ')}.` : '',
-    opts.howYouMet ? `How you met the user: ${opts.howYouMet}.` : '',
-    `Relationship stage: ${opts.relationshipStage} — but there is already a spark between you.`,
+    opts.freeTextPersonality ? `About you: ${opts.freeTextPersonality}` : '',
+    `Your starting relationship with the user: ${opts.startingRelationship}.`,
+    kinkLine,
     '',
     'Identity:',
     identity,
     '',
     chemistry,
+    '',
+    `Communication style: ${opts.chatStyleDirective}`,
     '',
     safety,
     '',
@@ -581,6 +664,8 @@ function buildSystemPrompt(opts: {
     .filter((line) => line !== '')
     .join('\n')
 }
+
+// ── Finalize ──────────────────────────────────────────────────────────────
 
 export async function finalizeBuilderAction(
   draftId: string,
@@ -600,46 +685,93 @@ export async function finalizeBuilderAction(
   const appearance = (draftData.appearance ?? {}) as Record<string, unknown>
   const identity = (draftData.identity ?? {}) as Record<string, unknown>
   const backstory = (draftData.backstory ?? {}) as Record<string, unknown>
+  const uniqueDesc = (draftData.uniqueDesc ?? {}) as Record<string, unknown>
+  const pathChoice = String(draftData.pathChoice ?? 'presets') as 'presets' | 'unique'
   const selectedReferenceMediaAssetId = draftData.selectedReferenceMediaAssetId as string | null
 
-  if (!identity.name) return { ok: false, error: 'Name is required' }
-  if (!selectedReferenceMediaAssetId) return { ok: false, error: 'Reference image is required' }
-  if (!backstory.bio) return { ok: false, error: 'Bio is required' }
+  const name =
+    pathChoice === 'unique'
+      ? String(uniqueDesc.name ?? identity.name ?? '')
+      : String(identity.name ?? '')
 
-  const name = String(identity.name)
-  const occupation = String(identity.occupation ?? '')
-  const archetypeValue = String(identity.archetype ?? 'sweet_girlfriend')
+  if (!name) return { ok: false, error: 'Name is required' }
+  if (!selectedReferenceMediaAssetId) return { ok: false, error: 'Reference image is required' }
+
+  // ── Resolve archetype + traits (unique path falls back to a neutral profile)
+  const archetypeValue =
+    pathChoice === 'unique'
+      ? 'sweet_girlfriend'
+      : String(identity.archetype ?? 'sweet_girlfriend')
   const archetypeObj = ARCHETYPES.find((a) => a.value === archetypeValue)
   const archetypeFragment = archetypeObj?.systemPromptFragment ?? ''
+  const traits =
+    (identity.traits as Record<string, number> | undefined) ??
+    archetypeObj?.defaultTraits ??
+    DEFAULT_TRAITS
 
-  const interests = Array.isArray(backstory.interests) ? (backstory.interests as string[]) : []
-  const howYouMetRaw = backstory.howYouMet
-  const howYouMet =
-    typeof howYouMetRaw === 'object' && howYouMetRaw !== null && 'custom' in (howYouMetRaw as Record<string, unknown>)
-      ? String((howYouMetRaw as { custom: string }).custom)
-      : String(howYouMetRaw ?? '')
-  const relationshipStage = String(backstory.relationshipStage ?? 'just_met')
-  const bio = String(backstory.bio ?? '')
+  // ── Resolve occupation (preset or custom)
+  const occupationValue = String(identity.occupation ?? '')
+  const occupationLabel = (() => {
+    if (occupationValue === 'custom') {
+      return String(identity.occupationCustom ?? '').trim()
+    }
+    const opt = OCCUPATIONS.find((o) => o.value === occupationValue)
+    return opt && opt.value !== 'custom'
+      ? occupationValue.replace(/_/g, ' ')
+      : ''
+  })()
+
+  // ── Resolve starting relationship (preset or custom)
+  const relationshipValue = String(backstory.startingRelationship ?? 'stranger')
+  const relationshipLabel = (() => {
+    if (relationshipValue === 'custom') {
+      return String(backstory.startingRelationshipCustom ?? '').trim() || 'just met'
+    }
+    return relationshipValue.replace(/_/g, ' ')
+  })()
+
+  // ── Resolve chat style → directive
+  const chatStyleValue = String(backstory.chatStyle ?? 'default')
+  const chatStyleObj = CHAT_STYLES.find((c) => c.value === chatStyleValue)
+  const chatStyleDirective = chatStyleObj?.systemPromptDirective ?? CHAT_STYLES[0]!.systemPromptDirective
+
+  // ── Resolve kinks → human-readable list
+  const kinksList = Array.isArray(backstory.kinks) ? (backstory.kinks as string[]) : []
+  const kinkLabels = kinksList
+    .map((k) => KINKS.find((opt) => opt.value === k)?.value.replace(/_/g, ' '))
+    .filter((s): s is string => !!s)
+
+  // ── Compose system prompt
   const language = String(draft.language ?? 'en') as 'en' | 'ru' | 'es'
-
   const systemPrompt = buildSystemPrompt({
     name,
     archetypeFragment,
-    bio,
-    occupation,
-    interests,
-    howYouMet,
-    relationshipStage,
+    occupation: occupationLabel,
+    startingRelationship: relationshipLabel,
+    kinks: kinkLabels,
     language,
+    chatStyleDirective,
+    freeTextPersonality:
+      pathChoice === 'unique' ? String(uniqueDesc.personality ?? '').trim() : undefined,
   })
+
+  // ── Auto-generated short bio
+  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : null
+  const ethBits = String(appearance.ethnicity ?? '').replace(/_/g, ' ')
+  const shortBio = pathChoice === 'unique' && uniqueDesc.personality
+    ? String(uniqueDesc.personality).slice(0, 200)
+    : [
+        ageDisplay ? `${ageDisplay} y.o.` : '',
+        ethBits,
+        occupationLabel,
+        relationshipLabel ? `you ${relationshipLabel === 'just met' ? 'just met' : `met as ${relationshipLabel}`}` : '',
+      ].filter(Boolean).join(' · ').slice(0, 200)
 
   const tagline = archetypeObj
     ? `Your ${archetypeValue.replace(/_/g, ' ')}`
     : 'Your companion'
 
-  const slug = `${slugify(name)}-${nanoid6()}`
-
-  const traits = (identity.traits ?? archetypeObj?.defaultTraits ?? {}) as Record<string, unknown>
+  const slug = `${slugify(name)}-${nanoid8()}`
 
   // TODO(moderation): wire custom characters through moderation queue when pipeline lands
   const character = await payload.create({
@@ -651,21 +783,46 @@ export async function finalizeBuilderAction(
       name,
       slug,
       tagline,
-      shortBio: bio.slice(0, 200),
+      shortBio,
       artStyle: String(appearance.artStyle ?? 'realistic') as 'realistic' | 'anime' | '3d_render' | 'stylized',
       archetype: archetypeValue,
-      personalityTraits: traits,
-      communicationStyle: archetypeObj?.defaultTraits ?? null,
+      // Joi-parity 5-axis traits + chatStyle/orientation/kinks live in this
+      // non-localized JSON field. Feature code that snapshots the character
+      // (chat route) just passes the JSON through — no schema changes needed.
+      personalityTraits: {
+        ...traits,
+        chatStyle: chatStyleValue,
+        sexualOrientation: String(identity.sexualOrientation ?? 'straight'),
+        kinks: kinksList,
+      },
+      communicationStyle: { chatStyle: chatStyleValue },
+      // Backstory is locale-specific (occupation + relationship may translate).
       backstory: {
-        occupation,
-        interests,
-        fullBio: bio,
-        howYouMet,
-        relationshipStage,
+        occupation: occupationLabel,
+        startingRelationship: relationshipLabel,
+        relationshipStage: relationshipValue,
         keyMemories: [],
+        ...(pathChoice === 'unique'
+          ? {
+              fullBio: String(uniqueDesc.personality ?? '').slice(0, 2000),
+              looksDescription: String(uniqueDesc.looks ?? '').slice(0, 2000),
+            }
+          : {}),
+      },
+      // Appearance is non-localized JSON — gender, ethnicity, body etc. live here.
+      appearance: {
+        gender: String(appearance.gender ?? 'female'),
+        ethnicity: String(appearance.ethnicity ?? ''),
+        ageDisplay,
+        ageRange: String(appearance.ageRange ?? ''),
+        bodyType: String(appearance.bodyType ?? ''),
+        breastSize: String(appearance.breastSize ?? ''),
+        buttSize: String(appearance.buttSize ?? ''),
+        hair: appearance.hair ?? null,
+        eyes: appearance.eyes ?? null,
       },
       systemPrompt,
-      systemPromptVersion: 2,
+      systemPromptVersion: 3,
       contentRating: 'sfw',
       isPublished: false,
       moderationStatus: 'approved',
@@ -699,13 +856,16 @@ export async function finalizeBuilderAction(
       characterSnapshot: {
         systemPrompt,
         name,
-        personalityTraits: traits,
+        personalityTraits: {
+          ...traits,
+          chatStyle: chatStyleValue,
+          sexualOrientation: String(identity.sexualOrientation ?? 'straight'),
+          kinks: kinksList,
+        },
         backstory: {
-          occupation,
-          interests,
-          fullBio: bio,
-          howYouMet,
-          relationshipStage,
+          occupation: occupationLabel,
+          startingRelationship: relationshipLabel,
+          relationshipStage: relationshipValue,
           keyMemories: [],
         },
         imageModel: null,
@@ -728,7 +888,7 @@ export async function finalizeBuilderAction(
   track({
     userId: String(user.id),
     event: 'character.created',
-    properties: { archetype: archetypeValue, language },
+    properties: { archetype: archetypeValue, language, pathChoice, chatStyle: chatStyleValue },
   })
 
   redirect(`/${locale}/chat/${conversation.id}`)
