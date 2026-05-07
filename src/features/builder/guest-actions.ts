@@ -16,7 +16,6 @@ import {
   HAIR_LENGTHS,
   HAIR_STYLES,
   EYE_COLORS,
-  FEATURES,
 } from './options'
 import {
   readGuestDraft,
@@ -29,12 +28,14 @@ import { checkGuestPreviewRateLimit } from './guest-rate-limit'
 const MAX_PREVIEWS = 6
 
 // Mirrors the admin reference-generation safety negative prompt. Heavy weights
-// on age markers are critical given that we don't have human moderation in the
-// loop on the teaser flow.
+// on under-18 markers are critical given that we don't have human moderation in
+// the loop on the teaser flow. We intentionally do NOT push back against
+// "young" / "petite" / "small" / "flat chest" — those are valid 18-22 looks
+// the user might pick.
 const SAFETY_NEGATIVE =
-  '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
-  '(petite:1.2), (small:1.2), (flat chest:1.4), (underage:1.5), (minor:1.5), ' +
-  '(childlike features:1.5), deformed, low quality, multiple people, bad anatomy'
+  '(child:1.5), (teen:1.5), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
+  '(underage:1.5), (minor:1.5), (childlike features:1.5), ' +
+  'deformed, low quality, multiple people, bad anatomy'
 
 const SFW_GUEST_NEGATIVE =
   'nudity, nipples, explicit, nsfw, sexual content, ' +
@@ -60,7 +61,7 @@ function buildNegativePrompt(artStyle: string): string {
 // Pony/Illustrious checkpoints are excluded due to 2-3 min cold start.
 //
 // FLUX has no negative_prompt — for safety we lean harder on positive-prompt
-// age markers ("mature adult woman, 30 year old") in buildPreviewPrompt.
+// age markers ("(adult:1.3), (18+ years old:1.3)") in buildPreviewPrompt.
 function pickEndpointForStyle(artStyle: string): {
   endpoint: string
   inferenceSteps: number
@@ -84,7 +85,7 @@ function pickEndpointForStyle(artStyle: string): {
 const appearanceSchema = z.object({
   artStyle: z.enum(['realistic', 'anime', '3d_render', 'stylized']).optional(),
   ethnicity: z.array(z.string()).optional(),
-  ageDisplay: z.number().min(21).max(99).optional(),
+  ageDisplay: z.number().min(18).max(99).optional(),
   ageRange: z.enum(['young_adult', 'adult', 'mature', 'experienced']).optional(),
   bodyType: z.enum(['slender', 'average', 'curvy', 'voluptuous']).optional(),
   bust: z.enum(['small', 'medium', 'large', 'huge']).optional(),
@@ -120,10 +121,10 @@ const BUTT_FRAGMENTS: Record<string, string> = {
 // numeric age the prompt builders already understand. Floor stays >=21 to
 // keep the safety pipeline happy.
 const AGE_RANGE_TO_DISPLAY: Record<string, number> = {
-  young_adult: 23,
-  adult: 28,
-  mature: 38,
-  experienced: 48,
+  young_adult: 21,
+  adult: 24,
+  mature: 32,
+  experienced: 42,
 }
 
 const generateInputSchema = z.object({
@@ -137,7 +138,7 @@ const generateInputSchema = z.object({
 // or anime prompt by buildPreviewPrompt.
 function resolveAge(appearance: Record<string, unknown>, fallback: number): number {
   if (typeof appearance.ageDisplay === 'number') {
-    return Math.max(21, appearance.ageDisplay)
+    return Math.max(18, appearance.ageDisplay)
   }
   const range = String(appearance.ageRange ?? '')
   if (range && AGE_RANGE_TO_DISPLAY[range]) {
@@ -149,9 +150,9 @@ function resolveAge(appearance: Record<string, unknown>, fallback: number): numb
 function buildSubjectTokens(appearance: Record<string, unknown>): string {
   const parts: string[] = []
 
-  const safeAge = resolveAge(appearance, 25)
-  parts.push(`${safeAge} years old`)
-  parts.push('(adult woman:1.3)')
+  const safeAge = resolveAge(appearance, 22)
+  parts.push(`(${safeAge} years old:1.3)`)
+  parts.push('(adult:1.3), (18+ years old:1.3), (legal age:1.2)')
 
   const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
   for (const eth of ethnicities) {
@@ -179,12 +180,6 @@ function buildSubjectTokens(appearance: Record<string, unknown>): string {
   const eyes = (appearance.eyes ?? {}) as Record<string, string>
   const eyeOpt = EYE_COLORS.find((e) => e.value === eyes.color)
   if (eyeOpt?.promptFragment) parts.push(eyeOpt.promptFragment)
-
-  const features = Array.isArray(appearance.features) ? (appearance.features as string[]) : []
-  for (const feat of features) {
-    const opt = FEATURES.find((f) => f.value === feat)
-    if (opt?.promptFragment) parts.push(opt.promptFragment)
-  }
 
   return parts.join(', ')
 }
@@ -267,13 +262,6 @@ function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
   const eyes = (appearance.eyes ?? {}) as Record<string, string>
   const eyesDesc = EYE_COLORS.find((e) => e.value === eyes.color)?.promptFragment ?? ''
 
-  const featureBits: string[] = []
-  const features = Array.isArray(appearance.features) ? (appearance.features as string[]) : []
-  for (const feat of features) {
-    const opt = FEATURES.find((f) => f.value === feat)
-    if (opt?.promptFragment) featureBits.push(opt.promptFragment)
-  }
-
   const descriptors = [
     ethnicityDescriptors.join(' '),
     bodyDesc,
@@ -281,17 +269,16 @@ function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
     buttDesc,
     hairDesc,
     eyesDesc,
-    featureBits.join(', '),
   ].filter(Boolean).join(', ')
 
   return [
-    `Editorial full-body fashion photograph of a confident mature adult woman, ${safeAge} years old, fully grown adult.`,
+    `Editorial full-body fashion photograph of a confident young woman, ${safeAge} years old, legal-age adult.`,
     descriptors ? `She has ${descriptors}.` : '',
     'She is standing in a relaxed alluring pose, soft contrapposto with one hand on her hip and weight on one leg, giving the camera a playful confident smile and direct eye contact.',
     'She wears a tasteful elegant outfit — a fashionable dress or stylish top with a skirt or well-fitted jeans, fully clothed, heels or stylish shoes visible.',
     'The shot is taken with a professional DSLR, 50mm lens, golden-hour cinematic warm lighting, shallow depth of field with a soft bokeh background.',
     'Photorealistic, sharp focus on her face and full figure, head to toe in frame, magazine-quality 4K editorial photography.',
-    'She is clearly an adult woman in her late twenties or older, mature features, no childlike or teenage characteristics.',
+    'She is clearly an 18+ adult woman, no childlike or pre-teen characteristics whatsoever.',
   ].filter(Boolean).join(' ')
 }
 

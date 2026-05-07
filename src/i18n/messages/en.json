@@ -175,7 +175,7 @@
     }
   },
   "builder": {
-    "title": "Create your companion",
+    "title": "Create a character",
     "startNew": "Start new",
     "upgradeLink": "Upgrade",
     "draftsHeading": "Your drafts",
@@ -184,133 +184,119 @@
     "stepCounter": "Step {current} of {total}",
     "phases": {
       "appearance": "Appearance",
-      "identity": "Identity",
-      "backstory": "Backstory",
-      "review": "Review"
-    },
-    "steps": {
-      "appearance": "Appearance",
-      "identity": "Identity",
-      "backstory": "Backstory",
-      "review": "Review"
+      "identity": "Personality",
+      "backstory": "Story",
+      "review": "Final"
     },
     "questions": {
-      "artStyle": "Choose an art style",
-      "ethnicity": "Pick an ethnicity",
-      "ageRange": "Choose an age",
-      "skinTone": "Pick a skin tone",
-      "bodyType": "Choose a body type",
-      "breastSize": "Choose a chest size",
-      "buttSize": "Choose a hip / butt size",
-      "hipShape": "Choose hip shape",
-      "hairColor": "Pick a hair color",
-      "hairLength": "Pick hair length",
-      "hairStyle": "Pick a hair style",
-      "eyeColor": "Pick eye color",
-      "features": "Add some signature features",
+      "intro": "Create a character",
+      "uniqueDesc": "Describe your character",
+      "ageEthnicity": "Age & ethnic background",
+      "body": "Body shape",
+      "hairEyes": "Hair & eyes",
       "preview": "Generate her photo",
-      "name": "What's her name?",
-      "archetype": "Pick her vibe",
-      "personality": "Fine-tune her personality",
-      "bio": "Tell her story",
-      "howYouMet": "How did you meet?",
-      "review": "Meet her"
-    },
-    "fields": {
-      "artStyle": "Art style",
-      "ethnicity": "Ethnicity",
-      "ageRange": "Age range",
-      "ageDisplay": "Displayed age",
-      "bodyType": "Body type",
-      "breastSize": "Chest size",
-      "buttSize": "Butt size",
-      "hipShape": "Hip shape",
-      "skinTone": "Skin tone",
-      "hairColor": "Hair color",
-      "hairLength": "Hair length",
-      "hairStyle": "Hair style",
-      "eyeColor": "Eye color",
-      "features": "Facial features",
-      "name": "Name",
+      "archetype": "Personality",
+      "nameOrientation": "Name & sexual orientation",
+      "chatStyle": "Chat style",
       "occupation": "Occupation",
-      "archetype": "Personality archetype",
-      "personalityTraits": "Personality sliders",
-      "bio": "Backstory",
-      "interests": "Interests",
-      "howYouMet": "How you met",
-      "relationshipStage": "Relationship stage"
+      "relationship": "Starting relationship",
+      "kinks": "What kinks are they into?",
+      "review": "{name} is ready"
+    },
+    "sections": {
+      "gender": "What gender is your character?",
+      "artStyle": "Choose an art style",
+      "approach": "Choose your design approach",
+      "age": "Age",
+      "ethnicity": "Ethnic background",
+      "physique": "Physique",
+      "breasts": "Breasts",
+      "butt": "Butt",
+      "hairStyle": "Hair style",
+      "hairLength": "Hair length",
+      "hairColor": "Hair color",
+      "eyeColor": "Eye color",
+      "name": "Name",
+      "ageDisplay": "Displayed age",
+      "orientation": "Sexual orientation",
+      "uniquePersonality": "Describe their personality",
+      "uniqueLooks": "Describe their looks"
     },
     "hints": {
       "multiSelect": "Pick one or more",
       "singleSelect": "Pick one",
       "optional": "Optional",
-      "ageMin": "Minimum 21 (legal requirement)",
+      "customSliders": "Fine-tune the personality with sliders below.",
+      "ageMin": "Minimum 18 (legal requirement)",
+      "example": "Example",
       "previewIntro": "Generate up to 5 sets of 4 photos. Pick the one you love — she'll look like that throughout your chat."
     },
+    "placeholders": {
+      "occupationCustom": "Pilot, chef, ballet dancer...",
+      "relationshipCustom": "Met at a music festival, ex-boss, old crush...",
+      "kinkSearch": "Search",
+      "uniquePersonality": "Add personality traits, behavior and tone of voice",
+      "uniqueLooks": "Add visual details, body type, and visual attributes"
+    },
     "options": {
+      "gender": {
+        "female": "Female",
+        "male": "Male"
+      },
+      "approach": {
+        "presets": "Choose from presets",
+        "unique": "Write a unique description"
+      },
       "artStyle": {
         "realistic": "Realistic",
-        "anime": "Anime",
-        "3d_render": "3D Render",
-        "stylized": "Stylized"
+        "anime": "Anime"
       },
       "ethnicity": {
-        "european": "European",
-        "east_asian": "East Asian",
-        "southeast_asian": "Southeast Asian",
+        "european": "White",
+        "asian": "Asian",
         "latina": "Latina",
-        "african": "African",
-        "middle_eastern": "Middle Eastern",
-        "mixed": "Mixed"
+        "african": "Black",
+        "south_asian": "South Asian",
+        "middle_eastern": "Middle Eastern"
       },
       "ageRange": {
-        "young_adult": "Young Adult",
-        "adult": "Adult",
-        "mature": "Mature",
-        "experienced": "Experienced"
+        "twenties": "20s",
+        "thirties": "30s",
+        "forties": "40s",
+        "fifties": "50s"
       },
       "bodyType": {
-        "slender": "Slender",
+        "slim": "Slim",
         "athletic": "Athletic",
         "average": "Average",
         "curvy": "Curvy",
-        "voluptuous": "Voluptuous",
-        "plus_size": "Plus size"
+        "bbw": "BBW"
       },
       "breastSize": {
+        "flat": "Flat",
         "small": "Small",
-        "medium": "Medium",
-        "large": "Large",
+        "average": "Average",
+        "big": "Big",
         "huge": "Huge"
       },
       "buttSize": {
+        "slim": "Slim",
         "small": "Small",
-        "medium": "Medium",
-        "large": "Large",
+        "athletic": "Athletic",
+        "big": "Big",
         "huge": "Huge"
-      },
-      "hipShape": {
-        "narrow": "Narrow",
-        "average": "Average",
-        "wide": "Wide"
-      },
-      "skinTone": {
-        "porcelain": "Porcelain",
-        "fair": "Fair",
-        "olive": "Olive",
-        "tan": "Tan",
-        "brown": "Brown",
-        "dark": "Dark"
       },
       "hairColor": {
         "blonde": "Blonde",
-        "brunette": "Brunette",
-        "redhead": "Redhead",
         "black": "Black",
         "brown": "Brown",
+        "red": "Red",
+        "gray": "Gray",
+        "white": "White",
         "auburn": "Auburn",
-        "platinum": "Platinum",
-        "copper": "Copper"
+        "pink": "Pink",
+        "blue": "Blue",
+        "purple": "Purple"
       },
       "hairLength": {
         "short": "Short",
@@ -321,28 +307,29 @@
         "straight": "Straight",
         "wavy": "Wavy",
         "curly": "Curly",
+        "bangs": "Bangs",
+        "braids": "Braids",
         "ponytail": "Ponytail",
-        "braided": "Braided",
-        "bun": "Bun"
+        "bun": "Bun",
+        "bob": "Bob"
       },
       "eyeColor": {
-        "blue": "Blue",
         "brown": "Brown",
+        "blue": "Blue",
         "green": "Green",
-        "hazel": "Hazel",
-        "amber": "Amber",
-        "gray": "Gray",
-        "violet": "Violet"
+        "gray": "Gray"
       },
-      "features": {
-        "freckles": "Freckles",
-        "dimples": "Dimples",
-        "glasses": "Glasses",
-        "tattoos": "Tattoos",
-        "beauty_mark": "Beauty mark",
-        "piercings": "Piercings",
-        "lip_piercing": "Lip piercing",
-        "septum": "Septum"
+      "orientation": {
+        "straight": "Straight",
+        "bisexual": "Bisexual",
+        "queer": "Queer",
+        "lesbian": "Lesbian"
+      },
+      "chatStyle": {
+        "default": "Default",
+        "deepRoleplay": "Deep roleplay",
+        "creative": "Creative",
+        "realistic": "Realistic"
       },
       "archetype": {
         "sweet_girlfriend": "Sweet girlfriend",
@@ -354,32 +341,87 @@
         "free_spirit": "Free spirit",
         "caretaker": "Caretaker",
         "dominant_temptress": "Dominant temptress",
-        "playful_brat": "Playful brat"
+        "playful_brat": "Playful brat",
+        "custom": "Custom"
       },
-      "meetScenario": {
-        "coffee_shop": "Coffee shop",
-        "mutual_friends": "Mutual friends",
-        "dating_app": "Dating app",
-        "neighbors": "Neighbors",
-        "colleagues": "Colleagues",
-        "gym": "Gym",
-        "club": "Club",
-        "custom": "Custom story"
+      "occupation": {
+        "massage_therapist": "Massage therapist",
+        "fitness_coach": "Fitness coach",
+        "secretary": "Secretary",
+        "flight_attendant": "Flight attendant",
+        "librarian": "Librarian",
+        "doctor": "Doctor",
+        "nurse": "Nurse",
+        "police_officer": "Police officer",
+        "teacher": "Teacher",
+        "student": "Student",
+        "artist": "Artist",
+        "lawyer": "Lawyer",
+        "streamer": "Streamer",
+        "actress": "Actress",
+        "model": "Model",
+        "custom": "Custom"
       },
-      "relationshipStage": {
-        "just_met": "Just met",
-        "dating": "Dating",
-        "relationship": "In a relationship",
-        "long_term": "Long-term"
+      "startingRelationship": {
+        "stranger": "Stranger",
+        "colleague": "Colleague",
+        "girlfriend": "Girlfriend",
+        "wife": "Wife",
+        "girl_next_door": "Girl-next-door",
+        "boss": "Boss",
+        "friend": "Friend",
+        "ex": "Ex",
+        "fwb": "Friend-with-benefits",
+        "classmate": "Classmate",
+        "gym_buddy": "Gym buddy",
+        "roommate": "Roommate",
+        "custom": "Custom"
+      },
+      "kink": {
+        "romantic": "Romantic",
+        "flirty": "Flirty",
+        "teasing": "Teasing",
+        "dirty_talk": "Dirty talk",
+        "sexting": "Sexting",
+        "roleplay": "Roleplay",
+        "voyeurism": "Voyeurism",
+        "exhibitionism": "Exhibitionism",
+        "bdsm_light": "BDSM (light)",
+        "bondage": "Bondage",
+        "dom": "Dom",
+        "sub": "Sub",
+        "switch": "Switch",
+        "brat": "Brat",
+        "praise": "Praise",
+        "degradation": "Degradation",
+        "edging": "Edging",
+        "orgasm_control": "Orgasm control",
+        "anticipation": "Anticipation",
+        "biting": "Biting",
+        "spanking": "Spanking",
+        "rough": "Rough",
+        "gentle": "Gentle",
+        "sensual_massage": "Sensual massage",
+        "lingerie": "Lingerie",
+        "feet": "Feet",
+        "public": "Public",
+        "shower": "Shower",
+        "morning": "Morning",
+        "late_night": "Late night",
+        "oral": "Oral",
+        "anal": "Anal",
+        "breasts": "Breasts",
+        "mutual": "Mutual",
+        "first_time": "First time",
+        "long_distance": "Long-distance"
       }
     },
     "personality": {
-      "shyBold": { "label": "Energy", "left": "Shy", "right": "Bold" },
-      "playfulSerious": { "label": "Mood", "left": "Playful", "right": "Serious" },
-      "submissiveDominant": { "label": "Stance", "left": "Submissive", "right": "Dominant" },
-      "romanticCasual": { "label": "Connection", "left": "Romantic", "right": "Casual" },
-      "sweetSarcastic": { "label": "Tone", "left": "Sweet", "right": "Sarcastic" },
-      "traditionalAdventurous": { "label": "Lifestyle", "left": "Traditional", "right": "Adventurous" }
+      "dominant": { "label": "Stance", "left": "Submissive", "right": "Dominant" },
+      "confident": { "label": "Confidence", "left": "Insecure", "right": "Confident" },
+      "passionate": { "label": "Warmth", "left": "Cold", "right": "Passionate" },
+      "outgoing": { "label": "Energy", "left": "Reserved", "right": "Outgoing" },
+      "playful": { "label": "Mood", "left": "Serious", "right": "Playful" }
     },
     "actions": {
       "generatePreviews": "Generate her photo",
@@ -387,9 +429,13 @@
       "selectReference": "Selected",
       "saveDraft": "Saving",
       "prev": "Back",
-      "next": "Continue",
+      "next": "Next",
       "finalize": "Finalize",
-      "meetHer": "Start chatting"
+      "create": "Create {name}",
+      "showMore": "Show more ({count})"
+    },
+    "review": {
+      "relationship": "Starting relationship"
     },
     "errors": {
       "nameChildlike": "This name is not allowed.",

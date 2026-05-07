@@ -175,7 +175,7 @@
     }
   },
   "builder": {
-    "title": "Crea tu companion",
+    "title": "Crea un personaje",
     "startNew": "Nuevo",
     "upgradeLink": "Mejorar",
     "draftsHeading": "Tus borradores",
@@ -184,133 +184,119 @@
     "stepCounter": "Paso {current} de {total}",
     "phases": {
       "appearance": "Apariencia",
-      "identity": "Identidad",
+      "identity": "Personalidad",
       "backstory": "Historia",
       "review": "Final"
     },
-    "steps": {
-      "appearance": "Apariencia",
-      "identity": "Identidad",
-      "backstory": "Historia",
-      "review": "Revision"
-    },
     "questions": {
-      "artStyle": "Elige un estilo",
-      "ethnicity": "Elige una etnia",
-      "ageRange": "Elige una edad",
-      "skinTone": "Tono de piel",
-      "bodyType": "Tipo de cuerpo",
-      "breastSize": "Tamaño del busto",
-      "buttSize": "Tamaño de glúteos",
-      "hipShape": "Forma de caderas",
-      "hairColor": "Color del cabello",
-      "hairLength": "Largo del cabello",
-      "hairStyle": "Estilo del cabello",
-      "eyeColor": "Color de ojos",
-      "features": "Detalles especiales",
+      "intro": "Crea un personaje",
+      "uniqueDesc": "Describe tu personaje",
+      "ageEthnicity": "Edad y origen étnico",
+      "body": "Tipo de cuerpo",
+      "hairEyes": "Cabello y ojos",
       "preview": "Genera su foto",
-      "name": "¿Cómo se llama?",
-      "archetype": "Su personalidad",
-      "personality": "Ajusta su carácter",
-      "bio": "Cuenta su historia",
-      "howYouMet": "¿Cómo se conocieron?",
-      "review": "Conócela"
+      "archetype": "Personalidad",
+      "nameOrientation": "Nombre y orientación sexual",
+      "chatStyle": "Estilo del chat",
+      "occupation": "Ocupación",
+      "relationship": "Relación inicial",
+      "kinks": "¿Qué le gusta?",
+      "review": "{name} casi lista"
     },
-    "fields": {
-      "artStyle": "Estilo de arte",
-      "ethnicity": "Etnicidad",
-      "ageRange": "Edad",
-      "ageDisplay": "Edad mostrada",
-      "bodyType": "Tipo de cuerpo",
-      "breastSize": "Busto",
-      "buttSize": "Glúteos",
-      "hipShape": "Caderas",
-      "skinTone": "Tono de piel",
-      "hairColor": "Color de cabello",
-      "hairLength": "Largo de cabello",
-      "hairStyle": "Estilo de cabello",
+    "sections": {
+      "gender": "¿Cuál es el género de tu personaje?",
+      "artStyle": "Elige un estilo de arte",
+      "approach": "Elige tu enfoque",
+      "age": "Edad",
+      "ethnicity": "Origen étnico",
+      "physique": "Físico",
+      "breasts": "Pecho",
+      "butt": "Glúteos",
+      "hairStyle": "Estilo del cabello",
+      "hairLength": "Largo del cabello",
+      "hairColor": "Color del cabello",
       "eyeColor": "Color de ojos",
-      "features": "Caracteristicas faciales",
       "name": "Nombre",
-      "occupation": "Ocupacion",
-      "archetype": "Arquetipo de personalidad",
-      "personalityTraits": "Rasgos de personalidad",
-      "bio": "Historia",
-      "interests": "Intereses",
-      "howYouMet": "Como se conocieron",
-      "relationshipStage": "Etapa de la relacion"
+      "ageDisplay": "Edad mostrada",
+      "orientation": "Orientación sexual",
+      "uniquePersonality": "Describe su personalidad",
+      "uniqueLooks": "Describe su apariencia"
     },
     "hints": {
       "multiSelect": "Elige uno o varios",
       "singleSelect": "Elige uno",
       "optional": "Opcional",
-      "ageMin": "Mínimo 21 (requisito legal)",
+      "customSliders": "Ajusta el carácter con los sliders.",
+      "ageMin": "Mínimo 18 (requisito legal)",
+      "example": "Ejemplo",
       "previewIntro": "Genera hasta 5 sets de 4 fotos. Elige la que más te guste — así se verá durante todo el chat."
     },
+    "placeholders": {
+      "occupationCustom": "Piloto, chef, bailarina...",
+      "relationshipCustom": "Conocidos en un festival, ex-jefa, antiguo flechazo...",
+      "kinkSearch": "Buscar",
+      "uniquePersonality": "Añade rasgos de personalidad, comportamiento y tono",
+      "uniqueLooks": "Añade detalles visuales, cuerpo y atributos"
+    },
     "options": {
+      "gender": {
+        "female": "Mujer",
+        "male": "Hombre"
+      },
+      "approach": {
+        "presets": "Desde presets",
+        "unique": "Descripción propia"
+      },
       "artStyle": {
         "realistic": "Realista",
-        "anime": "Anime",
-        "3d_render": "Render 3D",
-        "stylized": "Estilizado"
+        "anime": "Anime"
       },
       "ethnicity": {
-        "european": "Europea",
-        "east_asian": "Asiatica oriental",
-        "southeast_asian": "Asiatica del sureste",
+        "european": "Blanca",
+        "asian": "Asiática",
         "latina": "Latina",
-        "african": "Africana",
-        "middle_eastern": "Oriente Medio",
-        "mixed": "Mixta"
+        "african": "Negra",
+        "south_asian": "Sudasiática",
+        "middle_eastern": "Oriente Medio"
       },
       "ageRange": {
-        "young_adult": "Adulta joven",
-        "adult": "Adulta",
-        "mature": "Madura",
-        "experienced": "Experimentada"
+        "twenties": "20s",
+        "thirties": "30s",
+        "forties": "40s",
+        "fifties": "50s"
       },
       "bodyType": {
-        "slender": "Esbelta",
+        "slim": "Delgada",
         "athletic": "Atlética",
         "average": "Promedio",
         "curvy": "Con curvas",
-        "voluptuous": "Voluptuosa",
-        "plus_size": "Talla grande"
+        "bbw": "BBW"
       },
       "breastSize": {
+        "flat": "Plano",
         "small": "Pequeño",
-        "medium": "Mediano",
-        "large": "Grande",
+        "average": "Promedio",
+        "big": "Grande",
         "huge": "Enorme"
       },
       "buttSize": {
+        "slim": "Delgado",
         "small": "Pequeño",
-        "medium": "Mediano",
-        "large": "Grande",
+        "athletic": "Atlético",
+        "big": "Grande",
         "huge": "Enorme"
       },
-      "hipShape": {
-        "narrow": "Estrechas",
-        "average": "Promedio",
-        "wide": "Anchas"
-      },
-      "skinTone": {
-        "porcelain": "Porcelana",
-        "fair": "Clara",
-        "olive": "Oliva",
-        "tan": "Bronceada",
-        "brown": "Morena",
-        "dark": "Oscura"
-      },
       "hairColor": {
-        "blonde": "Rubia",
-        "brunette": "Morena",
-        "redhead": "Pelirroja",
+        "blonde": "Rubio",
         "black": "Negro",
-        "brown": "Marron",
+        "brown": "Castaño",
+        "red": "Pelirrojo",
+        "gray": "Gris",
+        "white": "Blanco",
         "auburn": "Castaño rojizo",
-        "platinum": "Platino",
-        "copper": "Cobre"
+        "pink": "Rosa",
+        "blue": "Azul",
+        "purple": "Morado"
       },
       "hairLength": {
         "short": "Corto",
@@ -321,65 +307,121 @@
         "straight": "Liso",
         "wavy": "Ondulado",
         "curly": "Rizado",
+        "bangs": "Con flequillo",
+        "braids": "Trenzas",
         "ponytail": "Coleta",
-        "braided": "Trenzado",
-        "bun": "Recogido"
+        "bun": "Recogido",
+        "bob": "Bob"
       },
       "eyeColor": {
+        "brown": "Marrón",
         "blue": "Azul",
-        "brown": "Marron",
         "green": "Verde",
-        "hazel": "Avellana",
-        "amber": "Ambar",
-        "gray": "Gris",
-        "violet": "Violeta"
+        "gray": "Gris"
       },
-      "features": {
-        "freckles": "Pecas",
-        "dimples": "Hoyuelos",
-        "glasses": "Gafas",
-        "tattoos": "Tatuajes",
-        "beauty_mark": "Lunar",
-        "piercings": "Piercings",
-        "lip_piercing": "Piercing en labio",
-        "septum": "Septum"
+      "orientation": {
+        "straight": "Hetero",
+        "bisexual": "Bisexual",
+        "queer": "Queer",
+        "lesbian": "Lesbiana"
+      },
+      "chatStyle": {
+        "default": "Por defecto",
+        "deepRoleplay": "Roleplay profundo",
+        "creative": "Creativo",
+        "realistic": "Realista"
       },
       "archetype": {
         "sweet_girlfriend": "Novia dulce",
-        "adventurous_spirit": "Espiritu aventurero",
-        "mysterious_one": "La misteriosa",
-        "confident_leader": "Lider segura",
-        "shy_romantic": "Romantica timida",
+        "adventurous_spirit": "Espíritu aventurero",
+        "mysterious_one": "Misteriosa",
+        "confident_leader": "Líder segura",
+        "shy_romantic": "Romántica tímida",
         "intellectual": "Intelectual",
-        "free_spirit": "Espiritu libre",
+        "free_spirit": "Espíritu libre",
         "caretaker": "Cuidadora",
         "dominant_temptress": "Tentadora dominante",
-        "playful_brat": "Pícara juguetona"
+        "playful_brat": "Pícara juguetona",
+        "custom": "Personalizada"
       },
-      "meetScenario": {
-        "coffee_shop": "Cafeteria",
-        "mutual_friends": "Amigos en comun",
-        "dating_app": "App de citas",
-        "neighbors": "Vecinos",
-        "colleagues": "Compañeros de trabajo",
-        "gym": "Gimnasio",
-        "club": "Club nocturno",
-        "custom": "Historia propia"
+      "occupation": {
+        "massage_therapist": "Masajista",
+        "fitness_coach": "Entrenadora",
+        "secretary": "Secretaria",
+        "flight_attendant": "Azafata",
+        "librarian": "Bibliotecaria",
+        "doctor": "Doctora",
+        "nurse": "Enfermera",
+        "police_officer": "Policía",
+        "teacher": "Profesora",
+        "student": "Estudiante",
+        "artist": "Artista",
+        "lawyer": "Abogada",
+        "streamer": "Streamer",
+        "actress": "Actriz",
+        "model": "Modelo",
+        "custom": "Personalizada"
       },
-      "relationshipStage": {
-        "just_met": "Recien conocidos",
-        "dating": "Saliendo",
-        "relationship": "En una relacion",
-        "long_term": "Largo plazo"
+      "startingRelationship": {
+        "stranger": "Desconocida",
+        "colleague": "Compañera de trabajo",
+        "girlfriend": "Novia",
+        "wife": "Esposa",
+        "girl_next_door": "Vecina",
+        "boss": "Jefa",
+        "friend": "Amiga",
+        "ex": "Ex",
+        "fwb": "Amiga con derechos",
+        "classmate": "Compañera de clase",
+        "gym_buddy": "Compañera del gym",
+        "roommate": "Compañera de piso",
+        "custom": "Personalizada"
+      },
+      "kink": {
+        "romantic": "Romántico",
+        "flirty": "Coqueta",
+        "teasing": "Provocadora",
+        "dirty_talk": "Hablar sucio",
+        "sexting": "Sexting",
+        "roleplay": "Roleplay",
+        "voyeurism": "Voyerismo",
+        "exhibitionism": "Exhibicionismo",
+        "bdsm_light": "BDSM (light)",
+        "bondage": "Bondage",
+        "dom": "Dom",
+        "sub": "Sub",
+        "switch": "Switch",
+        "brat": "Pícara",
+        "praise": "Halagos",
+        "degradation": "Degradación",
+        "edging": "Edging",
+        "orgasm_control": "Control de orgasmo",
+        "anticipation": "Anticipación",
+        "biting": "Mordidas",
+        "spanking": "Nalgadas",
+        "rough": "Brusco",
+        "gentle": "Tierno",
+        "sensual_massage": "Masaje sensual",
+        "lingerie": "Lencería",
+        "feet": "Pies",
+        "public": "En público",
+        "shower": "En la ducha",
+        "morning": "Mañana",
+        "late_night": "Madrugada",
+        "oral": "Oral",
+        "anal": "Anal",
+        "breasts": "Pecho",
+        "mutual": "Mutuo",
+        "first_time": "Primera vez",
+        "long_distance": "A distancia"
       }
     },
     "personality": {
-      "shyBold": { "label": "Energía", "left": "Tímida", "right": "Atrevida" },
-      "playfulSerious": { "label": "Ánimo", "left": "Juguetona", "right": "Seria" },
-      "submissiveDominant": { "label": "Postura", "left": "Sumisa", "right": "Dominante" },
-      "romanticCasual": { "label": "Conexión", "left": "Romántica", "right": "Casual" },
-      "sweetSarcastic": { "label": "Tono", "left": "Dulce", "right": "Sarcástica" },
-      "traditionalAdventurous": { "label": "Estilo de vida", "left": "Tradicional", "right": "Aventurera" }
+      "dominant": { "label": "Postura", "left": "Sumisa", "right": "Dominante" },
+      "confident": { "label": "Confianza", "left": "Insegura", "right": "Segura" },
+      "passionate": { "label": "Calidez", "left": "Fría", "right": "Apasionada" },
+      "outgoing": { "label": "Energía", "left": "Reservada", "right": "Extrovertida" },
+      "playful": { "label": "Ánimo", "left": "Seria", "right": "Juguetona" }
     },
     "actions": {
       "generatePreviews": "Generar foto",
@@ -389,7 +431,11 @@
       "prev": "Atras",
       "next": "Siguiente",
       "finalize": "Finalizar",
-      "meetHer": "Empezar el chat"
+      "create": "Crear a {name}",
+      "showMore": "Mostrar más ({count})"
+    },
+    "review": {
+      "relationship": "Relación inicial"
     },
     "errors": {
       "nameChildlike": "Este nombre no esta permitido.",

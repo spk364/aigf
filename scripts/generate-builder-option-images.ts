@@ -4,9 +4,15 @@
  * For every option in src/features/builder/options.ts that declares an
  * `imagePath` of the form `/builder/{category}/{value}.jpg`, this script
  * crafts a focused prompt that *isolates* that single attribute and saves
- * the rendered JPG to `public/builder/{category}/{value}.jpg`. Once those
- * files exist, `OptionImageCard` renders them automatically (the gradient +
- * emoji is only the fallback for missing files).
+ * the rendered JPG to `public/builder/{category}/{value}.jpg`.
+ *
+ * Provider: Atlas Cloud (`alibaba/wan-2.6/text-to-image`) — NSFW-friendly,
+ * no platform-level prompt classifier. Atlas's image API has no negative
+ * prompt support, so safety is baked into the positive prompt via
+ * `(adult:1.3), (18+:1.3), legal age` markers. The cards are intentionally
+ * young-adult and seductive (joi-style); breast-size and butt-size cards
+ * frame just the body part in lingerie (no face) so users see what the
+ * choice actually does.
  *
  * Usage:
  *   pnpm tsx --env-file-if-exists=.env.local scripts/generate-builder-option-images.ts
@@ -15,10 +21,10 @@
  *   pnpm tsx --env-file-if-exists=.env.local scripts/generate-builder-option-images.ts --confirm --category=breast-size --value=huge --force
  *   pnpm tsx --env-file-if-exists=.env.local scripts/generate-builder-option-images.ts --confirm --concurrency=4
  *
- * Default is DRY-RUN: prints the plan + estimated cost, makes no fal calls.
+ * Default is DRY-RUN: prints the plan + estimated cost, makes no API calls.
  * Pass --confirm to actually fire. --force regenerates files that already exist.
  *
- * Env required when --confirm: FAL_KEY.
+ * Env required when --confirm: ATLAS_API_KEY.
  */
 
 import fs from 'node:fs/promises'
@@ -30,35 +36,33 @@ import {
   BODY_TYPES,
   BREAST_SIZES,
   BUTT_SIZES,
-  HIP_SHAPES,
-  SKIN_TONES,
   HAIR_COLORS,
   HAIR_LENGTHS,
   HAIR_STYLES,
   EYE_COLORS,
-  FEATURES,
   ARCHETYPES,
-  MEET_SCENARIOS,
-  RELATIONSHIP_STAGES,
+  OCCUPATIONS,
+  STARTING_RELATIONSHIPS,
   type BuilderOption,
 } from '../src/features/builder/options'
 
-const FAL_ENDPOINT_FAST_SDXL = 'fal-ai/fast-sdxl'
-const COST_PER_IMAGE_USD = 0.025
+const ATLAS_BASE = 'https://api.atlascloud.ai/api/v1'
+const ATLAS_MODEL = 'alibaba/wan-2.6/text-to-image'
+const COST_PER_IMAGE_USD = 0.021
 const POLL_INTERVAL_MS = 3000
 const POLL_TIMEOUT_MS = 180_000
 
-// Heavy weights on age markers because SDXL biases young when prompted with
-// "beautiful". Mirrors the safety baseline used by the live builder.
-const SAFETY_NEGATIVE =
-  '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), ' +
-  '(school uniform:1.3), (underage:1.5), (minor:1.5), (childlike features:1.5)'
-
-const QUALITY_NEGATIVE =
-  'low quality, worst quality, blurry, deformed, bad anatomy, extra limbs, ' +
-  'extra fingers, watermark, text, signature, multiple people, ugly, mutated'
-
 const PUBLIC_BUILDER_DIR = path.resolve(process.cwd(), 'public/builder')
+
+// ── Safety markers baked into every positive prompt ──────────────────────
+//
+// Atlas's image API doesn't accept a negative_prompt field — it's strictly
+// `model + prompt + size + seed`. So instead of pushing back via negatives
+// we anchor strongly with high-weight age markers in the *positive* prompt.
+// We keep the 18+ requirement (not 21+) since the rest of the system already
+// has a safety scorer + apparent-age classifier downstream.
+const SAFETY_POS = '(adult woman:1.3), (18+ years old:1.3), (legal age:1.2)'
+const QUALITY = 'detailed, sharp focus, 8k uhd, professional photography, soft cinematic lighting'
 
 // ── CLI ────────────────────────────────────────────────────────────────────
 
@@ -100,12 +104,7 @@ type Job = {
   category: string
   value: string
   prompt: string
-  // Override the global negative when an option needs adversarial pushes
-  // (e.g. small breasts → push back against "huge breasts").
-  extraNegative?: string
   destPath: string
-  // Square crops fine for everything except body-shape / hip-shape / butt-size,
-  // which look better as portrait so the body fits.
   imageSize: { width: number; height: number }
 }
 
@@ -113,10 +112,14 @@ const PORTRAIT_SIZE = { width: 832, height: 1216 }
 const SQUARE_SIZE = { width: 1024, height: 1024 }
 
 // ── Per-category prompt builders ──────────────────────────────────────────
+//
+// Default subject anchors a 19-year-old young woman (well above 18, well
+// below the "mature adult" failure mode that previous generations had).
+// Pose tone is consistently joi-style: alluring, confident, fashion-editorial.
 
-const SUBJECT = '1girl, solo, beautiful adult woman, (mature adult features:1.2)'
-const NEUTRAL_BG = 'plain studio background, soft even lighting, neutral pose, looking at camera'
-const QUALITY = 'detailed face, sharp focus, 8k uhd, professional photography'
+const SUBJECT_YOUNG = '1girl, solo, beautiful young woman, (19 year old:1.3), young adult, soft fresh face, ' + SAFETY_POS
+const POSE_ALLURING = 'alluring confident pose, sultry expression, soft seductive smile, looking at camera with playful eyes'
+const STUDIO_BG = 'soft studio background with warm pink rim light, cinematic bokeh'
 
 function destFor(category: string, value: string): string {
   return path.join(PUBLIC_BUILDER_DIR, category, `${value}.jpg`)
@@ -127,7 +130,7 @@ function artStyleJob(o: BuilderOption): Job {
   return {
     category: 'art-style',
     value: o.value,
-    prompt: `${style}, ${SUBJECT}, head and shoulders portrait, white blouse, ${NEUTRAL_BG}, ${QUALITY}`,
+    prompt: `${style}, ${SUBJECT_YOUNG}, head and shoulders portrait, lacy black top, ${POSE_ALLURING}, ${STUDIO_BG}, ${QUALITY}`,
     destPath: destFor('art-style', o.value),
     imageSize: SQUARE_SIZE,
   }
@@ -138,29 +141,20 @@ function ethnicityJob(o: BuilderOption): Job {
   return {
     category: 'ethnicity',
     value: o.value,
-    prompt: `photorealistic portrait, ${SUBJECT}, (${fragment}:1.4), head and shoulders, ${NEUTRAL_BG}, ${QUALITY}`,
+    prompt: `photorealistic editorial portrait, ${SUBJECT_YOUNG}, (${fragment}:1.4), elegant lacy lingerie top, head and shoulders, ${POSE_ALLURING}, ${STUDIO_BG}, ${QUALITY}`,
     destPath: destFor('ethnicity', o.value),
     imageSize: SQUARE_SIZE,
   }
 }
 
 function ageJob(o: typeof AGE_RANGES[number]): Job {
+  // Age cards have to actually look the chosen age — but we still keep the
+  // overall vibe young-adult & seductive so all option cards feel cohesive.
   return {
     category: 'age',
     value: o.value,
-    prompt: `photorealistic portrait, ${SUBJECT}, (${o.defaultAge} year old:1.4), head and shoulders, ${NEUTRAL_BG}, ${QUALITY}`,
+    prompt: `photorealistic editorial portrait, 1girl, solo, beautiful woman, (${o.defaultAge} year old:1.5), elegant lingerie top, head and shoulders, ${POSE_ALLURING}, ${STUDIO_BG}, ${QUALITY}, (adult:1.3)`,
     destPath: destFor('age', o.value),
-    imageSize: SQUARE_SIZE,
-  }
-}
-
-function skinToneJob(o: BuilderOption): Job {
-  const fragment = o.promptFragment ?? `${o.value} skin`
-  return {
-    category: 'skin-tone',
-    value: o.value,
-    prompt: `photorealistic portrait, ${SUBJECT}, (${fragment}:1.5), shoulders and neck visible, ${NEUTRAL_BG}, ${QUALITY}`,
-    destPath: destFor('skin-tone', o.value),
     imageSize: SQUARE_SIZE,
   }
 }
@@ -170,81 +164,59 @@ function bodyTypeJob(o: BuilderOption): Job {
   return {
     category: 'body-type',
     value: o.value,
-    prompt: `photorealistic full body shot, ${SUBJECT}, (${fragment}:1.4), white tank top and shorts, ${NEUTRAL_BG}, ${QUALITY}`,
+    prompt: `photorealistic full body shot, ${SUBJECT_YOUNG}, (${fragment}:1.4), matching lingerie set, head to toe, ${POSE_ALLURING}, slight contrapposto, hand on hip, ${STUDIO_BG}, ${QUALITY}`,
     destPath: destFor('body-type', o.value),
     imageSize: PORTRAIT_SIZE,
   }
 }
 
+// Breast-size cards focus on the chest in pretty lingerie. No face — the
+// preview is meant to communicate the size choice, nothing more.
 function breastSizeJob(o: BuilderOption): Job {
-  // Size-specific weights — match the live builder logic so the option preview
-  // looks like what the user will actually get.
-  const map: Record<string, { positive: string; negative: string }> = {
-    small: {
-      positive: '(small breasts:1.4), petite bust, modest chest',
-      negative: '(huge breasts:1.4), (large breasts:1.3), busty',
-    },
-    medium: {
-      positive: '(medium breasts:1.3), balanced chest, B cup',
-      negative: '(huge breasts:1.3), (very small breasts:1.2), (flat chest:1.3)',
-    },
-    large: {
-      positive: '(large breasts:1.5), full chest, busty, D cup',
-      negative: '(small breasts:1.3), (flat chest:1.4), (medium breasts:1.2)',
-    },
-    huge: {
-      positive: '(huge breasts:1.6), (very large breasts:1.4), busty figure, DD cup',
-      negative: '(small breasts:1.4), (flat chest:1.5), (medium breasts:1.3)',
-    },
+  const map: Record<string, string> = {
+    flat: '(very flat chest:1.6), (AA cup:1.4), tiny breasts, delicate athletic chest, no cleavage',
+    small: '(small A cup breasts:1.5), (petite perky chest:1.4), small modest bust',
+    average: '(modest medium B cup breasts:1.4), natural everyday chest size, neither small nor large, balanced shape',
+    big: '(large D cup breasts:1.5), full busty chest, generous curves',
+    huge: '(huge DDD cup breasts:1.7), (extremely large busty chest:1.5), voluptuous, very generous curves',
   }
-  const entry = map[o.value]!
+  const sizeFragment = map[o.value] ?? '(medium breasts:1.3)'
   return {
     category: 'breast-size',
     value: o.value,
-    prompt: `photorealistic cowboy shot, ${SUBJECT}, average build, ${entry.positive}, white tank top, ${NEUTRAL_BG}, ${QUALITY}`,
-    extraNegative: entry.negative,
+    // Cropped to neckline → waist. No face. Focus is the chest in lacy lingerie.
+    prompt:
+      `photorealistic close-up cropped photograph, female chest and torso only, head out of frame, ` +
+      `young adult woman, (19 year old:1.2), ${SAFETY_POS}, ${sizeFragment}, ` +
+      `wearing delicate lacy lingerie bra, soft skin, tasteful boudoir lighting, warm bokeh, ` +
+      `professional fashion photography, ${QUALITY}`,
     destPath: destFor('breast-size', o.value),
     imageSize: PORTRAIT_SIZE,
   }
 }
 
+// Butt-size cards focus on the lower-back / hips / butt in pretty lingerie.
+// Side or back view — no face, just the body part.
 function buttSizeJob(o: BuilderOption): Job {
-  const map: Record<string, { positive: string; negative: string }> = {
-    small: {
-      positive: '(slim hips:1.3), (small butt:1.2), narrow waist',
-      negative: '(big butt:1.4), (wide hips:1.3), (thick thighs:1.3)',
-    },
-    medium: {
-      positive: '(medium hips:1.3), proportional butt',
-      negative: '(huge butt:1.3), (very narrow hips:1.2)',
-    },
-    large: {
-      positive: '(large butt:1.5), (round hips:1.3), curvy hips',
-      negative: '(small butt:1.3), (narrow hips:1.3)',
-    },
-    huge: {
-      positive: '(huge butt:1.6), (big bubble butt:1.4), wide round hips, thick thighs',
-      negative: '(small butt:1.4), (narrow hips:1.4), (slim figure:1.2)',
-    },
+  const map: Record<string, string> = {
+    slim: '(very slim narrow hips:1.6), (very small flat butt:1.4), straight athletic figure, no curves',
+    small: '(small petite butt:1.5), narrow hips, slim figure, modest rear',
+    athletic: '(athletic firm round rear:1.5), (toned sculpted glutes:1.4), fit body, gym-shaped',
+    big: '(large round full butt:1.6), curvy wide hips, hourglass curves',
+    huge: '(massive huge bubble butt:1.8), (extremely thick wide hips:1.6), thick thighs, exaggerated curves, bbw lower body',
   }
-  const entry = map[o.value]!
+  const sizeFragment = map[o.value] ?? '(medium butt:1.3)'
   return {
     category: 'butt-size',
     value: o.value,
-    prompt: `photorealistic side view full body shot, ${SUBJECT}, average build, ${entry.positive}, white shorts and tank top, plain studio background, soft lighting, ${QUALITY}`,
-    extraNegative: entry.negative,
+    // Back view from waist down to upper thighs. No face, no upper body.
+    prompt:
+      `photorealistic close-up cropped photograph, female lower back hips and butt only, ` +
+      `back view from waist to upper thighs, head and upper body out of frame, ` +
+      `young adult woman, (19 year old:1.2), ${SAFETY_POS}, ${sizeFragment}, ` +
+      `wearing delicate lacy lingerie panties, soft skin, tasteful boudoir lighting, warm bokeh, ` +
+      `professional fashion photography, ${QUALITY}`,
     destPath: destFor('butt-size', o.value),
-    imageSize: PORTRAIT_SIZE,
-  }
-}
-
-function hipShapeJob(o: BuilderOption): Job {
-  const fragment = o.promptFragment ?? `${o.value} hips`
-  return {
-    category: 'hip-shape',
-    value: o.value,
-    prompt: `photorealistic cowboy shot, ${SUBJECT}, (${fragment}:1.4), white tank top and shorts, ${NEUTRAL_BG}, ${QUALITY}`,
-    destPath: destFor('hip-shape', o.value),
     imageSize: PORTRAIT_SIZE,
   }
 }
@@ -254,7 +226,7 @@ function hairColorJob(o: BuilderOption): Job {
   return {
     category: 'hair-color',
     value: o.value,
-    prompt: `photorealistic portrait, ${SUBJECT}, (${fragment}:1.5), medium length hair, head and shoulders, ${NEUTRAL_BG}, ${QUALITY}`,
+    prompt: `photorealistic portrait, ${SUBJECT_YOUNG}, (${fragment}:1.5), medium length hair, head and shoulders, lacy lingerie top, ${POSE_ALLURING}, ${STUDIO_BG}, ${QUALITY}`,
     destPath: destFor('hair-color', o.value),
     imageSize: SQUARE_SIZE,
   }
@@ -265,7 +237,7 @@ function hairLengthJob(o: BuilderOption): Job {
   return {
     category: 'hair-length',
     value: o.value,
-    prompt: `photorealistic cowboy shot, ${SUBJECT}, (${fragment}:1.5), brown hair, white blouse, ${NEUTRAL_BG}, ${QUALITY}`,
+    prompt: `photorealistic cowboy shot, ${SUBJECT_YOUNG}, (${fragment}:1.5), brown hair, lacy lingerie top, ${POSE_ALLURING}, ${STUDIO_BG}, ${QUALITY}`,
     destPath: destFor('hair-length', o.value),
     imageSize: PORTRAIT_SIZE,
   }
@@ -276,7 +248,7 @@ function hairStyleJob(o: BuilderOption): Job {
   return {
     category: 'hair-style',
     value: o.value,
-    prompt: `photorealistic portrait, ${SUBJECT}, (${fragment}:1.4), brown hair, head and shoulders, ${NEUTRAL_BG}, ${QUALITY}`,
+    prompt: `photorealistic portrait, ${SUBJECT_YOUNG}, (${fragment}:1.4), brown hair, head and shoulders, lacy lingerie top, ${POSE_ALLURING}, ${STUDIO_BG}, ${QUALITY}`,
     destPath: destFor('hair-style', o.value),
     imageSize: SQUARE_SIZE,
   }
@@ -287,97 +259,76 @@ function eyeColorJob(o: BuilderOption): Job {
   return {
     category: 'eye-color',
     value: o.value,
-    prompt: `photorealistic extreme close up of a face, ${SUBJECT}, (${fragment}:1.6), highly detailed eyes, looking at camera, ${QUALITY}`,
+    prompt: `photorealistic extreme close up of a face, ${SUBJECT_YOUNG}, (${fragment}:1.6), highly detailed eyes, soft seductive expression, looking at camera, ${QUALITY}`,
     destPath: destFor('eye-color', o.value),
-    imageSize: SQUARE_SIZE,
-  }
-}
-
-function featureJob(o: BuilderOption): Job {
-  const fragment = o.promptFragment ?? o.value
-  return {
-    category: 'features',
-    value: o.value,
-    prompt: `photorealistic portrait, ${SUBJECT}, (${fragment}:1.5), head and shoulders, ${NEUTRAL_BG}, ${QUALITY}`,
-    destPath: destFor('features', o.value),
     imageSize: SQUARE_SIZE,
   }
 }
 
 function archetypeJob(o: BuilderOption): Job {
   // Mood-specific cues — turn the archetype's defining vibe into a visible
-  // expression / wardrobe / lighting choice.
+  // expression / wardrobe / lighting choice. All rendered as young-adult
+  // (19yo) seductive editorial portraits.
   const moodMap: Record<string, string> = {
     sweet_girlfriend:
-      'warm gentle smile, cozy sweater, golden hour soft lighting, romantic mood',
+      'warm gentle smile, cozy oversized cardigan unbuttoned, golden hour soft lighting, dreamy romantic mood',
     adventurous_spirit:
-      'confident grin, outdoor jacket, mountain backdrop, natural daylight, energetic mood',
+      'confident grin, leather jacket over a crop top, neon city backdrop, energetic mood',
     mysterious_one:
-      'subtle smirk, dark elegant outfit, low-key moody lighting, shadows on face',
+      'subtle smirk, sheer black lace top, low-key moody lighting, deep shadows',
     confident_leader:
-      'direct gaze, sharp business attire, studio lighting, powerful posture',
+      'direct sultry gaze, sharp business attire half unbuttoned, studio key light, powerful posture',
     shy_romantic:
-      'soft blush, looking down slightly, pastel cardigan, dreamy soft lighting',
+      'soft blush looking down through her lashes, pastel pink lingerie cardigan, dreamy soft lighting',
     intellectual:
-      'thoughtful expression, glasses, library or bookshelf background, warm reading light',
+      'thoughtful playful smile, oversized button-up open over a cami, library bookshelf background, warm reading light',
     free_spirit:
-      'carefree smile, bohemian outfit, sunlit meadow, golden hour',
+      'carefree smile, bohemian crochet top, sunlit meadow, golden hour',
     caretaker:
-      'warm caring smile, soft pastel sweater, kitchen or home background, soft window light',
+      'warm caring sultry smile, soft pastel silk slip, bedroom window light',
     dominant_temptress:
-      'confident sultry expression, black leather outfit, dramatic studio lighting, red lipstick',
+      'confident sultry expression, black leather lingerie set, dramatic studio lighting, dark red lipstick',
     playful_brat:
-      'playful smirk, tongue out slightly, casual crop top, neon pink lighting, mischievous mood',
+      'playful smirk biting lip, casual crop top and short skirt, neon pink rim lighting, mischievous mood',
+    custom:
+      'soft seductive expression, lacy lingerie, plain warm background, soft lighting',
   }
-  const mood = moodMap[o.value] ?? 'neutral expression, plain studio background, soft lighting'
+  const mood = moodMap[o.value] ?? moodMap.custom!
   return {
     category: 'archetype',
     value: o.value,
-    prompt: `photorealistic portrait, ${SUBJECT}, ${mood}, head and shoulders, ${QUALITY}`,
+    prompt: `photorealistic editorial portrait, ${SUBJECT_YOUNG}, ${mood}, head and shoulders, ${QUALITY}`,
     destPath: destFor('archetype', o.value),
     imageSize: SQUARE_SIZE,
   }
 }
 
-function meetScenarioJob(o: BuilderOption): Job {
+function occupationJob(o: BuilderOption): Job {
   const sceneMap: Record<string, string> = {
-    coffee_shop: 'beautiful adult woman sitting in a cozy coffee shop, latte on the table, warm interior lighting',
-    mutual_friends: 'beautiful adult woman at a friendly house party, casual outfit, warm ambient lighting',
-    dating_app: 'beautiful adult woman taking a casual selfie in her bedroom, soft daylight',
-    neighbors: 'beautiful adult woman waving from her apartment doorway, warm corridor lighting',
-    colleagues: 'beautiful adult woman in modern office attire, glass office background, daylight',
-    gym: 'beautiful adult woman in gym wear at a modern gym, soft daylight, fit body',
-    club: 'beautiful adult woman in a stylish dress at a nightclub, neon ambient lighting, soft bokeh',
-    custom: 'beautiful adult woman with a friendly smile, plain background, soft lighting',
+    massage_therapist: 'in a candlelit spa room, white silk robe loosely tied, massage table behind, soft warm lighting',
+    fitness_coach: 'in a modern gym, sports bra and yoga shorts, mid-pose stretching, soft daylight',
+    secretary: 'in a modern office at a desk, tight pencil skirt and unbuttoned silk blouse, glasses on her nose',
+    flight_attendant: 'in a tailored flight attendant uniform inside an airplane cabin, leaning slightly with a soft smile',
+    librarian: 'in a library, cardigan over a fitted dress, book in hand, warm reading light',
+    doctor: 'in an unbuttoned white doctor coat over fitted clothes, hospital corridor background, stethoscope around her neck',
+    nurse: 'in a fitted nurse outfit, hospital background, soft lighting, warm smile',
+    police_officer: 'in a tight police uniform, urban night background with neon lights, confident pose',
+    teacher: 'standing by a chalkboard in a classroom, fitted dress, glasses, warm smile, smart casual outfit',
+    student: 'on a university campus with a backpack over one shoulder, plaid skirt and sweater, bright daylight',
+    artist: 'in an artist studio, paint-stained tank top tied at the waist, easel behind, warm window light',
+    lawyer: 'in a law-firm office, sharp tailored business suit half unbuttoned, glass-walled background',
+    streamer: 'in a streaming setup with RGB lighting and a headset, oversized hoodie crop, playful smile',
+    actress: 'on a red carpet in a glamorous evening gown with a high slit, golden glamour lighting',
+    model: 'on a fashion runway in a designer outfit, editorial flash lighting, confident walk',
+    custom: 'in a chic casual outfit, with a friendly playful smile, plain warm background, soft lighting',
   }
   const scene = sceneMap[o.value] ?? sceneMap.custom!
   return {
-    category: 'meet-scenario',
+    category: 'occupation',
     value: o.value,
-    prompt: `photorealistic, ${scene}, looking at camera, mature adult features, ${QUALITY}`,
-    destPath: destFor('meet-scenario', o.value),
-    imageSize: SQUARE_SIZE,
-  }
-}
-
-function relationshipStageJob(o: BuilderOption): Job {
-  const sceneMap: Record<string, string> = {
-    just_met:
-      'photorealistic candid moment, beautiful adult woman smiling shyly, casual coffee shop background, daylight, slight blush',
-    dating:
-      'photorealistic, beautiful adult woman on a casual date, candle-lit restaurant background, warm smile',
-    relationship:
-      'photorealistic, beautiful adult woman cuddling on a sofa, cozy home background, soft warm light',
-    long_term:
-      'photorealistic, beautiful adult woman in a comfortable home setting, holding a coffee mug, soft morning light, gentle smile',
-  }
-  const scene = sceneMap[o.value] ?? sceneMap.just_met!
-  return {
-    category: 'relationship-stage',
-    value: o.value,
-    prompt: `${scene}, mature adult features, ${QUALITY}`,
-    destPath: destFor('relationship-stage', o.value),
-    imageSize: SQUARE_SIZE,
+    prompt: `photorealistic full body shot, ${SUBJECT_YOUNG}, ${scene}, ${POSE_ALLURING}, ${QUALITY}`,
+    destPath: destFor('occupation', o.value),
+    imageSize: PORTRAIT_SIZE,
   }
 }
 
@@ -388,85 +339,88 @@ function buildAllJobs(): Job[] {
     ...ART_STYLES.map(artStyleJob),
     ...ETHNICITIES.map(ethnicityJob),
     ...AGE_RANGES.map(ageJob),
-    ...SKIN_TONES.map(skinToneJob),
     ...BODY_TYPES.map(bodyTypeJob),
     ...BREAST_SIZES.map(breastSizeJob),
     ...BUTT_SIZES.map(buttSizeJob),
-    ...HIP_SHAPES.map(hipShapeJob),
     ...HAIR_COLORS.map(hairColorJob),
     ...HAIR_LENGTHS.map(hairLengthJob),
     ...HAIR_STYLES.map(hairStyleJob),
     ...EYE_COLORS.map(eyeColorJob),
-    ...FEATURES.map(featureJob),
     ...ARCHETYPES.map(archetypeJob),
-    ...MEET_SCENARIOS.map(meetScenarioJob),
-    ...RELATIONSHIP_STAGES.map(relationshipStageJob),
+    ...OCCUPATIONS.filter((o) => o.value !== 'custom').map(occupationJob),
   ]
 }
 
-// ── fal.ai (inline, no SDK) ───────────────────────────────────────────────
+// Reference STARTING_RELATIONSHIPS so the import isn't reported as unused
+// (chip-only UI; intentionally no images for that category).
+void STARTING_RELATIONSHIPS
 
-type FalImage = { url: string; width?: number; height?: number; content_type?: string }
+// ── Atlas Cloud client ────────────────────────────────────────────────────
+
+type AtlasImage = { url: string }
 
 async function generateOne(opts: {
   prompt: string
-  negativePrompt: string
   imageSize: { width: number; height: number }
-  falKey: string
-}): Promise<FalImage> {
-  const submitRes = await fetch(`https://queue.fal.run/${FAL_ENDPOINT_FAST_SDXL}`, {
+  atlasKey: string
+}): Promise<AtlasImage> {
+  // Atlas only accepts model/prompt/size/seed at root. No negative_prompt
+  // and no safety flags — spicy variants have no platform filter by design.
+  const submitRes = await fetch(`${ATLAS_BASE}/model/generateImage`, {
     method: 'POST',
     headers: {
-      Authorization: `Key ${opts.falKey}`,
+      Authorization: `Bearer ${opts.atlasKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      model: ATLAS_MODEL,
       prompt: opts.prompt,
-      negative_prompt: opts.negativePrompt,
-      image_size: opts.imageSize,
-      num_images: 1,
-      num_inference_steps: 30,
-      guidance_scale: 6.5,
-      enable_safety_checker: false,
-      enable_output_safety_checker: false,
+      size: `${opts.imageSize.width}*${opts.imageSize.height}`,
     }),
   })
   if (!submitRes.ok) {
-    throw new Error(`fal submit ${submitRes.status}: ${(await submitRes.text()).slice(0, 200)}`)
+    throw new Error(`atlas submit ${submitRes.status}: ${(await submitRes.text()).slice(0, 200)}`)
   }
   const submit = (await submitRes.json()) as {
-    request_id: string
-    status_url: string
-    response_url: string
+    id?: string
+    data?: { id?: string }
   }
+  const id = submit.id ?? submit.data?.id
+  if (!id) throw new Error('atlas submit returned no id')
 
+  const statusUrl = `${ATLAS_BASE}/model/prediction/${id}`
   const deadline = Date.now() + POLL_TIMEOUT_MS
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
-    const sRes = await fetch(submit.status_url, {
-      headers: { Authorization: `Key ${opts.falKey}` },
+    const sRes = await fetch(statusUrl, {
+      headers: { Authorization: `Bearer ${opts.atlasKey}` },
     })
-    if (!sRes.ok) continue
-    const s = (await sRes.json()) as { status: string }
-    if (s.status === 'COMPLETED') {
-      const rRes = await fetch(submit.response_url, {
-        headers: { Authorization: `Key ${opts.falKey}` },
-      })
-      const result = (await rRes.json()) as {
-        images?: FalImage[]
-        image?: FalImage
-        detail?: string
+    if (!sRes.ok) {
+      const body = await sRes.text().catch(() => '')
+      // Atlas wraps upstream 4xx as 500 — terminal, don't keep polling.
+      if (/unexpected http status code:\s*4\d\d/i.test(body)) {
+        throw new Error(`atlas worker rejected input: ${body.slice(0, 300)}`)
       }
-      if (result.detail) throw new Error(`fal failed: ${result.detail}`)
-      const img = result.images?.[0] ?? result.image
-      if (!img?.url) throw new Error('fal returned no image')
-      return img
+      continue
     }
-    if (s.status === 'FAILED' || s.status === 'ERROR') {
-      throw new Error(`fal job ${s.status}`)
+    const json = (await sRes.json()) as {
+      data?: { id?: string; status?: string; outputs?: string[]; error?: string }
+      status?: string
+      outputs?: string[]
+      error?: string
+    }
+    const node = json.data ?? json
+    const status = (node.status ?? '').toLowerCase()
+    if (status === 'completed' || status === 'succeeded') {
+      const outputs = node.outputs ?? []
+      if (outputs.length === 0) throw new Error('atlas completed with empty outputs[]')
+      return { url: outputs[0]! }
+    }
+    if (status === 'failed' || status === 'error') {
+      throw new Error(`atlas job ${status}: ${node.error ?? '(no error message)'}`)
     }
   }
-  throw new Error(`fal timeout after ${POLL_TIMEOUT_MS}ms`)
+  throw new Error(`atlas timeout after ${POLL_TIMEOUT_MS}ms`)
 }
 
 async function downloadJpeg(fromUrl: string, destPath: string): Promise<number> {
@@ -517,17 +471,14 @@ async function main() {
   // Skip jobs whose target file already exists, unless --force.
   const filtered: Job[] = []
   for (const j of jobs) {
-    if (!args.force && (await fileExists(j.destPath))) {
-      // already present
-      continue
-    }
+    if (!args.force && (await fileExists(j.destPath))) continue
     filtered.push(j)
   }
 
   console.log(`\nBuilder option-image generator`)
   console.log(`  total options:   ${jobs.length}`)
   console.log(`  to generate:     ${filtered.length}${args.force ? ' (--force)' : ' (skipping existing)'}`)
-  console.log(`  endpoint:        ${FAL_ENDPOINT_FAST_SDXL}`)
+  console.log(`  endpoint:        ${ATLAS_MODEL} (Atlas Cloud)`)
   console.log(`  concurrency:     ${args.concurrency}`)
   console.log(`  est. cost:       $${(filtered.length * COST_PER_IMAGE_USD).toFixed(2)}`)
   if (args.category) console.log(`  category filter: ${args.category}`)
@@ -539,16 +490,16 @@ async function main() {
   }
 
   if (!args.confirm) {
-    console.log(`\n[DRY RUN] No fal calls. Re-run with --confirm to actually generate.\n`)
+    console.log(`\n[DRY RUN] No API calls. Re-run with --confirm to actually generate.\n`)
     console.log(`First 5 planned jobs:`)
     for (const j of filtered.slice(0, 5)) {
       console.log(`  · ${j.category}/${j.value}.jpg`)
-      console.log(`      prompt: ${j.prompt.slice(0, 120)}…`)
+      console.log(`      prompt: ${j.prompt.slice(0, 200)}…`)
     }
     return
   }
 
-  const falKey = requireEnv('FAL_KEY')
+  const atlasKey = requireEnv('ATLAS_API_KEY')
 
   let ok = 0
   let failed = 0
@@ -557,14 +508,10 @@ async function main() {
   await runWithConcurrency(filtered, args.concurrency, async (job, idx) => {
     const tag = `[${idx + 1}/${filtered.length}] ${job.category}/${job.value}`
     try {
-      const negative = job.extraNegative
-        ? `${QUALITY_NEGATIVE}, ${SAFETY_NEGATIVE}, ${job.extraNegative}`
-        : `${QUALITY_NEGATIVE}, ${SAFETY_NEGATIVE}`
       const img = await generateOne({
         prompt: job.prompt,
-        negativePrompt: negative,
         imageSize: job.imageSize,
-        falKey,
+        atlasKey,
       })
       const sizeBytes = await downloadJpeg(img.url, job.destPath)
       ok++

@@ -6,13 +6,18 @@ import type { CharacterAppearanceParams } from '@/shared/ai/appearance-prompt'
 
 export type Language = 'en' | 'ru' | 'es'
 
+// Aligned with joi.com's 5-axis personality model. 1 = left label, 10 = right.
+//   dominant   : 1 submissive   ↔ 10 dominant
+//   confident  : 1 insecure     ↔ 10 confident
+//   passionate : 1 cold         ↔ 10 passionate
+//   outgoing   : 1 reserved     ↔ 10 outgoing
+//   playful    : 1 serious      ↔ 10 playful
 export type PersonaTraits = {
-  shyBold: number
-  playfulSerious: number
-  submissiveDominant: number
-  romanticCasual: number
-  sweetSarcastic: number
-  traditionalAdventurous: number
+  dominant: number
+  confident: number
+  passionate: number
+  outgoing: number
+  playful: number
 }
 
 export type PersonaCore = {
@@ -193,12 +198,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'just_met',
       personalityTraits: {
-        shyBold: 2,
-        playfulSerious: 4,
-        submissiveDominant: 3,
-        romanticCasual: 8,
-        sweetSarcastic: 2,
-        traditionalAdventurous: 4,
+        dominant: 3,
+        confident: 2,
+        passionate: 9,
+        outgoing: 3,
+        playful: 6,
       },
       appearance: {
         ethnicity: 'asian',
@@ -267,12 +271,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'just_met',
       personalityTraits: {
-        shyBold: 6,
-        playfulSerious: 7,
-        submissiveDominant: 4,
-        romanticCasual: 5,
-        sweetSarcastic: 6,
-        traditionalAdventurous: 7,
+        dominant: 4,
+        confident: 7,
+        passionate: 7,
+        outgoing: 8,
+        playful: 9,
       },
       appearance: {
         ethnicity: 'asian',
@@ -341,12 +344,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'just_met',
       personalityTraits: {
-        shyBold: 5,
-        playfulSerious: 6,
-        submissiveDominant: 5,
-        romanticCasual: 5,
-        sweetSarcastic: 8,
-        traditionalAdventurous: 7,
+        dominant: 6,
+        confident: 7,
+        passionate: 7,
+        outgoing: 4,
+        playful: 4,
       },
       appearance: {
         ethnicity: 'caucasian',
@@ -415,12 +417,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'dating',
       personalityTraits: {
-        shyBold: 5,
-        playfulSerious: 4,
-        submissiveDominant: 4,
-        romanticCasual: 9,
-        sweetSarcastic: 3,
-        traditionalAdventurous: 5,
+        dominant: 4,
+        confident: 6,
+        passionate: 9,
+        outgoing: 6,
+        playful: 6,
       },
       appearance: {
         ethnicity: 'caucasian',
@@ -489,12 +490,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'just_met',
       personalityTraits: {
-        shyBold: 8,
-        playfulSerious: 7,
-        submissiveDominant: 6,
-        romanticCasual: 5,
-        sweetSarcastic: 6,
-        traditionalAdventurous: 9,
+        dominant: 6,
+        confident: 9,
+        passionate: 8,
+        outgoing: 9,
+        playful: 7,
       },
       appearance: {
         ethnicity: 'caucasian',
@@ -563,12 +563,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'dating',
       personalityTraits: {
-        shyBold: 7,
-        playfulSerious: 5,
-        submissiveDominant: 6,
-        romanticCasual: 5,
-        sweetSarcastic: 8,
-        traditionalAdventurous: 6,
+        dominant: 6,
+        confident: 8,
+        passionate: 6,
+        outgoing: 6,
+        playful: 4,
       },
       appearance: {
         ethnicity: 'mixed',
@@ -637,12 +636,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'dating',
       personalityTraits: {
-        shyBold: 9,
-        playfulSerious: 6,
-        submissiveDominant: 8,
-        romanticCasual: 6,
-        sweetSarcastic: 6,
-        traditionalAdventurous: 6,
+        dominant: 8,
+        confident: 10,
+        passionate: 8,
+        outgoing: 7,
+        playful: 4,
       },
       appearance: {
         ethnicity: 'caucasian',
@@ -711,12 +709,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'relationship',
       personalityTraits: {
-        shyBold: 6,
-        playfulSerious: 5,
-        submissiveDominant: 4,
-        romanticCasual: 8,
-        sweetSarcastic: 3,
-        traditionalAdventurous: 5,
+        dominant: 4,
+        confident: 7,
+        passionate: 9,
+        outgoing: 7,
+        playful: 6,
       },
       appearance: {
         ethnicity: 'latina',
@@ -785,12 +782,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'just_met',
       personalityTraits: {
-        shyBold: 8,
-        playfulSerious: 5,
-        submissiveDominant: 6,
-        romanticCasual: 6,
-        sweetSarcastic: 7,
-        traditionalAdventurous: 9,
+        dominant: 6,
+        confident: 8,
+        passionate: 7,
+        outgoing: 7,
+        playful: 6,
       },
       appearance: {
         ethnicity: 'caucasian',
@@ -859,12 +855,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'dating',
       personalityTraits: {
-        shyBold: 9,
-        playfulSerious: 7,
-        submissiveDominant: 9,
-        romanticCasual: 6,
-        sweetSarcastic: 7,
-        traditionalAdventurous: 5,
+        dominant: 9,
+        confident: 10,
+        passionate: 7,
+        outgoing: 6,
+        playful: 4,
       },
       appearance: {
         ethnicity: 'caucasian',
@@ -933,12 +928,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'just_met',
       personalityTraits: {
-        shyBold: 10,
-        playfulSerious: 6,
-        submissiveDominant: 8,
-        romanticCasual: 7,
-        sweetSarcastic: 7,
-        traditionalAdventurous: 9,
+        dominant: 8,
+        confident: 10,
+        passionate: 8,
+        outgoing: 6,
+        playful: 5,
       },
       appearance: {
         ethnicity: 'caucasian',
@@ -1007,12 +1001,11 @@ export const PERSONAS: Persona[] = [
       },
       relationshipStage: 'just_met',
       personalityTraits: {
-        shyBold: 2,
-        playfulSerious: 4,
-        submissiveDominant: 3,
-        romanticCasual: 8,
-        sweetSarcastic: 2,
-        traditionalAdventurous: 5,
+        dominant: 3,
+        confident: 5,
+        passionate: 9,
+        outgoing: 4,
+        playful: 5,
       },
       appearance: {
         ethnicity: 'caucasian',
@@ -1110,12 +1103,11 @@ export const PERSONAS: Persona[] = [
       personalityTraits: {
         // Bubbly Genki Girl on camera, softer / more introverted off — bold but
         // not aggressive, very playful, sweet with a teasing edge.
-        shyBold: 7,
-        playfulSerious: 2,
-        submissiveDominant: 4,
-        romanticCasual: 5,
-        sweetSarcastic: 5,
-        traditionalAdventurous: 8,
+        dominant: 4,
+        confident: 6,
+        passionate: 6,
+        outgoing: 7,
+        playful: 9,
       },
       appearance: {
         ethnicity: 'caucasian',

@@ -175,7 +175,7 @@
     }
   },
   "builder": {
-    "title": "Создай свою подругу",
+    "title": "Создай персонажа",
     "startNew": "Начать",
     "upgradeLink": "Улучшить план",
     "draftsHeading": "Ваши черновики",
@@ -188,129 +188,115 @@
       "backstory": "История",
       "review": "Готово"
     },
-    "steps": {
-      "appearance": "Внешность",
-      "identity": "Личность",
-      "backstory": "Предыстория",
-      "review": "Просмотр"
-    },
     "questions": {
-      "artStyle": "Выбери стиль",
-      "ethnicity": "Выбери этничность",
-      "ageRange": "Выбери возраст",
-      "skinTone": "Выбери оттенок кожи",
-      "bodyType": "Выбери телосложение",
-      "breastSize": "Выбери размер груди",
-      "buttSize": "Выбери размер попы",
-      "hipShape": "Выбери форму бёдер",
-      "hairColor": "Цвет волос",
-      "hairLength": "Длина волос",
-      "hairStyle": "Стиль волос",
-      "eyeColor": "Цвет глаз",
-      "features": "Особенные черты",
+      "intro": "Создай персонажа",
+      "uniqueDesc": "Опиши своего персонажа",
+      "ageEthnicity": "Возраст и этническая принадлежность",
+      "body": "Телосложение",
+      "hairEyes": "Волосы и глаза",
       "preview": "Сгенерируй её фото",
-      "name": "Как её зовут?",
-      "archetype": "Какой у неё характер?",
-      "personality": "Настрой её характер",
-      "bio": "Расскажи её историю",
-      "howYouMet": "Как вы познакомились?",
-      "review": "Знакомство"
-    },
-    "fields": {
-      "artStyle": "Стиль арта",
-      "ethnicity": "Этничность",
-      "ageRange": "Возраст",
-      "ageDisplay": "Отображаемый возраст",
-      "bodyType": "Телосложение",
-      "breastSize": "Размер груди",
-      "buttSize": "Размер попы",
-      "hipShape": "Форма бёдер",
-      "skinTone": "Оттенок кожи",
-      "hairColor": "Цвет волос",
-      "hairLength": "Длина волос",
-      "hairStyle": "Стиль волос",
-      "eyeColor": "Цвет глаз",
-      "features": "Особенности лица",
-      "name": "Имя",
+      "archetype": "Личность",
+      "nameOrientation": "Имя и сексуальная ориентация",
+      "chatStyle": "Стиль общения",
       "occupation": "Профессия",
-      "archetype": "Архетип личности",
-      "personalityTraits": "Черты характера",
-      "bio": "Предыстория",
-      "interests": "Интересы",
-      "howYouMet": "Как вы познакомились",
-      "relationshipStage": "Стадия отношений"
+      "relationship": "Стартовые отношения",
+      "kinks": "Что её заводит?",
+      "review": "{name} почти готова"
+    },
+    "sections": {
+      "gender": "Какого пола твой персонаж?",
+      "artStyle": "Выбери стиль арта",
+      "approach": "Выбери подход",
+      "age": "Возраст",
+      "ethnicity": "Этническая принадлежность",
+      "physique": "Фигура",
+      "breasts": "Грудь",
+      "butt": "Попа",
+      "hairStyle": "Стиль волос",
+      "hairLength": "Длина волос",
+      "hairColor": "Цвет волос",
+      "eyeColor": "Цвет глаз",
+      "name": "Имя",
+      "ageDisplay": "Отображаемый возраст",
+      "orientation": "Сексуальная ориентация",
+      "uniquePersonality": "Опиши характер",
+      "uniqueLooks": "Опиши внешность"
     },
     "hints": {
       "multiSelect": "Можно выбрать несколько",
       "singleSelect": "Выбери один",
       "optional": "Необязательно",
-      "ageMin": "Минимум 21 (юридическое требование)",
+      "customSliders": "Тонкая настройка характера ползунками ниже.",
+      "ageMin": "Минимум 18 (юридическое требование)",
+      "example": "Пример",
       "previewIntro": "Сгенерируй до 5 наборов по 4 фото. Выбери ту, которая нравится — она будет такой во всём чате."
     },
+    "placeholders": {
+      "occupationCustom": "Пилот, шеф-повар, балерина...",
+      "relationshipCustom": "Познакомились на фестивале, бывшая начальница, давняя влюблённость...",
+      "kinkSearch": "Поиск",
+      "uniquePersonality": "Опиши черты характера, поведение и тон голоса",
+      "uniqueLooks": "Опиши внешность, фигуру и детали"
+    },
     "options": {
+      "gender": {
+        "female": "Женщина",
+        "male": "Мужчина"
+      },
+      "approach": {
+        "presets": "Из пресетов",
+        "unique": "Своё описание"
+      },
       "artStyle": {
         "realistic": "Реалистичный",
-        "anime": "Аниме",
-        "3d_render": "3D-рендер",
-        "stylized": "Стилизованный"
+        "anime": "Аниме"
       },
       "ethnicity": {
-        "european": "Европейская",
-        "east_asian": "Восточноазиатская",
-        "southeast_asian": "Юго-восточноазиатская",
-        "latina": "Латиноамериканская",
-        "african": "Африканская",
-        "middle_eastern": "Ближневосточная",
-        "mixed": "Смешанная"
+        "european": "Европейка",
+        "asian": "Азиатка",
+        "latina": "Латиноамериканка",
+        "african": "Африканка",
+        "south_asian": "Южноазиатка",
+        "middle_eastern": "Ближневосточная"
       },
       "ageRange": {
-        "young_adult": "Молодая",
-        "adult": "Взрослая",
-        "mature": "Зрелая",
-        "experienced": "Опытная"
+        "twenties": "20-е",
+        "thirties": "30-е",
+        "forties": "40-е",
+        "fifties": "50-е"
       },
       "bodyType": {
-        "slender": "Стройное",
+        "slim": "Стройное",
         "athletic": "Спортивное",
         "average": "Среднее",
         "curvy": "Пышное",
-        "voluptuous": "Соблазнительное",
-        "plus_size": "Плюс-сайз"
+        "bbw": "BBW"
       },
       "breastSize": {
+        "flat": "Плоская",
         "small": "Маленькая",
-        "medium": "Средняя",
-        "large": "Большая",
+        "average": "Средняя",
+        "big": "Большая",
         "huge": "Огромная"
       },
       "buttSize": {
+        "slim": "Стройная",
         "small": "Маленькая",
-        "medium": "Средняя",
-        "large": "Большая",
+        "athletic": "Спортивная",
+        "big": "Большая",
         "huge": "Огромная"
       },
-      "hipShape": {
-        "narrow": "Узкие",
-        "average": "Средние",
-        "wide": "Широкие"
-      },
-      "skinTone": {
-        "porcelain": "Фарфоровая",
-        "fair": "Светлая",
-        "olive": "Оливковая",
-        "tan": "Загорелая",
-        "brown": "Смуглая",
-        "dark": "Тёмная"
-      },
       "hairColor": {
-        "blonde": "Блондинка",
-        "brunette": "Брюнетка",
-        "redhead": "Рыжая",
-        "black": "Чёрные",
-        "brown": "Каштановые",
-        "auburn": "Тёмно-рыжие",
-        "platinum": "Платиновые",
-        "copper": "Медные"
+        "blonde": "Блонд",
+        "black": "Чёрный",
+        "brown": "Каштановый",
+        "red": "Рыжий",
+        "gray": "Серый",
+        "white": "Белый",
+        "auburn": "Тёмно-рыжий",
+        "pink": "Розовый",
+        "blue": "Синий",
+        "purple": "Фиолетовый"
       },
       "hairLength": {
         "short": "Короткие",
@@ -321,28 +307,29 @@
         "straight": "Прямые",
         "wavy": "Волнистые",
         "curly": "Кудрявые",
+        "bangs": "С чёлкой",
+        "braids": "Косы",
         "ponytail": "Хвост",
-        "braided": "Косы",
-        "bun": "Пучок"
+        "bun": "Пучок",
+        "bob": "Каре"
       },
       "eyeColor": {
-        "blue": "Голубые",
         "brown": "Карие",
+        "blue": "Голубые",
         "green": "Зелёные",
-        "hazel": "Ореховые",
-        "amber": "Янтарные",
-        "gray": "Серые",
-        "violet": "Фиолетовые"
+        "gray": "Серые"
       },
-      "features": {
-        "freckles": "Веснушки",
-        "dimples": "Ямочки",
-        "glasses": "Очки",
-        "tattoos": "Татуировки",
-        "beauty_mark": "Родинка",
-        "piercings": "Пирсинг",
-        "lip_piercing": "Пирсинг губы",
-        "septum": "Септум"
+      "orientation": {
+        "straight": "Гетеро",
+        "bisexual": "Бисексуальная",
+        "queer": "Квир",
+        "lesbian": "Лесбиянка"
+      },
+      "chatStyle": {
+        "default": "Обычный",
+        "deepRoleplay": "Глубокий ролеплей",
+        "creative": "Креативный",
+        "realistic": "Реалистичный"
       },
       "archetype": {
         "sweet_girlfriend": "Нежная подруга",
@@ -354,32 +341,87 @@
         "free_spirit": "Свободный дух",
         "caretaker": "Заботливая",
         "dominant_temptress": "Доминирующая искусительница",
-        "playful_brat": "Игривая дерзкая"
+        "playful_brat": "Игривая дерзкая",
+        "custom": "Своя"
       },
-      "meetScenario": {
-        "coffee_shop": "В кофейне",
-        "mutual_friends": "Через друзей",
-        "dating_app": "В приложении знакомств",
-        "neighbors": "Соседи",
-        "colleagues": "Коллеги",
-        "gym": "В зале",
-        "club": "В клубе",
-        "custom": "Своя история"
+      "occupation": {
+        "massage_therapist": "Массажистка",
+        "fitness_coach": "Фитнес-тренер",
+        "secretary": "Секретарь",
+        "flight_attendant": "Стюардесса",
+        "librarian": "Библиотекарь",
+        "doctor": "Врач",
+        "nurse": "Медсестра",
+        "police_officer": "Полицейская",
+        "teacher": "Учительница",
+        "student": "Студентка",
+        "artist": "Художница",
+        "lawyer": "Юрист",
+        "streamer": "Стримерша",
+        "actress": "Актриса",
+        "model": "Модель",
+        "custom": "Своя"
       },
-      "relationshipStage": {
-        "just_met": "Только познакомились",
-        "dating": "Встречаемся",
-        "relationship": "В отношениях",
-        "long_term": "Долгосрочные"
+      "startingRelationship": {
+        "stranger": "Незнакомка",
+        "colleague": "Коллега",
+        "girlfriend": "Девушка",
+        "wife": "Жена",
+        "girl_next_door": "Соседка",
+        "boss": "Начальница",
+        "friend": "Подруга",
+        "ex": "Бывшая",
+        "fwb": "Друг по постели",
+        "classmate": "Однокурсница",
+        "gym_buddy": "Партнёрша по залу",
+        "roommate": "Соквартирница",
+        "custom": "Своё"
+      },
+      "kink": {
+        "romantic": "Романтика",
+        "flirty": "Флирт",
+        "teasing": "Подначивание",
+        "dirty_talk": "Грязные разговоры",
+        "sexting": "Секстинг",
+        "roleplay": "Ролевые игры",
+        "voyeurism": "Вуайеризм",
+        "exhibitionism": "Эксгибиционизм",
+        "bdsm_light": "BDSM (лайт)",
+        "bondage": "Бондаж",
+        "dom": "Доминирование",
+        "sub": "Подчинение",
+        "switch": "Свитч",
+        "brat": "Дерзкая",
+        "praise": "Похвала",
+        "degradation": "Унижение",
+        "edging": "Эджинг",
+        "orgasm_control": "Контроль оргазма",
+        "anticipation": "Предвкушение",
+        "biting": "Укусы",
+        "spanking": "Шлепки",
+        "rough": "Грубо",
+        "gentle": "Нежно",
+        "sensual_massage": "Чувственный массаж",
+        "lingerie": "Бельё",
+        "feet": "Ноги",
+        "public": "На людях",
+        "shower": "В душе",
+        "morning": "Утром",
+        "late_night": "Поздно ночью",
+        "oral": "Орально",
+        "anal": "Анально",
+        "breasts": "Грудь",
+        "mutual": "Взаимно",
+        "first_time": "Первый раз",
+        "long_distance": "На расстоянии"
       }
     },
     "personality": {
-      "shyBold": { "label": "Энергия", "left": "Скромная", "right": "Смелая" },
-      "playfulSerious": { "label": "Настроение", "left": "Игривая", "right": "Серьёзная" },
-      "submissiveDominant": { "label": "Поведение", "left": "Покорная", "right": "Доминирующая" },
-      "romanticCasual": { "label": "Стиль связи", "left": "Романтичная", "right": "Лёгкая" },
-      "sweetSarcastic": { "label": "Тон", "left": "Милая", "right": "Саркастичная" },
-      "traditionalAdventurous": { "label": "Образ жизни", "left": "Традиционная", "right": "Авантюрная" }
+      "dominant": { "label": "Поведение", "left": "Покорная", "right": "Доминирующая" },
+      "confident": { "label": "Уверенность", "left": "Неуверенная", "right": "Уверенная" },
+      "passionate": { "label": "Тепло", "left": "Холодная", "right": "Страстная" },
+      "outgoing": { "label": "Энергия", "left": "Сдержанная", "right": "Открытая" },
+      "playful": { "label": "Настроение", "left": "Серьёзная", "right": "Игривая" }
     },
     "actions": {
       "generatePreviews": "Сгенерировать фото",
@@ -389,7 +431,11 @@
       "prev": "Назад",
       "next": "Далее",
       "finalize": "Завершить",
-      "meetHer": "Начать чат"
+      "create": "Создать {name}",
+      "showMore": "Показать ещё ({count})"
+    },
+    "review": {
+      "relationship": "Стартовые отношения"
     },
     "errors": {
       "nameChildlike": "Это имя не разрешено.",
