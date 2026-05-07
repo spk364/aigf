@@ -9,6 +9,23 @@ import {
 } from '@/shared/ai/image-models'
 import { saveJob, loadJob, clearJob } from './job-persistence'
 
+// Grouped view for the dropdown — keeps native warm endpoints separate from
+// the cold-start LoRA checkpoints, and splits realism vs anime styles.
+const IMAGE_MODEL_GROUPED = [
+  {
+    label: 'Native fal endpoints (warm)',
+    items: IMAGE_MODEL_OPTIONS.filter((m) => !m.isCold),
+  },
+  {
+    label: 'Realism — NSFW-strong (cold start ~2–3 min)',
+    items: IMAGE_MODEL_OPTIONS.filter((m) => m.isCold && m.style === 'realism'),
+  },
+  {
+    label: 'Anime / Illustrious — NSFW-strong (cold start ~2–3 min)',
+    items: IMAGE_MODEL_OPTIONS.filter((m) => m.isCold && m.style === 'anime'),
+  },
+]
+
 type ImageSize = string
 
 type ImagePhase = 'queued' | 'running' | 'unknown'
@@ -577,13 +594,17 @@ export function GenerateImageButton() {
           value={refModelOverride}
           onChange={(e) => setRefModelOverride(e.target.value)}
           disabled={refLoading}
-          style={{ ...SELECT, maxWidth: '260px' }}
+          style={{ ...SELECT, maxWidth: '320px' }}
         >
           <option value="">Auto (RealVisXL / Fast SDXL by art style)</option>
-          {IMAGE_MODEL_OPTIONS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
+          {IMAGE_MODEL_GROUPED.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.items.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         {refModelOverride && (() => {
@@ -695,12 +716,16 @@ export function GenerateImageButton() {
             value={modelOverride}
             onChange={(e) => setModelOverride(e.target.value)}
             disabled={isBusy}
-            style={{ ...SELECT, maxWidth: '220px' }}
+            style={{ ...SELECT, maxWidth: '280px' }}
           >
-            {IMAGE_MODEL_OPTIONS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
+            {IMAGE_MODEL_GROUPED.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.items.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
           {selectedModelInfo && (
@@ -781,7 +806,7 @@ export function GenerateImageButton() {
           </p>
           <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0' }}>
             Polling every {Math.round(POLL_INTERVAL_MS / 1000)}s · {selectedModelInfo?.label ?? modelOverride}
-            {selectedModelInfo?.isPony && ' (cold start may add 2–3 min)'}
+            {selectedModelInfo?.isCold && ' (cold start may add 2–3 min)'}
           </p>
           {state.lastLog && (
             <p
