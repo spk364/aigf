@@ -4,7 +4,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { submitVideoJob, FAL_ENDPOINT_WAN_V22_I2V } from '@/shared/ai/fal'
+import { submitVideoJob } from '@/shared/ai/fal'
+import { DEFAULT_VIDEO_MODEL_ID, isAllowedVideoEndpoint } from '@/shared/ai/video-models'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import {
   MOTION_PRESETS,
@@ -30,6 +31,9 @@ const bodySchema = z.object({
   // Advanced: override the safety negative. Pass an empty string to keep the
   // default stack — undefined leaves it as-is.
   customNegativePrompt: z.string().max(2000).optional(),
+  // fal endpoint slug — must be in the allowlist (NSFW-friendly WAN family).
+  // Falls back to DEFAULT_VIDEO_MODEL_ID when omitted.
+  endpoint: z.string().min(1).optional(),
 })
 
 type CharacterForVideo = {
@@ -191,6 +195,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  const endpoint = body.endpoint ?? DEFAULT_VIDEO_MODEL_ID
+  if (!isAllowedVideoEndpoint(endpoint)) {
+    return NextResponse.json(
+      {
+        error: 'invalid_endpoint',
+        message: `Endpoint "${endpoint}" is not in the allowed video model list.`,
+      },
+      { status: 400 },
+    )
+  }
+
   let submission: Awaited<ReturnType<typeof submitVideoJob>>
   try {
     submission = await submitVideoJob({
@@ -202,7 +217,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       shift: preset.shift,
       numInferenceSteps: preset.numInferenceSteps,
       resolution: body.resolution,
-      endpoint: FAL_ENDPOINT_WAN_V22_I2V,
+      endpoint,
     })
   } catch (err) {
     return NextResponse.json(

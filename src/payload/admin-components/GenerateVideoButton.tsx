@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useDocumentInfo } from '@payloadcms/ui'
 import { buildVideoPrompt, VIDEO_NEGATIVE_PROMPT } from '@/features/video/motion-presets'
+import { VIDEO_MODEL_OPTIONS, DEFAULT_VIDEO_MODEL_ID } from '@/shared/ai/video-models'
 import { saveJob, loadJob, clearJob } from './job-persistence'
 
 type MotionStrength = 'subtle' | 'medium' | 'strong'
@@ -142,6 +143,7 @@ export function GenerateVideoButton() {
     'She slowly turns her head to look at the camera and smiles warmly',
   )
   const [resolution, setResolution] = useState<Resolution>('720p')
+  const [modelEndpoint, setModelEndpoint] = useState<string>(DEFAULT_VIDEO_MODEL_ID)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [promptOverride, setPromptOverride] = useState<string | null>(null)
   const [negativeOverride, setNegativeOverride] = useState<string | null>(null)
@@ -340,6 +342,7 @@ export function GenerateVideoButton() {
           mood,
           motionDescription: motionDescription.trim(),
           resolution,
+          endpoint: modelEndpoint,
           ...(promptOverride && promptOverride.trim().length > 0
             ? { customPrompt: promptOverride.trim() }
             : {}),
@@ -419,8 +422,9 @@ export function GenerateVideoButton() {
         Generate Video (image-to-video)
       </h4>
       <p style={{ margin: '0 0 14px', fontSize: '11px', color: '#9ca3af' }}>
-        WAN 2.2 (14B) · uses the character&rsquo;s primary or reference image as the source.
-        Typical generation time at 720p is 3–6 minutes; lower resolutions are faster.
+        Uses the character&rsquo;s primary or reference image as the source. All listed
+        models are WAN 2.2 family (open-weight, NSFW-friendly). Avoid WAN 2.5/2.6/Kling/Veo —
+        those filter adult content server-side.
       </p>
 
       {primaryImageUrl ? (
@@ -446,6 +450,27 @@ export function GenerateVideoButton() {
           No reference or primary image yet. Generate a character image first.
         </p>
       )}
+
+      <div style={{ marginBottom: '12px' }}>
+        <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', color: '#6b7280' }}>
+          Model
+        </label>
+        <select
+          value={modelEndpoint}
+          onChange={(e) => setModelEndpoint(e.target.value)}
+          disabled={isBusy}
+          style={{ ...SELECT, maxWidth: '320px' }}
+        >
+          {VIDEO_MODEL_OPTIONS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '3px' }}>
+          {VIDEO_MODEL_OPTIONS.find((m) => m.id === modelEndpoint)?.note}
+        </div>
+      </div>
 
       <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <div>
@@ -679,7 +704,7 @@ export function GenerateVideoButton() {
               : ''}
           </p>
           <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0' }}>
-            Polling every 5s. WAN 2.2 a14b at 720p is typically 3–6 minutes.
+            Polling every 5s · {VIDEO_MODEL_OPTIONS.find((m) => m.id === state.endpoint)?.label ?? state.endpoint}
           </p>
           {state.lastLog && (
             <p

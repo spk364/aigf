@@ -18,10 +18,23 @@ export const FAL_ENDPOINT_FLUX_SCHNELL = 'fal-ai/flux/schnell'
 export const FAL_ENDPOINT_FLUX_DEV = 'fal-ai/flux/dev'
 export const FAL_ENDPOINT_IP_ADAPTER_FACE_ID = 'fal-ai/ip-adapter-face-id'
 
-// WAN 2.2 (Alibaba) image-to-video. The 14B-A model is the high-quality
-// variant; a smaller 5B variant exists but is lower fidelity. Typical
-// inference at 720p / 81 frames / 27 steps takes 90-180 s on fal.
+// WAN 2.2 (Alibaba) image-to-video — open-weight, NSFW-friendly when
+// safety_checker is disabled. We expose three variants:
+//
+//   …a14b/image-to-video/turbo  — distilled fast variant. Fixed price per
+//                                  video ($0.05/$0.075/$0.10 for 480/580/720p).
+//                                  ~30-60 s; default for most flows.
+//   …a14b/image-to-video        — full 14B base model. Per-second pricing
+//                                  ($0.04/$0.06/$0.08), best fidelity, slow
+//                                  (90-180 s at 720p / 81 frames / 27 steps).
+//   …5b/image-to-video          — smaller 5B model. Cheaper and faster but
+//                                  weaker identity preservation; preview-tier.
+//
+// Avoid WAN 2.5/2.6/2.7 ("Partner" Alibaba endpoints) — they apply
+// server-side content moderation and reject NSFW prompts/images.
+export const FAL_ENDPOINT_WAN_V22_I2V_TURBO = 'fal-ai/wan/v2.2-a14b/image-to-video/turbo'
 export const FAL_ENDPOINT_WAN_V22_I2V = 'fal-ai/wan/v2.2-a14b/image-to-video'
+export const FAL_ENDPOINT_WAN_V22_5B_I2V = 'fal-ai/wan/v2.2-5b/image-to-video'
 
 export const FAL_IMAGE_ENDPOINT = FAL_ENDPOINT_REALISTIC_VISION
 
@@ -418,7 +431,7 @@ export async function submitVideoJob(input: GenerateVideoInput): Promise<VideoJo
   const key = process.env.FAL_KEY
   if (!key) throw new Error('FAL_KEY is not set')
 
-  const endpoint = input.endpoint ?? FAL_ENDPOINT_WAN_V22_I2V
+  const endpoint = input.endpoint ?? FAL_ENDPOINT_WAN_V22_I2V_TURBO
 
   const body: Record<string, unknown> = {
     image_url: input.imageUrl,
