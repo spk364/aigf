@@ -432,24 +432,46 @@ export async function submitVideoJob(input: GenerateVideoInput): Promise<VideoJo
   if (!key) throw new Error('FAL_KEY is not set')
 
   const endpoint = input.endpoint ?? FAL_ENDPOINT_WAN_V22_I2V_TURBO
+  const isTurbo = endpoint === FAL_ENDPOINT_WAN_V22_I2V_TURBO
+  const is5B = endpoint === FAL_ENDPOINT_WAN_V22_5B_I2V
 
-  const body: Record<string, unknown> = {
-    image_url: input.imageUrl,
-    prompt: input.prompt,
-    num_frames: input.numFrames ?? 81,
-    frames_per_second: input.fps ?? 16,
-    resolution: input.resolution ?? '720p',
-    aspect_ratio: input.aspectRatio ?? 'auto',
-    num_inference_steps: input.numInferenceSteps ?? 27,
-    guidance_scale: input.guidanceScale ?? 3.5,
-    shift: input.shift ?? 5,
-    ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
-    ...(input.seed !== undefined ? { seed: input.seed } : {}),
-  }
+  // 5B doesn't accept 480p — only 580p/720p. Force-upgrade to avoid a 422
+  // from fal's input validator with no useful detail.
+  const resolution =
+    is5B && input.resolution === '480p' ? '580p' : input.resolution ?? '720p'
+
+  // Turbo's distilled schedule rejects num_frames, num_inference_steps,
+  // shift, guidance_scale, frames_per_second and negative_prompt. Sending
+  // any of those returns 422 from the worker. Keep the body minimal here
+  // and let the base/5B branch send the full WAN tuning surface.
+  const body: Record<string, unknown> = isTurbo
+    ? {
+        image_url: input.imageUrl,
+        prompt: input.prompt,
+        resolution,
+        aspect_ratio: input.aspectRatio ?? 'auto',
+        ...(input.seed !== undefined ? { seed: input.seed } : {}),
+      }
+    : {
+        image_url: input.imageUrl,
+        prompt: input.prompt,
+        num_frames: input.numFrames ?? 81,
+        frames_per_second: input.fps ?? 16,
+        resolution,
+        aspect_ratio: input.aspectRatio ?? 'auto',
+        num_inference_steps: input.numInferenceSteps ?? 27,
+        guidance_scale: input.guidanceScale ?? 3.5,
+        shift: input.shift ?? 5,
+        ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
+        ...(input.seed !== undefined ? { seed: input.seed } : {}),
+      }
 
   // Adult content app — safety checker always off.
   body.enable_safety_checker = false
   body.enable_output_safety_checker = false
+  // Turbo and 5B both expose a built-in prompt-expansion LLM. We've already
+  // shaped the prompt server-side; let the model use ours verbatim.
+  body.enable_prompt_expansion = false
 
   const submit = await fetch(`${QUEUE_BASE}/${endpoint}`, {
     method: 'POST',
@@ -582,7 +604,31 @@ export async function fetchVideoJobStatus(args: {
     headers: { Authorization: `Key ${key}` },
   })
   if (!resultRes.ok) {
-    return { status: 'failed', error: `fal result fetch failed: ${resultRes.status}` }
+    // fal returns a structured `detail` array on 422 describing exactly which
+    // body field the model worker rejected. Surface that instead of a bare
+    // status code so admins can fix the request.
+    const errBody = await resultRes.text().catch(() => '')
+    let parsed: unknown
+    try { parsed = JSON.parse(errBody) } catch { parsed = null }
+    const detail = (parsed as { detail?: unknown } | null)?.detail
+    let detailMsg = ''
+    if (Array.isArray(detail)) {
+      detailMsg = detail
+        .map((d) => {
+          const dd = d as { loc?: unknown[]; msg?: string }
+          const loc = Array.isArray(dd.loc) ? dd.loc.join('.') : ''
+          return `${loc ? loc + ': ' : ''}${dd.msg ?? ''}`
+        })
+        .join('; ')
+    } else if (typeof detail === 'string') {
+      detailMsg = detail
+    } else {
+      detailMsg = errBody.slice(0, 300)
+    }
+    return {
+      status: 'failed',
+      error: `fal video result HTTP ${resultRes.status}: ${detailMsg || '(empty body)'}`,
+    }
   }
   const result = (await resultRes.json()) as {
     video?: { url: string; content_type?: string }
