@@ -1,7 +1,26 @@
+// Image-model catalogue. Both providers are accessible via this list — the
+// route layer dispatches on `provider`. fal stays as the primary path for
+// realistic photo + anime checkpoints (no prompt classifier on image flows
+// despite the WAN-video filter); Atlas adds WAN 2.6 t2i and image-edit as
+// alternatives that share a single provider with our video pipeline.
+//
+// Endpoint slugs are duplicated as literals (rather than imported from
+// adapter modules) because both `./fal` and `./atlas` are `server-only`,
+// and this module is pulled into the admin client bundle through
+// GenerateImageButton. Keep these in sync with FAL_ENDPOINT_* in `./fal`.
+
 export type ImageModelStyle = 'realism' | 'anime' | 'mixed'
+export type ImageProvider = 'fal' | 'atlas'
 
 export type ImageModelOption = {
+  // Stable identifier sent over the wire. Equal to either:
+  //   - fal native endpoint slug (`fal-ai/flux/schnell`)
+  //   - HF repo id for fal-ai/lora checkpoints (`John6666/cyberrealistic-...`)
+  //   - Atlas model slug (`alibaba/wan-2.6/text-to-image`)
+  // Use detectImageProvider to recover provider from a bare id when the
+  // option lookup misses (legacy DB values, admin-typed override).
   id: string
+  provider: ImageProvider
   label: string
   // Short note shown under the selector in the admin UI: latency · cost · style.
   note: string
@@ -14,55 +33,86 @@ export type ImageModelOption = {
   isCold?: boolean
   // Category for grouping in the dropdown.
   style: ImageModelStyle
-  // True when the model reliably renders consensual NSFW with the safety
-  // checker disabled. False marks options where fal's hardcoded NSFW classifier
-  // tends to return black frames even with `enable_safety_checker = false`.
+  // True when the model reliably renders consensual NSFW. False marks options
+  // where fal's hardcoded NSFW classifier tends to return black frames even
+  // with `enable_safety_checker = false`.
   nsfwFriendly: boolean
 }
 
-// Order matters — index 0 is the default. We lead with FLUX Schnell because
-// fal's hardcoded NSFW classifier on realistic-vision/fast-sdxl returns black
-// frames on age + tattoo + piercing prompts even with enable_safety_checker
-// off; FLUX endpoints don't go through that pipeline.
+// Order matters — index 0 is the default. Atlas WAN 2.6 t2i leads to keep
+// the same provider for image and video flows. FLUX Schnell stays as the
+// "always-warm fal fallback" — switch to it when Atlas is rate-limited or
+// when a flow specifically needs FLUX's natural-language prompt handling.
 export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
-  // ── Native fal.ai endpoints — always warm ────────────────────────────────
+  // ── Atlas Cloud — primary NSFW-strong, single-provider with video ────────
+  {
+    id: 'alibaba/wan-2.6/text-to-image',
+    provider: 'atlas',
+    label: '[Atlas] WAN 2.6 text-to-image (recommended)',
+    note: '~10–30 s · $0.021/img · realism + mixed · NSFW-strong, no prompt filter',
+    style: 'mixed',
+    nsfwFriendly: true,
+  },
+  {
+    id: 'alibaba/wan-2.6/image-edit',
+    provider: 'atlas',
+    label: '[Atlas] WAN 2.6 image-edit',
+    note: '~10–30 s · $0.021/img · edits/extends an existing image · NSFW-strong',
+    style: 'mixed',
+    nsfwFriendly: true,
+  },
+  {
+    id: 'alibaba/wan-2.5/image-edit',
+    provider: 'atlas',
+    label: '[Atlas] WAN 2.5 image-edit',
+    note: '~10–30 s · $0.021/img · slightly older edit model · NSFW-strong',
+    style: 'mixed',
+    nsfwFriendly: true,
+  },
+
+  // ── fal.ai — native warm endpoints ──────────────────────────────────────
   {
     id: 'fal-ai/flux/schnell',
-    label: 'FLUX Schnell (recommended)',
-    note: '~5–10 s · ~$0.003/img · realism + mixed · natural-language prompt · NSFW-friendly (fal classifier skipped)',
+    provider: 'fal',
+    label: '[fal] FLUX Schnell',
+    note: '~5–10 s · ~$0.003/img · realism + mixed · natural-language prompt · NSFW-friendly',
     isFlux: true,
     style: 'mixed',
     nsfwFriendly: true,
   },
   {
     id: 'fal-ai/flux/dev',
-    label: 'FLUX Dev',
-    note: '~30–60 s · ~$0.025/img · best FLUX quality · natural-language prompt · NSFW-friendly',
+    provider: 'fal',
+    label: '[fal] FLUX Dev',
+    note: '~30–60 s · ~$0.025/img · best FLUX quality · natural-language · NSFW-friendly',
     isFlux: true,
     style: 'mixed',
     nsfwFriendly: true,
   },
   {
     id: 'fal-ai/realistic-vision',
-    label: 'RealVisXL',
+    provider: 'fal',
+    label: '[fal] RealVisXL',
     note: '~20–50 s · ~$0.025/img · photorealistic · ⚠ fal NSFW filter often returns black frames',
     style: 'realism',
     nsfwFriendly: false,
   },
   {
     id: 'fal-ai/fast-sdxl',
-    label: 'Fast SDXL',
+    provider: 'fal',
+    label: '[fal] Fast SDXL',
     note: '~5–10 s · ~$0.005/img · generic SDXL · ⚠ same fal NSFW filter as RealVisXL',
     style: 'mixed',
     nsfwFriendly: false,
   },
 
-  // ── Realistic NSFW (HF checkpoints via fal-ai/lora — 2-3 min cold start) ─
-  // Pony/Illustrious checkpoints route through fal-ai/lora and bypass fal's
-  // NSFW classifier — no black frames, just slow first call.
+  // ── fal.ai — Realistic NSFW LoRA checkpoints (2-3 min cold start) ───────
+  // The id IS the HF repo slug — the route detects "non-fal-ai/, non-Atlas"
+  // ids and routes through fal-ai/lora with model_name set to the id.
   {
     id: 'John6666/cyberrealistic-pony-v110-sdxl',
-    label: 'CyberRealistic Pony v110',
+    provider: 'fal',
+    label: '[fal LoRA] CyberRealistic Pony v110',
     note: '~30–60 s warm · ~2–3 min cold · ~$0.05/img · photorealistic · NSFW-strong',
     isPony: true,
     isCold: true,
@@ -71,7 +121,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
   },
   {
     id: 'John6666/pony-realism-v22-main-sdxl',
-    label: 'Pony Realism v22',
+    provider: 'fal',
+    label: '[fal LoRA] Pony Realism v22',
     note: '~30–60 s warm · ~2–3 min cold · ~$0.05/img · photorealistic · NSFW-strong',
     isPony: true,
     isCold: true,
@@ -80,18 +131,20 @@ export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
   },
   {
     id: 'John6666/duchaiten-pony-real-v60-sdxl',
-    label: 'DuchaiTen Pony Real v60',
-    note: '~30–60 s warm · ~2–3 min cold · ~$0.05/img · photorealistic, softer skin · NSFW-strong',
+    provider: 'fal',
+    label: '[fal LoRA] DuchaiTen Pony Real v60',
+    note: '~30–60 s warm · ~2–3 min cold · ~$0.05/img · softer skin · NSFW-strong',
     isPony: true,
     isCold: true,
     style: 'realism',
     nsfwFriendly: true,
   },
 
-  // ── Anime / Illustrious (HF checkpoints via fal-ai/lora — 2-3 min cold) ──
+  // ── fal.ai — Anime / Illustrious LoRA checkpoints (cold) ────────────────
   {
     id: 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl',
-    label: 'WAI NSFW Illustrious v150',
+    provider: 'fal',
+    label: '[fal LoRA] WAI NSFW Illustrious v150',
     note: '~30–60 s warm · ~2–3 min cold · ~$0.05/img · top anime · NSFW-strong',
     isPony: true,
     isCold: true,
@@ -100,7 +153,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
   },
   {
     id: 'John6666/hassaku-xl-illustrious-v31-sdxl',
-    label: 'Hassaku XL Illustrious v31',
+    provider: 'fal',
+    label: '[fal LoRA] Hassaku XL Illustrious v31',
     note: '~30–60 s warm · ~2–3 min cold · ~$0.05/img · stylized anime · NSFW-strong',
     isPony: true,
     isCold: true,
@@ -111,15 +165,28 @@ export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
 
 export const DEFAULT_IMAGE_MODEL_ID = IMAGE_MODEL_OPTIONS[0]!.id
 
-// Grouped view for the admin UI <optgroup> render.
-export const IMAGE_MODEL_GROUPS: Array<{
-  label: string
-  style: ImageModelStyle | 'native'
-}> = [
-  { label: 'Native fal endpoints (warm)', style: 'native' },
-  { label: 'Realism (cold start ~2–3 min)', style: 'realism' },
-  { label: 'Anime / Illustrious (cold start ~2–3 min)', style: 'anime' },
-]
+export function findImageModel(id: string): ImageModelOption | undefined {
+  return IMAGE_MODEL_OPTIONS.find((m) => m.id === id)
+}
+
+export function isAllowedImageModelId(id: string): boolean {
+  return IMAGE_MODEL_OPTIONS.some((m) => m.id === id)
+}
+
+// Falls back to prefix detection when an id is unknown (legacy DB values,
+// admin-typed override). Atlas slugs always start with one of these vendor
+// prefixes; fal-ai/* is fal native; anything else (e.g. John6666/...) is
+// a HuggingFace repo routed via fal-ai/lora.
+export function detectImageProvider(id: string): ImageProvider {
+  if (
+    id.startsWith('atlascloud/') ||
+    id.startsWith('alibaba/') ||
+    id.startsWith('bytedance/')
+  ) {
+    return 'atlas'
+  }
+  return 'fal'
+}
 
 // SDXL-native resolution buckets. We send these as explicit {width, height}
 // to fal rather than the legacy preset enum, because fal's `portrait_4_3`

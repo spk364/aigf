@@ -5,6 +5,8 @@ import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { fetchVideoJobStatus } from '@/shared/ai/fal'
+import { fetchAtlasVideoJobStatus } from '@/shared/ai/atlas'
+import { detectVideoProvider, findVideoModel } from '@/shared/ai/video-models'
 import { persistGeneratedVideo } from '@/features/media/persist-generated-video'
 import { getCurrentUser } from '@/shared/auth/current-user'
 
@@ -46,25 +48,35 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     )
   }
 
-  // SSRF guard — only accept fal queue URLs.
-  if (
-    !parsed.data.statusUrl.startsWith('https://queue.fal.run/') ||
-    !parsed.data.responseUrl.startsWith('https://queue.fal.run/')
-  ) {
-    return NextResponse.json({ error: 'invalid_fal_urls' }, { status: 400 })
+  // SSRF guard — only accept queue URLs from the providers we actually use.
+  const ALLOWED_HOST_PREFIXES = [
+    'https://queue.fal.run/',
+    'https://api.atlascloud.ai/',
+  ]
+  const allowedUrl = (u: string) => ALLOWED_HOST_PREFIXES.some((p) => u.startsWith(p))
+  if (!allowedUrl(parsed.data.statusUrl) || !allowedUrl(parsed.data.responseUrl)) {
+    return NextResponse.json({ error: 'invalid_provider_urls' }, { status: 400 })
   }
 
   const { id: characterId } = await params
 
+  const provider =
+    findVideoModel(parsed.data.endpoint)?.provider ??
+    detectVideoProvider(parsed.data.endpoint)
+
   let jobStatus: Awaited<ReturnType<typeof fetchVideoJobStatus>>
   try {
-    jobStatus = await fetchVideoJobStatus({
+    const fetchArgs = {
       statusUrl: parsed.data.statusUrl,
       responseUrl: parsed.data.responseUrl,
       requestId: parsed.data.requestId,
       endpoint: parsed.data.endpoint,
       startedAtMs: parsed.data.startedAt,
-    })
+    }
+    jobStatus =
+      provider === 'atlas'
+        ? await fetchAtlasVideoJobStatus(fetchArgs)
+        : await fetchVideoJobStatus(fetchArgs)
   } catch (err) {
     return NextResponse.json(
       {

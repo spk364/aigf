@@ -5,6 +5,11 @@ import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { fetchImageJobStatus } from '@/shared/ai/fal'
+import { fetchAtlasImageJobStatus } from '@/shared/ai/atlas'
+import {
+  detectImageProvider,
+  findImageModel,
+} from '@/shared/ai/image-models'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { saveGeneratedImageToDisk } from '@/shared/debug/save-generated-image'
@@ -50,25 +55,40 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     )
   }
 
-  if (
-    !parsed.data.statusUrl.startsWith('https://queue.fal.run/') ||
-    !parsed.data.responseUrl.startsWith('https://queue.fal.run/')
-  ) {
-    return NextResponse.json({ error: 'invalid_fal_urls' }, { status: 400 })
+  // SSRF guard — only accept queue URLs from providers we use.
+  const ALLOWED_HOST_PREFIXES = [
+    'https://queue.fal.run/',
+    'https://api.atlascloud.ai/',
+  ]
+  const allowedUrl = (u: string) => ALLOWED_HOST_PREFIXES.some((p) => u.startsWith(p))
+  if (!allowedUrl(parsed.data.statusUrl) || !allowedUrl(parsed.data.responseUrl)) {
+    return NextResponse.json({ error: 'invalid_provider_urls' }, { status: 400 })
   }
 
   const { id: characterId } = await params
 
+  // The reference flow does not pass modelUsed through the polling URL, so
+  // detect provider from the status URL host. fal goes to queue.fal.run;
+  // Atlas to api.atlascloud.ai. Endpoint slug is a secondary fallback.
+  const provider = parsed.data.statusUrl.startsWith('https://api.atlascloud.ai/')
+    ? 'atlas'
+    : findImageModel(parsed.data.endpoint)?.provider ??
+      detectImageProvider(parsed.data.endpoint)
+
   let jobStatus: Awaited<ReturnType<typeof fetchImageJobStatus>>
   try {
-    jobStatus = await fetchImageJobStatus({
+    const fetchArgs = {
       statusUrl: parsed.data.statusUrl,
       responseUrl: parsed.data.responseUrl,
       requestId: parsed.data.requestId,
       endpoint: parsed.data.endpoint,
       modelName: parsed.data.modelName,
       startedAtMs: parsed.data.startedAt,
-    })
+    }
+    jobStatus =
+      provider === 'atlas'
+        ? await fetchAtlasImageJobStatus(fetchArgs)
+        : await fetchImageJobStatus(fetchArgs)
   } catch (err) {
     return NextResponse.json(
       {
