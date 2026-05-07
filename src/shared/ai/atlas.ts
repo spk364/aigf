@@ -65,18 +65,32 @@ export async function submitAtlasImageJob(
   // Atlas's gateway forwards the body verbatim to the Alibaba/ByteDance
   // worker, which uses a strict Pydantic schema (additional properties
   // forbidden — sending unknown keys returns 400 "Extra inputs are not
-  // permitted"). Verified against the live API for wan-2.2-turbo-spicy:
-  //   accepted at ROOT: model, image, prompt, resolution, seed
-  //   rejected: enable_safety_checker, image_url, aspect_ratio, input{}
-  // Spicy/uncensored variants have no safety gate by design.
+  // permitted"). Field names differ between model families, verified
+  // against the live API:
+  //   text-to-image (alibaba/wan-2.6/text-to-image)
+  //     accepted: model, prompt, size?, seed?
+  //   image-edit (alibaba/wan-2.5/image-edit, alibaba/wan-2.6/image-edit)
+  //     accepted: model, prompt, images: [url], size?, seed?
+  //     `images` is REQUIRED for image-edit — empty/missing returns 400.
+  // Spicy/uncensored variants have no safety gate by design — never send
+  // safety flags.
   const isImageEdit = input.endpoint.includes('image-edit')
+  if (isImageEdit && !input.ipAdapterImageUrl) {
+    throw new Error(
+      `Atlas image-edit endpoint "${input.endpoint}" requires a source image. ` +
+        'Generate a reference image first or pick a text-to-image model instead.',
+    )
+  }
   const body: Record<string, unknown> = {
     model: input.endpoint,
     prompt: input.prompt,
     ...(size ? { size } : {}),
     ...(input.seed !== undefined ? { seed: input.seed } : {}),
-    // image-edit endpoints take a source image; t2i does not.
-    ...(isImageEdit && input.ipAdapterImageUrl ? { image: input.ipAdapterImageUrl } : {}),
+    // image-edit takes an `images: [url]` ARRAY (plural). t2i does not
+    // accept this field at all — schema would 400 with "Extra inputs".
+    ...(isImageEdit && input.ipAdapterImageUrl
+      ? { images: [input.ipAdapterImageUrl] }
+      : {}),
   }
 
   const submit = await fetch(`${ATLAS_BASE}/model/generateImage`, {
