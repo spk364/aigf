@@ -62,28 +62,21 @@ export async function submitAtlasImageJob(
     return `${input.imageSize.width}*${input.imageSize.height}`
   })()
 
-  // Atlas wraps all per-model parameters under `input`. The schema is strict
-  // (additional properties forbidden) — sending unknown keys returns 400 with
-  // "Extra inputs are not permitted". Spicy/uncensored variants don't accept
-  // enable_safety_checker at all (no safety gate by design), so we omit it.
+  // Atlas's gateway forwards the body verbatim to the Alibaba/ByteDance
+  // worker, which uses a strict Pydantic schema (additional properties
+  // forbidden — sending unknown keys returns 400 "Extra inputs are not
+  // permitted"). Verified against the live API for wan-2.2-turbo-spicy:
+  //   accepted at ROOT: model, image, prompt, resolution, seed
+  //   rejected: enable_safety_checker, image_url, aspect_ratio, input{}
+  // Spicy/uncensored variants have no safety gate by design.
   const isImageEdit = input.endpoint.includes('image-edit')
-  const inner: Record<string, unknown> = {
-    prompt: input.prompt,
-    ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
-    ...(size ? { size } : {}),
-    ...(input.numInferenceSteps !== undefined
-      ? { num_inference_steps: input.numInferenceSteps }
-      : {}),
-    ...(input.guidanceScale !== undefined ? { guidance_scale: input.guidanceScale } : {}),
-    ...(input.seed !== undefined ? { seed: input.seed } : {}),
-    // image-edit endpoints take a source image; t2i does not.
-    ...(isImageEdit && input.ipAdapterImageUrl
-      ? { image_url: input.ipAdapterImageUrl }
-      : {}),
-  }
   const body: Record<string, unknown> = {
     model: input.endpoint,
-    input: inner,
+    prompt: input.prompt,
+    ...(size ? { size } : {}),
+    ...(input.seed !== undefined ? { seed: input.seed } : {}),
+    // image-edit endpoints take a source image; t2i does not.
+    ...(isImageEdit && input.ipAdapterImageUrl ? { image: input.ipAdapterImageUrl } : {}),
   }
 
   const submit = await fetch(`${ATLAS_BASE}/model/generateImage`, {
@@ -227,47 +220,20 @@ export async function submitAtlasVideoJob(
 ): Promise<VideoJobHandles> {
   if (!input.endpoint) throw new Error('Atlas video submit requires an endpoint (model id)')
 
-  const isTurbo = input.endpoint.includes('turbo-spicy')
-
-  // Atlas wraps all per-model parameters under `input`. The schema is strict
-  // (additional properties forbidden) — sending unknown keys returns 400 with
-  // "Extra inputs are not permitted". Spicy/uncensored variants don't accept
-  // enable_safety_checker at all (no safety gate by design), so we omit it.
-  //
-  // Turbo Spicy is the distilled fast variant — ignore tuning knobs and let
-  // the model use its own optimised schedule. Mirrors what we do for fal's
-  // WAN Turbo. Full Spicy accepts the WAN tuning surface but the fields are
-  // still nested under `input`.
-  const inner: Record<string, unknown> = isTurbo
-    ? {
-        image_url: input.imageUrl,
-        prompt: input.prompt,
-        ...(input.resolution ? { resolution: input.resolution } : {}),
-        ...(input.aspectRatio && input.aspectRatio !== 'auto'
-          ? { aspect_ratio: input.aspectRatio }
-          : {}),
-        ...(input.seed !== undefined ? { seed: input.seed } : {}),
-      }
-    : {
-        image_url: input.imageUrl,
-        prompt: input.prompt,
-        ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
-        ...(input.numFrames !== undefined ? { num_frames: input.numFrames } : {}),
-        ...(input.fps !== undefined ? { frames_per_second: input.fps } : {}),
-        ...(input.resolution ? { resolution: input.resolution } : {}),
-        ...(input.aspectRatio && input.aspectRatio !== 'auto'
-          ? { aspect_ratio: input.aspectRatio }
-          : {}),
-        ...(input.numInferenceSteps !== undefined
-          ? { num_inference_steps: input.numInferenceSteps }
-          : {}),
-        ...(input.guidanceScale !== undefined ? { guidance_scale: input.guidanceScale } : {}),
-        ...(input.shift !== undefined ? { shift: input.shift } : {}),
-        ...(input.seed !== undefined ? { seed: input.seed } : {}),
-      }
+  // Atlas's gateway forwards the body verbatim to the Alibaba/ByteDance
+  // worker, which uses a strict Pydantic schema (additional properties
+  // forbidden). Verified against the live API for wan-2.2-turbo-spicy:
+  //   accepted at ROOT: model, image, prompt, resolution, seed
+  //   rejected: enable_safety_checker, image_url, aspect_ratio, input{}
+  // Spicy/uncensored variants have no safety gate by design — never send
+  // safety flags. Tuning params (num_frames, shift, guidance_scale, ...) are
+  // not part of the Spicy worker schemas; rely on the model's defaults.
   const body: Record<string, unknown> = {
     model: input.endpoint,
-    input: inner,
+    image: input.imageUrl,
+    prompt: input.prompt,
+    ...(input.resolution ? { resolution: input.resolution } : {}),
+    ...(input.seed !== undefined ? { seed: input.seed } : {}),
   }
 
   const submit = await fetch(`${ATLAS_BASE}/model/generateVideo`, {
