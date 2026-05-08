@@ -1,18 +1,22 @@
 import { getTranslations } from 'next-intl/server'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
-import { logoutAction } from '@/features/auth/actions/logout'
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { getDailyMessageCap, getQuotaStatus } from '@/features/quota/message-quota'
 import { isPremiumPlan } from '@/features/billing/plans'
 import { getDashboardData } from '@/features/dashboard/queries'
+import { getBalance } from '@/features/tokens/ledger'
+import { getFeaturedCharacters } from '@/widgets/landing/featured-data'
 import { ContinueCard } from '@/widgets/dashboard/ContinueCard'
 import { MyCompanions } from '@/widgets/dashboard/MyCompanions'
 import { RecentConversations } from '@/widgets/dashboard/RecentConversations'
 import { DraftsStrip } from '@/widgets/dashboard/DraftsStrip'
-import { QuotaPill } from '@/widgets/dashboard/QuotaPill'
+import { DashboardShell } from '@/widgets/dashboard/DashboardShell'
+import { StatsCards } from '@/widgets/dashboard/StatsCards'
+import { QuickActions } from '@/widgets/dashboard/QuickActions'
+import { DiscoverStrip } from '@/widgets/dashboard/DiscoverStrip'
+import { PremiumUpsell } from '@/widgets/dashboard/PremiumUpsell'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -48,71 +52,88 @@ export default async function DashboardPage({ params }: Props) {
     userId: user.id,
     locale: locale as 'en' | 'ru' | 'es',
   })
+  const tokenBalance = await getBalance(payload, user.id)
+  // Reuses the React.cache() wrapper so this query is shared with the landing page.
+  const featuredAll = await getFeaturedCharacters()
+  const ownedCharacterIds = new Set(
+    dashboard.recentConversations
+      .map((r) => r.characterId)
+      .filter((id): id is string => !!id),
+  )
+  const featured = featuredAll
+    .filter((c) => !ownedCharacterIds.has(c.id))
+    .slice(0, 8)
 
   const sub = subResult.docs[0]
   const isPremium = !!sub && isPremiumPlan(sub.plan as string | null)
 
   const quotaCap = quota.cap === Infinity ? null : quota.cap
 
-  async function handleLogout() {
-    'use server'
-    await logoutAction()
-    redirect(`/${locale}/login`)
-  }
-
   const hasCompanions = dashboard.companions.length > 0
+  const topConversationId = dashboard.hero?.conversationId ?? null
 
   return (
-    <main className="min-h-screen bg-[var(--color-bg)] px-4 py-10 text-[var(--color-text)]">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8">
-        {!emailVerified && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-300">
-            {t('dashboard.emailNotVerified')}
-          </div>
-        )}
+    <DashboardShell
+      locale={locale}
+      displayName={displayName}
+      email={user.email}
+      isPremium={isPremium}
+      active="home"
+    >
+      <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+        <div className="mx-auto flex max-w-6xl flex-col gap-8">
+          {!emailVerified && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-300">
+              {t('dashboard.emailNotVerified')}
+            </div>
+          )}
 
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
-              Hello
-            </p>
-            <h1 className="text-2xl font-bold text-[var(--color-text)] sm:text-3xl">
-              {displayName}
-            </h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <QuotaPill
-              locale={locale}
-              used={quota.used}
-              cap={quotaCap}
-              isPremium={isPremium}
-            />
-            <form action={handleLogout}>
-              <button
-                type="submit"
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
-              >
-                {t('dashboard.logout')}
-              </button>
-            </form>
-          </div>
-        </header>
+          <header className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
+                Welcome back
+              </p>
+              <h1 className="text-3xl font-bold text-[var(--color-text)] sm:text-4xl">
+                {displayName}
+              </h1>
+            </div>
+          </header>
 
-        {dashboard.drafts.length > 0 && (
-          <DraftsStrip locale={locale} drafts={dashboard.drafts} />
-        )}
+          <StatsCards
+            locale={locale}
+            tokens={tokenBalance}
+            quotaUsed={quota.used}
+            quotaCap={quotaCap}
+            isPremium={isPremium}
+            companionsCount={dashboard.companions.length}
+          />
 
-        {dashboard.hero && <ContinueCard locale={locale} hero={dashboard.hero} />}
+          {dashboard.drafts.length > 0 && (
+            <DraftsStrip locale={locale} drafts={dashboard.drafts} />
+          )}
 
-        {hasCompanions ? (
-          <MyCompanions locale={locale} companions={dashboard.companions} />
-        ) : (
-          <EmptyCompanions locale={locale} />
-        )}
+          <QuickActions
+            locale={locale}
+            hasCompanions={hasCompanions}
+            topConversationId={topConversationId}
+          />
 
-        <RecentConversations locale={locale} rows={dashboard.recentConversations} />
+          {dashboard.hero && <ContinueCard locale={locale} hero={dashboard.hero} />}
+
+          {hasCompanions ? (
+            <MyCompanions locale={locale} companions={dashboard.companions} />
+          ) : (
+            <EmptyCompanions locale={locale} />
+          )}
+
+          {!isPremium && <PremiumUpsell locale={locale} />}
+
+          <DiscoverStrip locale={locale} characters={featured} />
+
+          <RecentConversations locale={locale} rows={dashboard.recentConversations} />
+        </div>
       </div>
-    </main>
+    </DashboardShell>
   )
 }
 
