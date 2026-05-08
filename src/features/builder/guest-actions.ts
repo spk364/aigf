@@ -136,6 +136,9 @@ const generateInputSchema = z.object({
 // choices. Style-agnostic — same pieces are layered into either an SD-style
 // or anime prompt by buildPreviewPrompt.
 function resolveAge(appearance: Record<string, unknown>, fallback: number): number {
+  // Pre-policy floor of 18 — callers know their channel and apply a stricter
+  // floor (21 for realistic) on top of this. We don't know the art style at
+  // this layer, so we keep the absolute legal minimum here.
   if (typeof appearance.ageDisplay === 'number') {
     return Math.max(18, appearance.ageDisplay)
   }
@@ -152,7 +155,12 @@ function buildSubjectTokens(appearance: Record<string, unknown>): string {
   const isAnime = String(appearance.artStyle ?? 'realistic') === 'anime'
   const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
   const safeAge = Math.max(agePolicy.minAge, resolveAge(appearance, agePolicy.defaultBaselineAge))
-  parts.push(`(${safeAge} years old:1.3)`)
+  // Specific-age anchor at 1.4 dominates the broader 1.2 "21+" safety
+  // token in agePolicy.positiveMarkers — without that the model averages
+  // across 21..∞ and renders 30+. youthDescriptor pulls the photo-stock
+  // prior (mid-30s "mature woman") down to actually-young-adult.
+  parts.push(`(${safeAge} years old:1.4)`)
+  parts.push(agePolicy.youthDescriptor)
   parts.push(agePolicy.positiveMarkers)
 
   const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
@@ -212,9 +220,15 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
 // fragments but rewords them as "with X" / adjectives glued into a sentence.
 function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
   // FLUX path is realistic-only by design — anime callers never reach it.
-  // Floor user-picked age at the realistic policy minimum (21).
+  // Floor user-picked age at the realistic policy minimum (21). The fallback
+  // when no age was picked is the policy baseline (22), NOT 28 — earlier
+  // logic defaulted to 28 which silently shifted "no choice" → "late-20s
+  // mature woman", contradicting the young-adult product target.
   const realisticPolicy = getAgePolicy('realistic')
-  const safeAge = Math.max(realisticPolicy.minAge, resolveAge(appearance, 28))
+  const safeAge = Math.max(
+    realisticPolicy.minAge,
+    resolveAge(appearance, realisticPolicy.defaultBaselineAge),
+  )
 
   const ethnicityDescriptors: string[] = []
   const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
@@ -257,7 +271,7 @@ function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
     'She wears a tasteful elegant outfit — a fashionable dress or stylish top with a skirt or well-fitted jeans, fully clothed, heels or stylish shoes visible.',
     'The shot is taken with a professional DSLR, 50mm lens, golden-hour cinematic warm lighting, shallow depth of field with a soft bokeh background.',
     'Photorealistic, sharp focus on her face and full figure, head to toe in frame, magazine-quality 4K editorial photography.',
-    'She is clearly a 21+ adult woman, no childlike or pre-teen characteristics whatsoever.',
+    `She is clearly a young-adult woman in her early twenties (${safeAge} years old), legal-age adult, no childlike or pre-teen characteristics whatsoever.`,
   ].filter(Boolean).join(' ')
 }
 

@@ -168,11 +168,14 @@ const ANIME_NEGATIVE =
 // for stylised art). See `age-safety.ts` for the policy rationale.
 function buildSafetyAdultMarkers(isAnime: boolean): string[] {
   const policy = getAgePolicy(isAnime ? 'anime' : 'realistic')
+  // "mature woman" was here historically as an extra under-18 deterrent but
+  // it pulled rendered ages into the 35-50 range. Dropped — `policy.position-
+  // Markers` plus the `(NN year old:1.4)` anchor at the call site is enough.
   return [
     'adult woman',
     policy.positiveMarkers,
     'fully developed adult body',
-    'mature woman',
+    policy.youthDescriptor,
   ]
 }
 

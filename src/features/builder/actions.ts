@@ -330,20 +330,23 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
 
   // Subject anchoring with explicit single-subject + age markers. Policy
   // branches by art style: realistic → 21+, anime → 18+. See age-safety.ts.
-  // We avoid "mature adult" language (biases the model toward 30+ and reads
-  // wrong for the joi-style young-adult target).
+  // The specific-age anchor uses weight 1.4 so it DOMINATES the broader
+  // "21+ years old" safety token (1.2) — without that ordering RealVis
+  // averages across 21..∞ and renders mid-30s "mature" instead of 22.
   const isMale = appearance.gender === 'male'
   const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
   const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : agePolicy.defaultBaselineAge
   const safeAge = Math.max(agePolicy.minAge, ageDisplay)
   if (isMale) {
     parts.push(
-      `1boy, solo, handsome young man, (${safeAge} year old:1.2)`,
+      `1boy, solo, handsome young man, (${safeAge} year old:1.4)`,
+      agePolicy.youthDescriptor,
       agePolicy.positiveMarkers,
     )
   } else {
     parts.push(
-      `1girl, solo, beautiful young woman, (${safeAge} year old:1.2)`,
+      `1girl, solo, beautiful young woman, (${safeAge} year old:1.4)`,
+      agePolicy.youthDescriptor,
       agePolicy.positiveMarkers,
     )
   }
@@ -427,8 +430,9 @@ function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Reco
   const baseline = `${agePolicy.defaultBaselineAge} year old`
   parts.push(
     isMale
-      ? `1boy, solo, handsome young man, (${baseline}:1.2)`
-      : `1girl, solo, beautiful young woman, (${baseline}:1.2)`,
+      ? `1boy, solo, handsome young man, (${baseline}:1.4)`
+      : `1girl, solo, beautiful young woman, (${baseline}:1.4)`,
+    agePolicy.youthDescriptor,
     agePolicy.positiveMarkers,
   )
 
