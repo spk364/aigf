@@ -24,7 +24,11 @@ import { classifyImageSafety } from '@/shared/ai/safety'
 import { isPremiumPlan } from '@/features/billing/plans'
 
 const LLM_MODEL = OPENROUTER_MODEL
-const LLM_TEMPERATURE = 1.3
+// DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
+// which pushes the sampler into the low-probability tail and produces
+// hallucinated biographical facts and broken character consistency. 0.85 keeps
+// personality alive without inventing.
+const LLM_TEMPERATURE = 0.85
 const LLM_MAX_TOKENS = 600
 
 const IMAGE_TOKEN_COST = 2
