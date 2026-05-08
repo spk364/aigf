@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useCallback, useRef, useMemo } from 'react'
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Button, Card, Input } from '@/shared/ui'
 import {
   GENDERS,
@@ -32,6 +33,12 @@ import {
   finalizeBuilderAction,
   suggestNameAction,
 } from '@/features/builder/actions'
+import {
+  parseUrlState,
+  serializeUrlState,
+  draftToUrlState,
+  applyUrlStateToDraft,
+} from '@/features/builder/url-state'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -1330,14 +1337,34 @@ function ReviewScreen({
 // ── Main wizard ───────────────────────────────────────────────────────────
 
 export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props) {
-  const [draftData, setDraftData] = useState<DraftData>({
-    pathChoice: (initialDraft.data.pathChoice as 'presets' | 'unique' | undefined) ?? 'presets',
-    appearance: (initialDraft.data.appearance as Record<string, unknown>) ?? { gender: 'female', artStyle: 'realistic' },
-    identity: (initialDraft.data.identity as Record<string, unknown>) ?? {},
-    backstory: (initialDraft.data.backstory as Record<string, unknown>) ?? {},
-    uniqueDesc: (initialDraft.data.uniqueDesc as Record<string, unknown>) ?? {},
-    selectedReferenceMediaAssetId:
-      (initialDraft.data.selectedReferenceMediaAssetId as string | null) ?? null,
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  // Hydrate initial state: URL params override DB draft when present, so a
+  // shared link or refresh reads the user's last selection back. Computed
+  // once at mount via useState initializer (useSearchParams() is stable
+  // through that initializer call).
+  const [draftData, setDraftData] = useState<DraftData>(() => {
+    const baseDraft: DraftData = {
+      pathChoice: (initialDraft.data.pathChoice as 'presets' | 'unique' | undefined) ?? 'presets',
+      appearance: (initialDraft.data.appearance as Record<string, unknown>) ?? { gender: 'female', artStyle: 'realistic' },
+      identity: (initialDraft.data.identity as Record<string, unknown>) ?? {},
+      backstory: (initialDraft.data.backstory as Record<string, unknown>) ?? {},
+      uniqueDesc: (initialDraft.data.uniqueDesc as Record<string, unknown>) ?? {},
+      selectedReferenceMediaAssetId:
+        (initialDraft.data.selectedReferenceMediaAssetId as string | null) ?? null,
+    }
+
+    if (searchParams && searchParams.toString().length > 0) {
+      const url = parseUrlState(searchParams)
+      const hydrated = applyUrlStateToDraft(baseDraft, url)
+      return {
+        ...hydrated,
+        selectedReferenceMediaAssetId: baseDraft.selectedReferenceMediaAssetId,
+      }
+    }
+    return baseDraft
   })
   const [previewGenerations, setPreviewGenerations] = useState<PreviewGeneration[]>(
     initialDraft.previewGenerations as PreviewGeneration[],
@@ -1348,17 +1375,44 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
     [draftData.pathChoice],
   )
 
-  // Sub-step index (local state). Resume from the start of the highest reached phase.
+  // Sub-step index. URL `step` wins over DB-derived phase position because
+  // URL is the explicit user intent (shared link to "step=4" lands there).
   const initialSubIdx = useMemo(() => {
+    const urlStep = searchParams ? Number(searchParams.get('step')) : NaN
+    if (Number.isFinite(urlStep) && urlStep >= 0) {
+      const totalLen = (draftData.pathChoice === 'unique' ? UNIQUE_STEPS : PRESETS_STEPS).length
+      return Math.min(Math.max(0, Math.floor(urlStep)), totalLen - 1)
+    }
     const phase = Math.max(1, Math.min(4, initialDraft.currentStep ?? 1))
-    return STEPS.findIndex((s) => s.phase === phase)
-  }, [initialDraft.currentStep, STEPS])
+    const idx = STEPS.findIndex((s) => s.phase === phase)
+    return idx >= 0 ? idx : 0
+    // STEPS depends on pathChoice and is computed above; we deliberately
+    // run this once at mount (linter wants STEPS in deps but its identity
+    // changes via path swaps, which would re-snap step index).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const [stepIdx, setStepIdx] = useState(initialSubIdx >= 0 ? initialSubIdx : 0)
+  const [stepIdx, setStepIdx] = useState(initialSubIdx)
   const [saving, setSaving] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
   const [finalizeError, setFinalizeError] = useState<string | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const urlSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Sync local state → URL (debounced, replace not push so back button
+  // exits the wizard rather than walking through every keystroke).
+  useEffect(() => {
+    if (urlSyncTimeoutRef.current) clearTimeout(urlSyncTimeoutRef.current)
+    urlSyncTimeoutRef.current = setTimeout(() => {
+      const url = draftToUrlState(draftData, stepIdx)
+      const sp = serializeUrlState(url)
+      const qs = sp.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    }, 350)
+    return () => {
+      if (urlSyncTimeoutRef.current) clearTimeout(urlSyncTimeoutRef.current)
+    }
+  }, [draftData, stepIdx, pathname, router])
 
   // Clamp stepIdx if the path changes (presets → unique or vice versa).
   const safeStepIdx = Math.min(stepIdx, STEPS.length - 1)

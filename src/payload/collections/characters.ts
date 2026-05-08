@@ -106,8 +106,6 @@ export const Characters: CollectionConfig = {
       options: [
         { label: 'Realistic', value: 'realistic' },
         { label: 'Anime', value: 'anime' },
-        { label: '3D Render', value: '3d_render' },
-        { label: 'Stylized', value: 'stylized' },
       ],
     },
     {

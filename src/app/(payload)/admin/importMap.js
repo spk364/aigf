@@ -1,5 +1,5 @@
+import { CharacterUploadMedia as CharacterUploadMedia_b35cb95e65263b9bb78320b850d28b61 } from '@/payload/admin-components/CharacterUploadMedia'
 import { CharacterMediaGallery as CharacterMediaGallery_7970ba5a7f2fec1a1edb9781dd75a68f } from '@/payload/admin-components/CharacterMediaGallery'
-import { CharacterUploadMedia as CharacterUploadMedia_7970ba5a7f2fec1a1edb9781dd75a691 } from '@/payload/admin-components/CharacterUploadMedia'
 import { GenerateImageButton as GenerateImageButton_d8cebc206261ff058f71606342099873 } from '@/payload/admin-components/GenerateImageButton'
 import { GenerateVideoButton as GenerateVideoButton_a89af66c0ea5f4aab86f330bd7383d01 } from '@/payload/admin-components/GenerateVideoButton'
 import { CharacterVideos as CharacterVideos_599f4ffe111e301229e3a849f2681cec } from '@/payload/admin-components/CharacterVideos'
@@ -7,8 +7,8 @@ import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } f
 
 /** @type import('payload').ImportMap */
 export const importMap = {
+  "@/payload/admin-components/CharacterUploadMedia#CharacterUploadMedia": CharacterUploadMedia_b35cb95e65263b9bb78320b850d28b61,
   "@/payload/admin-components/CharacterMediaGallery#CharacterMediaGallery": CharacterMediaGallery_7970ba5a7f2fec1a1edb9781dd75a68f,
-  "@/payload/admin-components/CharacterUploadMedia#CharacterUploadMedia": CharacterUploadMedia_7970ba5a7f2fec1a1edb9781dd75a691,
   "@/payload/admin-components/GenerateImageButton#GenerateImageButton": GenerateImageButton_d8cebc206261ff058f71606342099873,
   "@/payload/admin-components/GenerateVideoButton#GenerateVideoButton": GenerateVideoButton_a89af66c0ea5f4aab86f330bd7383d01,
   "@/payload/admin-components/CharacterVideos#CharacterVideos": CharacterVideos_599f4ffe111e301229e3a849f2681cec,

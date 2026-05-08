@@ -16,7 +16,6 @@ import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { track } from '@/shared/analytics/posthog'
 import {
   ARCHETYPES,
-  ART_STYLES,
   ETHNICITIES,
   HAIR_COLORS,
   HAIR_LENGTHS,
@@ -315,11 +314,18 @@ function chooseFraming(appearance: Record<string, unknown>): string {
 
 function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const parts: string[] = []
-
   const artStyle = String(appearance.artStyle ?? 'realistic')
-  const artOption = ART_STYLES.find((a) => a.value === artStyle)
-  // Style first — early tokens get more attention from the U-Net.
-  parts.push(artOption?.promptFragment ?? 'photorealistic, high detail, soft lighting')
+  const isAnime = artStyle === 'anime'
+
+  // Style first — early tokens get more attention from the U-Net. The
+  // realism quality tail ("8k uhd, professional photography") fights with
+  // the anime aesthetic when both are mixed, so we branch right at the top
+  // and use art-style-specific quality tags throughout.
+  if (isAnime) {
+    parts.push('anime style, masterpiece, best quality, detailed illustration, vibrant colors, clean lineart')
+  } else {
+    parts.push('photorealistic, high detail, soft lighting, RAW photo')
+  }
 
   // Subject anchoring with explicit single-subject + 18+ markers (no
   // "mature adult" language — biases the model toward 30+ and reads wrong
@@ -378,9 +384,13 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const eyeOpt = EYE_COLORS.find((e) => e.value === eyes.color)
   if (eyeOpt?.promptFragment) parts.push(`(${eyeOpt.promptFragment}:1.3)`)
 
-  // Framing + quality tags last.
+  // Framing + style-aware quality tail.
   parts.push(chooseFraming(appearance))
-  parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
+  if (isAnime) {
+    parts.push('detailed face, expressive eyes, sharp focus, anime aesthetic, vibrant colors')
+  } else {
+    parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
+  }
 
   return parts.join(', ')
 }
@@ -401,9 +411,13 @@ function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string
 // markers so the model picks it up without losing the age guard.
 function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Record<string, unknown>): string {
   const parts: string[] = []
-  const artStyle = String(appearance.artStyle ?? 'realistic')
-  const artOption = ART_STYLES.find((a) => a.value === artStyle)
-  parts.push(artOption?.promptFragment ?? 'photorealistic, high detail, soft lighting')
+  const isAnime = String(appearance.artStyle ?? 'realistic') === 'anime'
+
+  if (isAnime) {
+    parts.push('anime style, masterpiece, best quality, detailed illustration, vibrant colors, clean lineart')
+  } else {
+    parts.push('photorealistic, high detail, soft lighting, RAW photo')
+  }
 
   const isMale = appearance.gender === 'male'
   parts.push(
@@ -417,12 +431,16 @@ function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Reco
   if (looks) parts.push(looks)
 
   parts.push('portrait, head and shoulders, looking at camera')
-  parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
+  if (isAnime) {
+    parts.push('detailed face, expressive eyes, sharp focus, anime aesthetic, vibrant colors')
+  } else {
+    parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
+  }
   return parts.join(', ')
 }
 
 // Maps art style → fal endpoint. RealVisXL handles photoreal best; fast-sdxl
-// handles anime / 3d / stylized passably and is cheap. FLUX is excluded
+// handles anime style well when the prompt is anime-tagged. FLUX is excluded
 // because it ignores negative_prompt — we rely on adversarial negatives.
 function pickEndpointForStyle(artStyle: string): string {
   switch (artStyle) {
@@ -784,7 +802,7 @@ export async function finalizeBuilderAction(
       slug,
       tagline,
       shortBio,
-      artStyle: String(appearance.artStyle ?? 'realistic') as 'realistic' | 'anime' | '3d_render' | 'stylized',
+      artStyle: String(appearance.artStyle ?? 'realistic') as 'realistic' | 'anime',
       archetype: archetypeValue,
       // Joi-parity 5-axis traits + chatStyle/orientation/kinks live in this
       // non-localized JSON field. Feature code that snapshots the character

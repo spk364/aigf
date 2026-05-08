@@ -31,7 +31,7 @@ export type PersonaCore = {
     | 'shy_romantic'
     | 'intellectual'
     | 'caretaker'
-  artStyle: 'realistic' | 'anime' | '3d_render' | 'stylized'
+  artStyle: 'realistic' | 'anime'
   contentRating: 'sfw'
   tags: string[]
   age: number
