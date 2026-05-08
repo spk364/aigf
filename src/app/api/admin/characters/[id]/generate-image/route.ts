@@ -22,6 +22,7 @@ import {
   findImageModel,
   resolveImageSize,
 } from '@/shared/ai/image-models'
+import { getSafetyAdultMarkerString } from '@/shared/ai/age-safety'
 
 const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
@@ -108,6 +109,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ? resolvedModel
     : (imageModel?.checkpoint ?? undefined)
 
+  // Branch age-safety markers by character art style: realistic → 21+,
+  // anime → 18+. Falls back to 21+ when style is unknown (stricter default).
+  // See src/shared/ai/age-safety.ts.
+  const artStyle = (character.artStyle as string | undefined) ?? null
+  const isAnimeChar = artStyle === 'anime'
+  const ageMarkerPhrase = getSafetyAdultMarkerString(isAnimeChar ? 'anime' : 'realistic')
   const safetyMarkers = appearance?.safetyAdultMarkers?.join(', ') ?? ''
   const scene = body.sceneHint?.trim() ?? ''
 
@@ -117,10 +124,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const subjectDesc = appearance?.subjectTokens
       ? appearance.subjectTokens.replace(/, /g, ' with ')
       : 'a beautiful young woman'
+    const adultPhrase = isAnimeChar ? '18+ adult woman' : '21+ adult woman'
     if (scene) {
-      prompt = `${scene}. The woman is ${subjectDesc}. Photorealistic, high quality, 18+ adult woman.`
+      prompt = `${scene}. The woman is ${subjectDesc}. Photorealistic, high quality, ${adultPhrase}.`
     } else {
-      prompt = `Portrait of ${subjectDesc}. Photorealistic, high quality, soft natural lighting, 18+ adult woman.`
+      prompt = `Portrait of ${subjectDesc}. Photorealistic, high quality, soft natural lighting, ${adultPhrase}.`
     }
   } else if (scene && appearance?.subjectTokens) {
     prompt = [
@@ -135,7 +143,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } else {
     prompt = [
       scene || 'portrait of a beautiful young woman, photorealistic, high detail, soft natural lighting',
-      safetyMarkers || 'adult woman, (18+ years old:1.3)',
+      safetyMarkers || ageMarkerPhrase,
       '8k uhd, photorealistic, realistic skin texture',
     ].filter(Boolean).join(', ')
   }

@@ -70,8 +70,11 @@ type Candidate = {
 
 function buildPrompt(c: Candidate): string {
   const isAnime = c.artStyle === 'anime'
-  const safetyMarkers =
-    c.appearance?.safetyAdultMarkers?.join(', ') ?? 'adult woman, (18+ years old:1.3)'
+  // Match the runtime policy: realistic → 21+, anime → 18+ (see age-safety.ts).
+  const fallbackMarkers = isAnime
+    ? 'adult woman, (adult:1.3), (18+ years old:1.3), (legal age:1.2)'
+    : 'adult woman, (adult:1.3), (21+ years old:1.4), (legal age:1.2)'
+  const safetyMarkers = c.appearance?.safetyAdultMarkers?.join(', ') ?? fallbackMarkers
   const subject = c.appearance?.subjectTokens ?? 'beautiful young woman'
   if (isAnime) {
     return [
