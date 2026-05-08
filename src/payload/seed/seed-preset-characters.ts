@@ -18,6 +18,7 @@ function buildDocData(persona: Persona, language: Language) {
     tags: core.tags,
     personalityTraits: core.personalityTraits,
     appearance: buildAppearanceFromParams(core.appearance, core.artStyle),
+    ...(core.referenceImageUrl ? { referenceImageUrl: core.referenceImageUrl } : {}),
     imageModel: {
       primary: core.artStyle === 'anime' ? 'fal-ai/fast-sdxl' : 'fal-ai/realistic-vision',
     },
