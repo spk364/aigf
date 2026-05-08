@@ -57,7 +57,7 @@ function buildNegativePrompt(artStyle: string): string {
 // 60-second Vercel function budget. RealVisXL is higher quality for photoreal
 // but takes 30-60s for 2 images and was timing out; FLUX schnell delivers
 // comparable photoreal quality in ~5-10s (4 inference steps). For anime / 3D /
-// stylized we use fast-sdxl (5-10s, generic SDXL handles those styles fine).
+// anime we use fast-sdxl (5-10s, generic SDXL handles anime style fine).
 // Pony/Illustrious checkpoints are excluded due to 2-3 min cold start.
 //
 // FLUX has no negative_prompt — for safety we lean harder on positive-prompt
@@ -69,8 +69,6 @@ function pickEndpointForStyle(artStyle: string): {
 } {
   switch (artStyle) {
     case 'anime':
-    case '3d_render':
-    case 'stylized':
       return { endpoint: FAL_ENDPOINT_FAST_SDXL, inferenceSteps: 30, guidance: 6 }
     case 'realistic':
     default:
@@ -83,7 +81,7 @@ function pickEndpointForStyle(artStyle: string): {
 }
 
 const appearanceSchema = z.object({
-  artStyle: z.enum(['realistic', 'anime', '3d_render', 'stylized']).optional(),
+  artStyle: z.enum(['realistic', 'anime']).optional(),
   ethnicity: z.array(z.string()).optional(),
   ageDisplay: z.number().min(18).max(99).optional(),
   ageRange: z.enum(['young_adult', 'adult', 'mature', 'experienced']).optional(),
@@ -184,9 +182,8 @@ function buildSubjectTokens(appearance: Record<string, unknown>): string {
   return parts.join(', ')
 }
 
-// Build a per-style prompt. Realistic uses RealVisXL's "RAW photo" framing;
-// anime uses the masterpiece/best quality tag stack; 3D and stylized lean on
-// their own descriptors. All three preserve the alluring full-body intent.
+// Build a per-style prompt. Realistic uses FLUX's natural-language framing;
+// anime uses the masterpiece/best quality tag stack.
 function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const artStyle = String(appearance.artStyle ?? 'realistic')
   const subject = buildSubjectTokens(appearance)
@@ -202,33 +199,9 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
     ].join(', ')
   }
 
-  if (artStyle === '3d_render') {
-    return [
-      '3D render, octane render, high quality CGI, smooth shading, Pixar-quality character',
-      'full body shot, head to toe, complete figure visible',
-      subject,
-      'alluring stance, soft contrapposto, one hand on hip, playful confident smile',
-      'tasteful elegant outfit, fully clothed, stylish dress or top with skirt',
-      'cinematic studio lighting, shallow depth of field, soft bokeh background',
-      'subsurface scattering, realistic materials, 4k, sharp focus',
-    ].join(', ')
-  }
-
-  if (artStyle === 'stylized') {
-    return [
-      'stylized digital painting, painterly, semi-realistic, high detail',
-      'full body shot, head to toe, complete figure visible',
-      subject,
-      'alluring stance, soft contrapposto, hand on hip, confident playful smile',
-      'tasteful elegant outfit, fully clothed, stylish fashionable look',
-      'cinematic warm lighting, golden hour, soft bokeh background',
-      'concept art quality, magazine illustration, 4k, sharp focus',
-    ].join(', ')
-  }
-
   // realistic — FLUX schnell wants natural-language sentences, not SD token
-  // lists. We also lean hard on explicit adult/mature markers in the positive
-  // prompt because FLUX ignores negative_prompt.
+  // lists. We also lean hard on explicit adult/legal-age markers in the
+  // positive prompt because FLUX ignores negative_prompt.
   return buildFluxRealisticPrompt(appearance)
 }
 

@@ -14,7 +14,6 @@ export type Option = {
 export const STYLE_OPTIONS: Option[] = [
   { value: 'realistic', label: 'Realistic', description: 'Photo-quality, lifelike companion', hue: 290, imagePath: '/builder/art-style/realistic.jpg' },
   { value: 'anime', label: 'Anime', description: 'Stylized illustration, expressive', hue: 330, imagePath: '/builder/art-style/anime.jpg' },
-  { value: '3d_render', label: '3D', description: 'Smooth 3D-rendered, cinematic', hue: 220, imagePath: '/builder/art-style/3d_render.jpg' },
 ]
 
 export const AGE_RANGE_OPTIONS: Option[] = [
