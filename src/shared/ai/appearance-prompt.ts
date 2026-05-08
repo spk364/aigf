@@ -1,6 +1,8 @@
 // Structured appearance parameters → Stable Diffusion prompt builder.
 // Supports realistic (RealVisXL) and anime art styles.
 
+import { getAgePolicy } from './age-safety'
+
 export type BodyType = 'slim' | 'athletic' | 'curvy' | 'petite' | 'thick'
 export type BreastSize = 'small' | 'medium' | 'large' | 'very_large'
 export type ButtSize = 'small' | 'medium' | 'large' | 'very_large'
@@ -54,8 +56,11 @@ const ETHNICITY: Record<Ethnicity, string> = {
   mixed: 'mixed race',
 }
 
+// AGE map is only spliced into the realistic-prompt builder (anime path
+// doesn't insert a numeric age). Floor bumped 20 → 21 for the young_adult
+// bucket so realistic outputs respect the 21+ policy. See age-safety.ts.
 const AGE: Record<AgeAppearance, string> = {
-  young_adult: '20 year old',
+  young_adult: '21 year old',
   mid_twenties: '25 year old',
   late_twenties: '28 year old',
   thirties: '32 year old',
@@ -158,13 +163,18 @@ const ANIME_NEGATIVE =
   'mutated hands, bad anatomy, floating limbs, disconnected limbs, malformed hands'
 
 // Adult age markers — always injected into every prompt to assert the character
-// is a fully developed adult (spec §3.10 Layer 6).
-const SAFETY_ADULT_MARKERS = [
-  'adult woman',
-  '(18+ years old:1.3)',
-  'fully developed adult body',
-  'mature woman',
-]
+// is a fully developed adult (spec §3.10 Layer 6). Branched per art style:
+// realistic → 21+ (tighter, photorealistic outputs); anime → 18+ (legal floor
+// for stylised art). See `age-safety.ts` for the policy rationale.
+function buildSafetyAdultMarkers(isAnime: boolean): string[] {
+  const policy = getAgePolicy(isAnime ? 'anime' : 'realistic')
+  return [
+    'adult woman',
+    policy.positiveMarkers,
+    'fully developed adult body',
+    'mature woman',
+  ]
+}
 
 const REALISTIC_QUALITY =
   '8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3, photorealistic, realistic skin texture'
@@ -256,6 +266,6 @@ export function buildAppearanceFromParams(
     appearancePrompt,
     subjectTokens,
     negativePrompt,
-    safetyAdultMarkers: SAFETY_ADULT_MARKERS,
+    safetyAdultMarkers: buildSafetyAdultMarkers(isAnime),
   }
 }

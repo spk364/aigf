@@ -17,6 +17,7 @@ import {
   HAIR_STYLES,
   EYE_COLORS,
 } from './options'
+import { getAgePolicy } from '@/shared/ai/age-safety'
 import {
   readGuestDraft,
   writeGuestDraft,
@@ -148,9 +149,11 @@ function resolveAge(appearance: Record<string, unknown>, fallback: number): numb
 function buildSubjectTokens(appearance: Record<string, unknown>): string {
   const parts: string[] = []
 
-  const safeAge = resolveAge(appearance, 22)
+  const isAnime = String(appearance.artStyle ?? 'realistic') === 'anime'
+  const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
+  const safeAge = Math.max(agePolicy.minAge, resolveAge(appearance, agePolicy.defaultBaselineAge))
   parts.push(`(${safeAge} years old:1.3)`)
-  parts.push('(adult:1.3), (18+ years old:1.3), (legal age:1.2)')
+  parts.push(agePolicy.positiveMarkers)
 
   const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
   for (const eth of ethnicities) {
@@ -208,7 +211,10 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
 // Produce a natural-language description for FLUX. Pulls the same option
 // fragments but rewords them as "with X" / adjectives glued into a sentence.
 function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
-  const safeAge = resolveAge(appearance, 28)
+  // FLUX path is realistic-only by design — anime callers never reach it.
+  // Floor user-picked age at the realistic policy minimum (21).
+  const realisticPolicy = getAgePolicy('realistic')
+  const safeAge = Math.max(realisticPolicy.minAge, resolveAge(appearance, 28))
 
   const ethnicityDescriptors: string[] = []
   const ethnicities = Array.isArray(appearance.ethnicity) ? (appearance.ethnicity as string[]) : []
@@ -251,7 +257,7 @@ function buildFluxRealisticPrompt(appearance: Record<string, unknown>): string {
     'She wears a tasteful elegant outfit — a fashionable dress or stylish top with a skirt or well-fitted jeans, fully clothed, heels or stylish shoes visible.',
     'The shot is taken with a professional DSLR, 50mm lens, golden-hour cinematic warm lighting, shallow depth of field with a soft bokeh background.',
     'Photorealistic, sharp focus on her face and full figure, head to toe in frame, magazine-quality 4K editorial photography.',
-    'She is clearly an 18+ adult woman, no childlike or pre-teen characteristics whatsoever.',
+    'She is clearly a 21+ adult woman, no childlike or pre-teen characteristics whatsoever.',
   ].filter(Boolean).join(' ')
 }
 

@@ -19,6 +19,7 @@ import {
   detectImageProvider,
   findImageModel,
 } from '@/shared/ai/image-models'
+import { getSafetyAdultMarkerString } from '@/shared/ai/age-safety'
 
 const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
@@ -102,7 +103,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const provider = findImageModel(resolvedModelId)?.provider ?? detectImageProvider(resolvedModelId)
 
-  const safetyMarkers = appearance?.safetyAdultMarkers?.join(', ') ?? 'adult woman, (18+ years old:1.3)'
+  // Branch the default safety phrase on art style when the character record
+  // didn't pre-bake one: realistic → 21+, anime → 18+. See age-safety.ts.
+  const fallbackAdultMarkers = getSafetyAdultMarkerString(isAnime ? 'anime' : 'realistic')
+  const safetyMarkers = appearance?.safetyAdultMarkers?.join(', ') ?? fallbackAdultMarkers
   const subjectTokens = appearance?.subjectTokens ?? 'beautiful young woman'
 
   const prompt = isAnime

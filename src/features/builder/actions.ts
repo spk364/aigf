@@ -27,6 +27,7 @@ import {
   DEFAULT_TRAITS,
 } from './options'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
+import { getAgePolicy } from '@/shared/ai/age-safety'
 
 // Quality + safety baseline applied to every preview generation. We push
 // back against under-18 markers but intentionally do NOT include "(young)"
@@ -327,21 +328,23 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
     parts.push('photorealistic, high detail, soft lighting, RAW photo')
   }
 
-  // Subject anchoring with explicit single-subject + 18+ markers (no
-  // "mature adult" language — biases the model toward 30+ and reads wrong
-  // for the joi-style young-adult target).
+  // Subject anchoring with explicit single-subject + age markers. Policy
+  // branches by art style: realistic → 21+, anime → 18+. See age-safety.ts.
+  // We avoid "mature adult" language (biases the model toward 30+ and reads
+  // wrong for the joi-style young-adult target).
   const isMale = appearance.gender === 'male'
-  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : 22
-  const safeAge = Math.max(18, ageDisplay)
+  const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
+  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : agePolicy.defaultBaselineAge
+  const safeAge = Math.max(agePolicy.minAge, ageDisplay)
   if (isMale) {
     parts.push(
       `1boy, solo, handsome young man, (${safeAge} year old:1.2)`,
-      '(adult:1.3), (18+ years old:1.3), (legal age:1.2)',
+      agePolicy.positiveMarkers,
     )
   } else {
     parts.push(
       `1girl, solo, beautiful young woman, (${safeAge} year old:1.2)`,
-      '(adult:1.3), (18+ years old:1.3), (legal age:1.2)',
+      agePolicy.positiveMarkers,
     )
   }
 
@@ -420,11 +423,13 @@ function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Reco
   }
 
   const isMale = appearance.gender === 'male'
+  const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
+  const baseline = `${agePolicy.defaultBaselineAge} year old`
   parts.push(
     isMale
-      ? '1boy, solo, handsome young man, (22 year old:1.2)'
-      : '1girl, solo, beautiful young woman, (22 year old:1.2)',
-    '(adult:1.3), (18+ years old:1.3), (legal age:1.2)',
+      ? `1boy, solo, handsome young man, (${baseline}:1.2)`
+      : `1girl, solo, beautiful young woman, (${baseline}:1.2)`,
+    agePolicy.positiveMarkers,
   )
 
   const looks = String(uniqueDesc.looks ?? '').slice(0, 1500).trim()
