@@ -68,6 +68,9 @@
     "backToChats": "Все чаты",
     "backToHome": "Главная",
     "dashboard": "Кабинет",
+    "imagePending": "Создаю фото...",
+    "imageQueuePosition": "Позиция в очереди: {n}",
+    "imageFailed": "Не удалось создать фото. Попробуй ещё раз.",
     "image": {
       "upgradeRequired": "Фотографии доступны только на Premium-плане. {link}, чтобы открыть.",
       "tokensRequired": "У тебя закончились токены в этом месяце. {link}, чтобы пополнить.",

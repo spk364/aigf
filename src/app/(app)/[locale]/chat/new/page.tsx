@@ -67,6 +67,9 @@ export default async function NewChatPage({ params, searchParams }: Props) {
           backToChats: t('backToChats'),
           backToHome: t('backToHome'),
           dashboard: t('dashboard'),
+          imagePending: t('imagePending'),
+          imageQueuePosition: t('imageQueuePosition'),
+          imageFailed: t('imageFailed'),
         }}
       />
     </div>

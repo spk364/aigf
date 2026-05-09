@@ -68,6 +68,9 @@
     "backToChats": "All chats",
     "backToHome": "Home",
     "dashboard": "Dashboard",
+    "imagePending": "Generating image...",
+    "imageQueuePosition": "Queue position: {n}",
+    "imageFailed": "Couldn't generate the image. Try again.",
     "image": {
       "upgradeRequired": "Photos are a Premium feature. {link} to unlock.",
       "tokensRequired": "You're out of tokens this month. {link} to top up.",

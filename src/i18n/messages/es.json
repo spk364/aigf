@@ -68,6 +68,9 @@
     "backToChats": "Todos los chats",
     "backToHome": "Inicio",
     "dashboard": "Panel",
+    "imagePending": "Generando imagen...",
+    "imageQueuePosition": "Posicion en cola: {n}",
+    "imageFailed": "No se pudo generar la foto. Intentalo de nuevo.",
     "image": {
       "upgradeRequired": "Las fotos son una funcion Premium. {link} para desbloquear.",
       "tokensRequired": "Te has quedado sin tokens este mes. {link} para recargar.",
