@@ -13,6 +13,7 @@ import {
   FAL_ENDPOINT_FAST_SDXL,
 } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
+import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
 import { track } from '@/shared/analytics/posthog'
 import {
   ARCHETYPES,
@@ -526,6 +527,17 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
   const previews: Array<{ mediaAssetId: string | number; publicUrl: string }> = []
 
   for (const img of result.images) {
+    // fast-sdxl ignores `enable_safety_checker:false` for some anime prompts
+    // and returns a uniform black PNG without setting has_nsfw_concepts. Run
+    // the luminance gate before mirroring to R2 so we never persist a black
+    // preview tile. Mirrors the admin character-image flow.
+    try {
+      const analysis = await fetchAndAnalyzeImage(img.url)
+      if (detectSafetyFilteredFrame(analysis).kind === 'filtered') continue
+    } catch {
+      // Analysis failure is non-fatal — fall through and persist anyway.
+    }
+
     let persisted: Awaited<ReturnType<typeof persistGeneratedImage>>
     try {
       persisted = await persistGeneratedImage({
@@ -544,7 +556,7 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
   }
 
   if (previews.length === 0) {
-    return { ok: false, error: 'Failed to persist any preview images' }
+    return { ok: false, error: 'safety_filtered' }
   }
 
   const newEntries = previews.map((p) => ({

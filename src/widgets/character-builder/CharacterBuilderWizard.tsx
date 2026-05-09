@@ -652,7 +652,9 @@ function PreviewScreen({
       setGenError(
         result.error === 'preview_limit_reached'
           ? t(strings, 'builder.errors.previewLimitReached')
-          : result.error,
+          : result.error === 'safety_filtered'
+            ? t(strings, 'builder.errors.previewSafetyFiltered')
+            : result.error,
       )
       return
     }

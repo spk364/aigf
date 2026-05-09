@@ -303,7 +303,7 @@ export async function fetchImageJobStatus(args: {
   if (rawResult.detail) return { status: 'failed', error: rawResult.detail }
   if (rawResult.error) return { status: 'failed', error: rawResult.error }
 
-  const images: FalImage[] = (() => {
+  const rawImages: FalImage[] = (() => {
     if (Array.isArray(rawResult.images) && rawResult.images.length > 0) return rawResult.images
     if (rawResult.image?.url) return [rawResult.image]
     if (Array.isArray(rawResult.output?.images) && rawResult.output!.images!.length > 0) {
@@ -317,13 +317,24 @@ export async function fetchImageJobStatus(args: {
     return []
   })()
 
+  // fast-sdxl (and a few other endpoints) ignore `enable_safety_checker:false`
+  // and instead return a black PNG at indices where its NSFW classifier fired,
+  // alongside `has_nsfw_concepts: [true,...]`. Drop those so callers never
+  // persist black previews. The luminance gate in image-analysis.ts is a
+  // second line of defence for endpoints that don't surface this flag.
+  const nsfwFlags = Array.isArray(rawResult.has_nsfw_concepts)
+    ? rawResult.has_nsfw_concepts
+    : []
+  const images: FalImage[] = nsfwFlags.length === rawImages.length
+    ? rawImages.filter((_, i) => !nsfwFlags[i])
+    : rawImages
+
   if (images.length === 0) {
-    // Common fal failure mode: NSFW filter fires, no images, no detail/error.
-    if (Array.isArray(rawResult.has_nsfw_concepts) && rawResult.has_nsfw_concepts.some(Boolean)) {
+    if (nsfwFlags.length > 0 && nsfwFlags.some(Boolean)) {
       return {
         status: 'failed',
         error:
-          'fal NSFW filter blocked the output. Adjust the prompt or switch model. (no images returned)',
+          'fal NSFW filter blocked every output. Adjust the prompt or switch model.',
       }
     }
     // Surface a snippet of the raw response so the admin can see what fal
