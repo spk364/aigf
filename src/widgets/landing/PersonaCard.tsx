@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRef, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 
 export type FeaturedCharacter = {
   id: string
@@ -14,6 +14,7 @@ export type FeaturedCharacter = {
   tags: string[]
   photoUrl: string
   videoUrl: string | null
+  greetingAudioUrl?: string | null
   hue: number
 }
 
@@ -23,11 +24,22 @@ type Props = {
 }
 
 export function PersonaCard({ character, href }: Props) {
-  const { name, age, city, archetype, tagline, tags, photoUrl, videoUrl, hue } = character
+  const { name, age, city, archetype, tagline, tags, photoUrl, videoUrl, greetingAudioUrl, hue } = character
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [playing, setPlaying] = useState(false)
   const tileStyle: CSSProperties = {
     background: `linear-gradient(155deg, hsl(${hue} 70% 35%) 0%, hsl(${(hue + 35) % 360} 60% 22%) 100%)`,
   }
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+    }
+  }, [])
 
   const handleEnter = () => {
     const v = videoRef.current
@@ -41,6 +53,26 @@ export function PersonaCard({ character, href }: Props) {
     if (!v) return
     v.pause()
     v.currentTime = 0
+  }
+
+  const togglePlay = (e: MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!greetingAudioUrl) return
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    if (playing) {
+      setPlaying(false)
+      return
+    }
+    const audio = new Audio(greetingAudioUrl)
+    audio.addEventListener('ended', () => setPlaying(false))
+    audio.addEventListener('error', () => setPlaying(false))
+    audio.play().catch(() => setPlaying(false))
+    audioRef.current = audio
+    setPlaying(true)
   }
 
   return (
@@ -73,9 +105,30 @@ export function PersonaCard({ character, href }: Props) {
         )}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/0 to-black/0" />
 
-        <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-black/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          Online
+        <div className="absolute right-3 top-3 flex items-center gap-2">
+          {greetingAudioUrl && (
+            <button
+              type="button"
+              onClick={togglePlay}
+              aria-label={playing ? `Stop ${name}'s voice` : `Play ${name}'s voice`}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-black/50 text-white backdrop-blur-sm transition-all hover:scale-110 hover:bg-[var(--color-accent-strong)]/80"
+            >
+              {playing ? (
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-3.5 w-3.5">
+                  <rect x="5" y="4" width="3" height="12" rx="1" />
+                  <rect x="12" y="4" width="3" height="12" rx="1" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-3.5 w-3.5 translate-x-px">
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                </svg>
+              )}
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 rounded-full bg-black/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Online
+          </div>
         </div>
 
         {videoUrl && (

@@ -29,6 +29,9 @@ export const MediaAssets: CollectionConfig = {
         { label: 'Generated Video', value: 'generated_video' },
         { label: 'Video Source Image', value: 'video_source_image' },
         { label: 'User Avatar', value: 'user_avatar' },
+        { label: 'Voice Preview', value: 'voice_preview' },
+        { label: 'Character Voice Greeting', value: 'character_voice_greeting' },
+        { label: 'Voice Message', value: 'voice_message' },
       ],
     },
     {

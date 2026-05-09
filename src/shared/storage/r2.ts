@@ -116,8 +116,11 @@ export type R2KeyKind =
   | 'character-gallery'
   | 'character-preview'
   | 'character-video'
+  | 'character-voice-greeting'
   | 'message-image'
   | 'message-video'
+  | 'message-voice'
+  | 'voice-preview'
   | 'user-avatar'
 
 export function buildR2Key(parts: {

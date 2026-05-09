@@ -18,6 +18,9 @@ type Message = {
   imageWidth?: number
   imageHeight?: number
   mediaAssetId?: string | number
+  // Cached TTS clip URL — set when the message was loaded from server with a
+  // pre-existing audioAssetId, or after the lazy /tts call resolves.
+  audioUrl?: string
 }
 
 type StreamingState = 'idle' | 'pending' | 'streaming'
@@ -198,6 +201,51 @@ function IconArrowPath() {
   )
 }
 
+function IconSpeaker() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="currentColor"
+      viewBox="0 0 20 20"
+      className="h-3.5 w-3.5"
+      aria-hidden
+    >
+      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+    </svg>
+  )
+}
+
+function IconStop() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="currentColor"
+      viewBox="0 0 20 20"
+      className="h-3.5 w-3.5"
+      aria-hidden
+    >
+      <rect x="5" y="4" width="3" height="12" rx="1" />
+      <rect x="12" y="4" width="3" height="12" rx="1" />
+    </svg>
+  )
+}
+
+function IconLoader() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className="h-3.5 w-3.5 animate-spin"
+      aria-hidden
+    >
+      <path strokeLinecap="round" d="M12 3a9 9 0 1 0 9 9" />
+    </svg>
+  )
+}
+
 function CharacterAvatar({
   name,
   photoUrl,
@@ -273,10 +321,25 @@ export function ChatInterface({
   // banner into a paywall variant with a direct upgrade CTA.
   const [showUpgradeCta, setShowUpgradeCta] = useState(false)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  // TTS playback state. Only one assistant clip plays at a time; clicking ▶
+  // on another message stops the current one. `pendingTtsId` covers the
+  // round-trip to /api/chat/messages/:id/tts (3-15 s on first click).
+  const [playingId, setPlayingId] = useState<string | null>(null)
+  const [pendingTtsId, setPendingTtsId] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const conversationIdRef = useRef<string | undefined>(initialConversationId)
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -625,6 +688,70 @@ export function ChatInterface({
     }
   }, [])
 
+  const stopPlayback = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    setPlayingId(null)
+  }, [])
+
+  const playUrl = useCallback((id: string, url: string) => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    const audio = new Audio(url)
+    const cleanup = () => {
+      setPlayingId((cur) => (cur === id ? null : cur))
+      audioRef.current = null
+    }
+    audio.addEventListener('ended', cleanup)
+    audio.addEventListener('error', cleanup)
+    audio.play().catch(cleanup)
+    audioRef.current = audio
+    setPlayingId(id)
+  }, [])
+
+  const handleToggleTts = useCallback(
+    async (id: string) => {
+      // Toggle off if this clip is currently playing.
+      if (playingId === id) {
+        stopPlayback()
+        return
+      }
+      // Local-only optimistic ids (set by sendMessage before the server
+      // assigns a real id) can't be voiced — they don't exist server-side.
+      if (id.startsWith('local-')) return
+      const msg = messages.find((m) => m.id === id)
+      if (!msg) return
+      if (msg.audioUrl) {
+        playUrl(id, msg.audioUrl)
+        return
+      }
+      if (pendingTtsId) return
+      setPendingTtsId(id)
+      try {
+        const res = await fetch(`/api/chat/messages/${encodeURIComponent(id)}/tts`, {
+          method: 'POST',
+        })
+        if (!res.ok) return
+        const data = (await res.json()) as { ok?: boolean; audioUrl?: string }
+        if (!data.ok || !data.audioUrl) return
+        const audioUrl = data.audioUrl
+        setMessages((prev) =>
+          prev.map((m) => (m.id === id ? { ...m, audioUrl } : m)),
+        )
+        playUrl(id, audioUrl)
+      } catch {
+        // Surface failure quietly — chat is still readable; the user can retry.
+      } finally {
+        setPendingTtsId((cur) => (cur === id ? null : cur))
+      }
+    },
+    [messages, playingId, pendingTtsId, playUrl, stopPlayback],
+  )
+
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant' && m.type !== 'image')
   const isStreaming = streamingState !== 'idle'
   const showTyping = isStreaming && !draft
@@ -731,6 +858,21 @@ export function ChatInterface({
 
                   {msg.role === 'assistant' && (
                     <div className="mt-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      {!msg.id.startsWith('local-') && (
+                        <button
+                          onClick={() => handleToggleTts(msg.id)}
+                          disabled={pendingTtsId !== null && pendingTtsId !== msg.id}
+                          aria-label={playingId === msg.id ? 'Stop' : 'Play voice'}
+                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {pendingTtsId === msg.id
+                            ? <IconLoader />
+                            : playingId === msg.id
+                              ? <IconStop />
+                              : <IconSpeaker />}
+                          {pendingTtsId === msg.id ? '…' : playingId === msg.id ? 'Stop' : 'Play'}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleCopy(msg.id, msg.content)}
                         aria-label={copiedId === msg.id ? s.copied : s.copy}

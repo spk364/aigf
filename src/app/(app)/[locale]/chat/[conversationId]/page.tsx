@@ -70,8 +70,10 @@ export default async function ConversationPage({ params }: Props) {
     }
   }
 
-  // Collect imageAssetIds for image messages so we can batch-fetch publicUrls
+  // Collect image and audio asset ids so we can batch-fetch their publicUrls
+  // in a single media-assets query.
   const imageAssetIds: (string | number)[] = []
+  const audioAssetIds: (string | number)[] = []
   for (const msg of messagesResult.docs) {
     if (msg.type === 'image' && msg.imageAssetId) {
       const assetId =
@@ -80,15 +82,24 @@ export default async function ConversationPage({ params }: Props) {
           : msg.imageAssetId
       if (assetId) imageAssetIds.push(assetId as string | number)
     }
+    const audioRel = (msg as Record<string, unknown>).audioAssetId
+    if (audioRel) {
+      const audioId =
+        typeof audioRel === 'object' && audioRel !== null && 'id' in audioRel
+          ? ((audioRel as { id: string | number }).id)
+          : (audioRel as string | number)
+      if (audioId) audioAssetIds.push(audioId)
+    }
   }
 
-  // Fetch media-assets for image messages
+  // Fetch media-assets for image and audio messages.
   const assetMap = new Map<string, string>()
-  if (imageAssetIds.length > 0) {
+  const allAssetIds = [...imageAssetIds, ...audioAssetIds]
+  if (allAssetIds.length > 0) {
     const assetsResult = await payload.find({
       collection: 'media-assets',
-      where: { id: { in: imageAssetIds.map(String) } },
-      limit: imageAssetIds.length,
+      where: { id: { in: allAssetIds.map(String) } },
+      limit: allAssetIds.length,
       overrideAccess: true,
     })
     for (const asset of assetsResult.docs) {
@@ -99,10 +110,18 @@ export default async function ConversationPage({ params }: Props) {
   }
 
   const initialMessages = messagesResult.docs.map((msg) => {
+    const audioRel = (msg as Record<string, unknown>).audioAssetId
+    const audioAssetId =
+      audioRel && typeof audioRel === 'object' && 'id' in audioRel
+        ? ((audioRel as { id: string | number }).id)
+        : (audioRel as string | number | undefined)
+    const audioUrl = audioAssetId ? assetMap.get(String(audioAssetId)) : undefined
+
     const base = {
       id: String(msg.id),
       role: msg.role as 'user' | 'assistant',
       content: msg.content ?? '',
+      ...(audioUrl ? { audioUrl } : {}),
     }
 
     if (msg.type === 'image') {

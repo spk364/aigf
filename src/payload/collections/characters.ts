@@ -132,6 +132,23 @@ export const Characters: CollectionConfig = {
       },
     },
     {
+      name: 'voiceId',
+      type: 'text',
+      admin: {
+        description:
+          'Curated voice id from src/shared/ai/voice-catalog.ts. Drives greeting generation + chat TTS.',
+      },
+    },
+    {
+      name: 'greetingAudioAssetId',
+      type: 'relationship',
+      relationTo: 'media-assets',
+      admin: {
+        description:
+          'Pre-generated greeting clip — played on the character card and as the first chat utterance.',
+      },
+    },
+    {
       name: 'archetype',
       type: 'text',
     },
@@ -276,6 +293,24 @@ export const Characters: CollectionConfig = {
       admin: {
         components: {
           Field: '@/payload/admin-components/CharacterVideos#CharacterVideos',
+        },
+      },
+    },
+    {
+      name: 'voicePicker',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '@/payload/admin-components/VoicePicker#VoicePicker',
+        },
+      },
+    },
+    {
+      name: 'generateGreetingAction',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '@/payload/admin-components/GenerateGreetingButton#GenerateGreetingButton',
         },
       },
     },
