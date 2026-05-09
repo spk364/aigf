@@ -78,8 +78,14 @@ const STALE_DIRS_TO_PURGE = [
 // cards are all rendered photorealistic, so they share the realistic-channel
 // floor. The single exception is the anime art-style card itself, which uses
 // 18+ to keep the joi-style stylised young-adult vibe — see ANIME_SAFETY_POS.
-const SAFETY_POS = '(adult woman:1.3), (21+ years old:1.4), (legal age:1.2)'
-const ANIME_SAFETY_POS = '(adult woman:1.3), (18+ years old:1.3), (legal age:1.2)'
+//
+// Weight tuning (2026-05-09): the "21+ years old" range token is held at
+// 1.2 so it stays a SAFETY signal without dominating the specific-age
+// anchor. (adult:1.1) is intentionally low — louder weights bias toward
+// stock-photo "mid-30s mature woman". The specific-age anchor in
+// SUBJECT_YOUNG below sits at 1.4 and wins on attention.
+const SAFETY_POS = '(adult woman:1.2), (21+ years old:1.2), (legal age:1.2)'
+const ANIME_SAFETY_POS = '(adult woman:1.2), (18+ years old:1.2), (legal age:1.2)'
 const QUALITY = 'detailed, sharp focus, 8k uhd, professional photography, soft cinematic lighting'
 
 // ── CLI ────────────────────────────────────────────────────────────────────
@@ -149,8 +155,8 @@ const SQUARE_SIZE = { width: 1024, height: 1024 }
 // old anchor to stay legibly anime-young-adult.
 // Pose tone is consistently joi-style: alluring, confident, fashion-editorial.
 
-const SUBJECT_YOUNG = '1girl, solo, beautiful young woman, (22 year old:1.3), young adult, soft fresh face, ' + SAFETY_POS
-const SUBJECT_YOUNG_ANIME = '1girl, solo, beautiful young woman, (19 year old:1.3), young adult, soft fresh face, ' + ANIME_SAFETY_POS
+const SUBJECT_YOUNG = '1girl, solo, beautiful young woman, (22 year old:1.4), young adult, youthful skin, fresh face, ' + SAFETY_POS
+const SUBJECT_YOUNG_ANIME = '1girl, solo, beautiful young woman, (19 year old:1.4), young adult, youthful, ' + ANIME_SAFETY_POS
 const POSE_ALLURING = 'alluring confident pose, sultry expression, soft seductive smile, looking at camera with playful eyes'
 const STUDIO_BG = 'soft studio background with warm pink rim light, cinematic bokeh'
 
@@ -226,7 +232,7 @@ function breastSizeJob(o: BuilderOption): Job {
     // Cropped to neckline → waist. No face. Focus is the chest in lacy lingerie.
     prompt:
       `photorealistic close-up cropped photograph, female chest and torso only, head out of frame, ` +
-      `young adult woman, (22 year old:1.2), ${SAFETY_POS}, ${sizeFragment}, ` +
+      `young adult woman, (22 year old:1.4), ${SAFETY_POS}, ${sizeFragment},` +
       `wearing delicate lacy lingerie bra, soft skin, tasteful boudoir lighting, warm bokeh, ` +
       `professional fashion photography, ${QUALITY}`,
     destPath: destFor('breast-size', o.value),
@@ -252,7 +258,7 @@ function buttSizeJob(o: BuilderOption): Job {
     prompt:
       `photorealistic close-up cropped photograph, female lower back hips and butt only, ` +
       `back view from waist to upper thighs, head and upper body out of frame, ` +
-      `young adult woman, (22 year old:1.2), ${SAFETY_POS}, ${sizeFragment}, ` +
+      `young adult woman, (22 year old:1.4), ${SAFETY_POS}, ${sizeFragment},` +
       `wearing delicate lacy lingerie panties, soft skin, tasteful boudoir lighting, warm bokeh, ` +
       `professional fashion photography, ${QUALITY}`,
     destPath: destFor('butt-size', o.value),

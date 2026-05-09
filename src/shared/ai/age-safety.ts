@@ -19,23 +19,41 @@ export type AgePolicy = {
   defaultBaselineAge: number
   // Positive-prompt safety phrase. Always include — bracketed weights are
   // already baked in for SDXL/Pony/FLUX prompt parsers.
+  //
+  // Weight tuning lesson (2026-05-09): a 1.4 weight on `(21+ years old:1.4)`
+  // pulled rendered ages UP into the 30-40s because RealVisXL averages
+  // across the open-ended `21+` range whenever that token outweighs the
+  // specific age anchor. Safety markers are kept at 1.2 (just enough to
+  // deter under-21 outputs) and the specific-age anchor lives separately
+  // at 1.4 so it dominates. `(adult:...)` bumped down to 1.1 — the word
+  // "adult" alone biases toward 30+ if it's any louder.
   positiveMarkers: string
-  // Compact phrase used inside builder/script prompts (no surrounding parens).
+  // High-weight subject anchor — render-target age. Callers should plug
+  // their picked age in here when available, otherwise fall back to this.
+  // Weight here MUST be >= the highest weight inside positiveMarkers, or
+  // the model averages across the policy range instead of locking on
+  // the chosen age.
   baselineSubject: string
+  // Pre-built youth descriptor inserted alongside the subject anchor on
+  // the realistic channel. Pulls the model away from the photo-stock
+  // "mid-30s mature" prior toward visibly young-adult outputs.
+  youthDescriptor: string
 }
 
 const ANIME_POLICY: AgePolicy = {
   minAge: 18,
   defaultBaselineAge: 19,
-  positiveMarkers: '(adult:1.3), (18+ years old:1.3), (legal age:1.2)',
-  baselineSubject: '(19 year old:1.2)',
+  positiveMarkers: '(adult:1.1), (18+ years old:1.2), (legal age:1.2)',
+  baselineSubject: '(19 year old:1.4)',
+  youthDescriptor: 'young adult, youthful',
 }
 
 const REALISTIC_POLICY: AgePolicy = {
   minAge: 21,
   defaultBaselineAge: 22,
-  positiveMarkers: '(adult:1.3), (21+ years old:1.4), (legal age:1.2)',
-  baselineSubject: '(22 year old:1.2)',
+  positiveMarkers: '(adult:1.1), (21+ years old:1.2), (legal age:1.2)',
+  baselineSubject: '(22 year old:1.4)',
+  youthDescriptor: 'young adult, youthful skin, fresh face',
 }
 
 export function getAgePolicy(artStyle: ArtStyleHint): AgePolicy {
