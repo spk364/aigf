@@ -17,6 +17,7 @@ export type FeaturedCharacter = {
   city: string | null
   photoUrl: string
   videoUrl: string | null
+  greetingAudioUrl: string | null
   hue: number
   messageCount: number
   conversationCount: number
@@ -46,6 +47,7 @@ function pickHue(seed: string): number {
 type RawCharacter = Record<string, unknown> & {
   id: string | number
   primaryImageId?: unknown
+  greetingAudioAssetId?: unknown
   tags?: unknown
   backstory?: unknown
   archetype?: unknown
@@ -158,6 +160,11 @@ async function loadCharactersWithVideos(
     const city = typeof backstory?.city === 'string' ? (backstory.city as string) : null
     const archetypeRaw =
       typeof c.archetype === 'string' && c.archetype ? c.archetype : ''
+    const greetingRel = c.greetingAudioAssetId
+    const greetingAudioUrl =
+      greetingRel && typeof greetingRel === 'object' && 'publicUrl' in greetingRel
+        ? ((greetingRel as { publicUrl?: unknown }).publicUrl as string | null) ?? null
+        : null
 
     return {
       id,
@@ -172,6 +179,7 @@ async function loadCharactersWithVideos(
       city,
       photoUrl: primary.publicUrl,
       videoUrl: videoByCharacter.get(id) ?? null,
+      greetingAudioUrl,
       hue: pickHue(id),
       messageCount: readNumber(c.messageCount),
       conversationCount: readNumber(c.conversationCount),

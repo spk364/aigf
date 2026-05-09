@@ -19,6 +19,7 @@
     "seed:dev": "tsx --env-file-if-exists=.env.local src/payload/seed/run-seed.ts dev-user",
     "backfill:character-images": "tsx --env-file-if-exists=.env.local scripts/backfill-character-images.ts",
     "builder:gen-option-images": "tsx --env-file-if-exists=.env.local scripts/generate-builder-option-images.ts",
+    "seed:voice-previews": "tsx --env-file-if-exists=.env.local scripts/seed-voice-previews.ts",
     "migrate:memory": "node --env-file-if-exists=.env.local --experimental-vm-modules scripts/migrate-memory.mjs",
     "tokens:validate": "tsx --env-file-if-exists=.env.local src/features/tokens/validate-cli.ts",
     "test": "vitest run",

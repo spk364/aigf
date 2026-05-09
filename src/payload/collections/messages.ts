@@ -41,6 +41,7 @@ export const Messages: CollectionConfig = {
         { label: 'Text', value: 'text' },
         { label: 'Image', value: 'image' },
         { label: 'Video', value: 'video' },
+        { label: 'Voice', value: 'voice' },
         { label: 'Image Request', value: 'image_request' },
         { label: 'Video Request', value: 'video_request' },
         { label: 'Action', value: 'action' },
@@ -59,6 +60,15 @@ export const Messages: CollectionConfig = {
       name: 'videoAssetId',
       type: 'relationship',
       relationTo: 'media-assets',
+    },
+    {
+      name: 'audioAssetId',
+      type: 'relationship',
+      relationTo: 'media-assets',
+      admin: {
+        description:
+          'Cached TTS clip for an assistant message. Generated lazily on the first ▶ click.',
+      },
     },
     {
       name: 'generationMetadata',
