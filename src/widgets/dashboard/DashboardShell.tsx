@@ -5,18 +5,32 @@ import { MobileSidebar } from './MobileSidebar'
 
 export type SidebarKey =
   | 'home'
-  | 'explore'
+  | 'discover'
+  | 'chat'
+  | 'collection'
   | 'create'
-  | 'gallery'
+  | 'my-ai'
   | 'tokens'
-  | 'billing'
+  | 'premium'
 
 export type SidebarNavItem = {
   href: string
   label: string
-  icon: 'home' | 'compass' | 'sparkles' | 'images' | 'coins' | 'crown'
+  icon: SidebarIcon
   active?: boolean
+  badge?: string
+  disabled?: boolean
 }
+
+export type SidebarIcon =
+  | 'home'
+  | 'compass'
+  | 'chat'
+  | 'bookmark'
+  | 'sparkles'
+  | 'heart'
+  | 'coins'
+  | 'crown'
 
 type Props = {
   locale: string
@@ -27,7 +41,7 @@ type Props = {
   children: React.ReactNode
 }
 
-export const SIDEBAR_ICONS: Record<SidebarNavItem['icon'], React.ReactNode> = {
+export const SIDEBAR_ICONS: Record<SidebarIcon, React.ReactNode> = {
   home: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="h-5 w-5">
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 11l9-8 9 8M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-5a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 001 1h3a1 1 0 001-1V10" />
@@ -39,16 +53,24 @@ export const SIDEBAR_ICONS: Record<SidebarNavItem['icon'], React.ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.5 9.5l-1.4 4.4-4.4 1.4 1.4-4.4 4.4-1.4z" />
     </svg>
   ),
+  chat: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="h-5 w-5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a8 8 0 11-3.4-6.5L21 4l-1 4.5A8 8 0 0121 12z" />
+    </svg>
+  ),
+  bookmark: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="h-5 w-5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 4h12a1 1 0 011 1v16l-7-4-7 4V5a1 1 0 011-1z" />
+    </svg>
+  ),
   sparkles: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="h-5 w-5">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l1.6 4.3L18 9l-4.4 1.7L12 15l-1.6-4.3L6 9l4.4-1.7L12 3zM18 14l.9 2.4L21 17l-2.1.6L18 20l-.9-2.4L15 17l2.1-.6L18 14zM5 16l.7 1.8L7.5 18l-1.8.7L5 20l-.7-1.5L2.5 18l1.8-.7L5 16z" />
     </svg>
   ),
-  images: (
+  heart: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="h-5 w-5">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <circle cx="9" cy="9" r="1.6" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 16l-5-5-9 9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7-4.35-9.5-9.13C.93 8.45 2.6 4.86 5.84 4.86c1.95 0 3.42 1.1 4.16 2.58.74-1.48 2.21-2.58 4.16-2.58 3.24 0 4.91 3.59 3.34 7.01C19 16.65 12 21 12 21z" />
     </svg>
   ),
   coins: (
@@ -70,12 +92,60 @@ export function buildNavItems(
 ): SidebarNavItem[] {
   return [
     { href: `/${locale}/dashboard`, label: 'Home', icon: 'home', active: active === 'home' },
-    { href: `/${locale}/explore`, label: 'Explore', icon: 'compass', active: active === 'explore' },
-    { href: `/${locale}/start`, label: 'Create', icon: 'sparkles', active: active === 'create' },
-    { href: `/${locale}/tokens`, label: 'Tokens', icon: 'coins', active: active === 'tokens' },
-    { href: `/${locale}/billing/manage`, label: 'Billing', icon: 'crown', active: active === 'billing' },
+    { href: `/${locale}/explore`, label: 'Discover', icon: 'compass', active: active === 'discover' },
+    { href: `/${locale}/chat`, label: 'Chat', icon: 'chat', active: active === 'chat' },
+    // TODO: dedicated /collection route — saved/bookmarked personas + media gallery.
+    { href: '#', label: 'Collection', icon: 'bookmark', active: active === 'collection', disabled: true },
+    { href: `/${locale}/start`, label: 'Create Character', icon: 'sparkles', active: active === 'create' },
+    // TODO: /my-ai route — currently routed to /chat which lists user conversations.
+    { href: `/${locale}/chat`, label: 'My AI', icon: 'heart', active: active === 'my-ai' },
+    {
+      href: `/${locale}/upgrade`,
+      label: 'Premium',
+      icon: 'crown',
+      active: active === 'premium',
+      badge: '-70%',
+    },
   ]
 }
+
+// TODO: wire to real Discord invite, help center, contact form, and affiliate page.
+const FOOTER_LINKS: ReadonlyArray<{ label: string; icon: React.ReactNode }> = [
+  {
+    label: 'Discord',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className="h-4 w-4">
+        <path d="M19.27 5.33A18 18 0 0014.94 4l-.21.45a16.7 16.7 0 014 1.95 12.4 12.4 0 00-13.46 0 16.7 16.7 0 014-1.95L9.06 4a18 18 0 00-4.33 1.33A18.6 18.6 0 002 16.5a18 18 0 005.5 2.78l1.1-1.5a11 11 0 01-1.74-.85l.43-.32a12.7 12.7 0 0011.4 0l.43.32c-.55.32-1.13.6-1.74.85l1.1 1.5A18 18 0 0022 16.5a18.6 18.6 0 00-2.73-11.17zM9 14a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm6 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
+      </svg>
+    ),
+  },
+  {
+    label: 'Help Center',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="h-4 w-4">
+        <circle cx="12" cy="12" r="9" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 9.5a2.5 2.5 0 015 .5c0 1-.5 1.5-1.5 2-.7.4-1 .8-1 1.5M12 17h.01" />
+      </svg>
+    ),
+  },
+  {
+    label: 'Contact Us',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="h-4 w-4">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16v12H4zM4 6l8 7 8-7" />
+      </svg>
+    ),
+  },
+  {
+    label: 'Affiliate',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className="h-4 w-4">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 15l6-6M9.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM17.5 15a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+        <circle cx="12" cy="12" r="9" />
+      </svg>
+    ),
+  },
+]
 
 export async function DashboardShell({
   locale,
@@ -135,34 +205,78 @@ export async function DashboardShell({
     </div>
   )
 
+  const footerLinksBlock = (
+    <div className="border-t border-[var(--color-border)] px-3 py-3">
+      <ul className="flex flex-col gap-1">
+        {FOOTER_LINKS.map((item) => (
+          <li key={item.label}>
+            <a
+              href="#"
+              aria-disabled="true"
+              title="Coming soon"
+              className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-text-muted)]/80 hover:bg-white/5"
+              onClick={(e) => e.preventDefault()}
+            >
+              <span className="text-[var(--color-text-muted)]/70">{item.icon}</span>
+              {item.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+
   const navBlock = (
     <nav className="flex-1 overflow-y-auto px-3 py-4">
       <ul className="flex flex-col gap-1">
-        {navItems.map((item) => (
-          <li key={item.href}>
-            <Link
-              href={item.href}
-              aria-current={item.active ? 'page' : undefined}
-              className={
-                'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ' +
-                (item.active
-                  ? 'bg-[var(--color-accent-strong)]/15 text-[var(--color-text)]'
-                  : 'text-[var(--color-text-muted)] hover:bg-white/5 hover:text-[var(--color-text)]')
-              }
-            >
-              <span
-                className={
-                  item.active
-                    ? 'text-[var(--color-accent)]'
-                    : 'text-[var(--color-text-muted)] group-hover:text-[var(--color-text)]'
-                }
+        {navItems.map((item) => {
+          const baseClass =
+            'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors'
+          const stateClass = item.active
+            ? 'bg-[var(--color-accent-strong)]/15 text-[var(--color-text)]'
+            : 'text-[var(--color-text-muted)] hover:bg-white/5 hover:text-[var(--color-text)]'
+          const iconClass = item.active
+            ? 'text-[var(--color-accent)]'
+            : 'text-[var(--color-text-muted)] group-hover:text-[var(--color-text)]'
+
+          if (item.disabled) {
+            return (
+              <li key={item.label}>
+                <span
+                  aria-disabled="true"
+                  title="Coming soon"
+                  className={`${baseClass} cursor-not-allowed text-[var(--color-text-muted)]/60`}
+                >
+                  <span className="text-[var(--color-text-muted)]/60">
+                    {SIDEBAR_ICONS[item.icon]}
+                  </span>
+                  <span className="flex-1">{item.label}</span>
+                  <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
+                    Soon
+                  </span>
+                </span>
+              </li>
+            )
+          }
+
+          return (
+            <li key={item.href + item.label}>
+              <Link
+                href={item.href}
+                aria-current={item.active ? 'page' : undefined}
+                className={`${baseClass} ${stateClass}`}
               >
-                {SIDEBAR_ICONS[item.icon]}
-              </span>
-              {item.label}
-            </Link>
-          </li>
-        ))}
+                <span className={iconClass}>{SIDEBAR_ICONS[item.icon]}</span>
+                <span className="flex-1">{item.label}</span>
+                {item.badge && (
+                  <span className="rounded-full bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-accent-strong)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--color-bg)]">
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            </li>
+          )
+        })}
       </ul>
     </nav>
   )
@@ -184,6 +298,7 @@ export async function DashboardShell({
           <span className="text-base font-bold tracking-tight">girlfriend.ai</span>
         </Link>
         {navBlock}
+        {footerLinksBlock}
         {profileBlock}
       </aside>
 
@@ -201,6 +316,7 @@ export async function DashboardShell({
           </Link>
         </div>
         {navBlock}
+        {footerLinksBlock}
         {profileBlock}
       </MobileSidebar>
 
