@@ -6,6 +6,8 @@ import config from '@payload-config'
 import { signupSchema } from '../schemas'
 import { track } from '@/shared/analytics/posthog'
 import { claimGuestDraftForUser } from '@/features/builder/guest-claim'
+import { checkRateLimit } from '@/shared/rate-limit/limiter'
+import { AUTH_REGISTER_LIMIT, readClientIp } from '@/shared/rate-limit/presets'
 
 export type SignupState =
   | { success: true; claimedDraftId?: string }
@@ -28,6 +30,12 @@ export async function signupAction(formData: FormData): Promise<SignupState> {
     const message = firstIssue?.message ?? 'Invalid input'
     const field = firstIssue?.path[0]?.toString()
     return { success: false, error: message, field }
+  }
+
+  const ip = await readClientIp()
+  const rl = await checkRateLimit(AUTH_REGISTER_LIMIT, `ip:${ip}`)
+  if (!rl.allowed) {
+    return { success: false, error: 'Too many signup attempts. Please try again later.' }
   }
 
   const payload = await getPayload({ config })

@@ -28,6 +28,8 @@ import {
 } from './options'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 import { getAgePolicy } from '@/shared/ai/age-safety'
+import { checkRateLimit } from '@/shared/rate-limit/limiter'
+import { IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 
 // Quality + safety baseline applied to every preview generation. We push
 // back against under-18 markers but intentionally do NOT include "(young)"
@@ -470,6 +472,12 @@ export type GeneratePreviewsResult =
 
 export async function generatePreviewsAction(draftId: string): Promise<GeneratePreviewsResult> {
   const user = await requireCompleteProfile()
+
+  const rl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+  if (!rl.allowed) {
+    return { ok: false, error: 'rate_limited' }
+  }
+
   const payload = await getPayload({ config })
 
   let draft: Awaited<ReturnType<typeof loadDraftOwned>>

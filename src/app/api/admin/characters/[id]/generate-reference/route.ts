@@ -20,6 +20,8 @@ import {
   findImageModel,
 } from '@/shared/ai/image-models'
 import { getSafetyAdultMarkerString } from '@/shared/ai/age-safety'
+import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
+import { IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 
 const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
@@ -40,6 +42,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const user = await getCurrentUser()
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  const rl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+  if (!rl.allowed) {
+    return NextResponse.json(rateLimitResponseBody(rl), {
+      status: 429,
+      headers: rateLimitHeaders(rl),
+    })
   }
 
   let body: z.infer<typeof bodySchema>

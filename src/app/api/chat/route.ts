@@ -22,6 +22,8 @@ import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { autoRefund, getBalance, spend } from '@/features/tokens/ledger'
 import { classifyImageSafety } from '@/shared/ai/safety'
 import { isPremiumPlan } from '@/features/billing/plans'
+import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
+import { CHAT_LIMIT, IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 
 const LLM_MODEL = OPENROUTER_MODEL
 // DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
@@ -100,6 +102,20 @@ export async function POST(req: NextRequest) {
 
   const log = createLogger({ requestId, userId: String(user.id) })
   log.info({ msg: 'chat.request.start' })
+
+  const rl = await checkRateLimit(CHAT_LIMIT, `u:${user.id}`)
+  if (!rl.allowed) {
+    log.warn({ msg: 'chat.rate_limited', blockedBy: rl.blockedBy, retryAfterSeconds: rl.retryAfterSeconds })
+    track({
+      userId: String(user.id),
+      event: 'chat.rate_limited',
+      properties: { blockedBy: rl.blockedBy, retryAfterSeconds: rl.retryAfterSeconds },
+    })
+    return NextResponse.json(rateLimitResponseBody(rl), {
+      status: 429,
+      headers: rateLimitHeaders(rl),
+    })
+  }
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) {
@@ -225,6 +241,23 @@ export async function POST(req: NextRequest) {
   // IMAGE path
   // ---------------------------------------------------------------------------
   if (isImageRequest) {
+    // Image-gen has a tighter limit — each call costs real $$ at fal.ai and
+    // burns user tokens. The chat-text limit above already passed; this is
+    // an additional gate for the cost-sensitive sub-path.
+    const imageRl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+    if (!imageRl.allowed) {
+      log.warn({ msg: 'chat.image.rate_limited', blockedBy: imageRl.blockedBy, retryAfterSeconds: imageRl.retryAfterSeconds })
+      track({
+        userId: String(user.id),
+        event: 'chat.image.rate_limited',
+        properties: { blockedBy: imageRl.blockedBy, retryAfterSeconds: imageRl.retryAfterSeconds },
+      })
+      return NextResponse.json(rateLimitResponseBody(imageRl, 'Too many image requests'), {
+        status: 429,
+        headers: rateLimitHeaders(imageRl),
+      })
+    }
+
     const stream = new ReadableStream({
       async start(controller) {
         const enc = (s: string) => new TextEncoder().encode(s)
