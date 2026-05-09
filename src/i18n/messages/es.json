@@ -445,6 +445,7 @@
       "nameCelebrity": "Los nombres de celebridades no estan permitidos.",
       "nameTooShort": "El nombre debe tener al menos 2 caracteres.",
       "previewLimitReached": "Has alcanzado el limite de 5 conjuntos de preview para este borrador.",
+      "previewSafetyFiltered": "El generador filtro todas las previews como inseguras. Suaviza la descripcion o cambia el estilo y vuelve a intentarlo.",
       "validationFailed": "Por favor revisa tus datos e intentalo de nuevo."
     }
   },

@@ -33,18 +33,18 @@ export type ArchetypeOption = BuilderOption & {
 
 // ── Gender ────────────────────────────────────────────────────────────────
 
+// Rendered as Chip (not OptionImageCard) — imagePath would be ignored anyway,
+// and there is no /public/builder/gender/ asset bundle.
 export const GENDERS: BuilderOption[] = [
   {
     value: 'female',
     labelKey: 'builder.options.gender.female',
-    imagePath: '/builder/gender/female.jpg',
     emoji: '♀',
     gradient: ['#ff7fae', '#330e1f'],
   },
   {
     value: 'male',
     labelKey: 'builder.options.gender.male',
-    imagePath: '/builder/gender/male.jpg',
     emoji: '♂',
     gradient: ['#7a8bff', '#11173b'],
   },
@@ -382,11 +382,15 @@ export type ChatStyleOption = BuilderOption & {
   systemPromptDirective: string
 }
 
+// No /public/builder/chat-style/ asset bundle — the cards intentionally
+// fall back to the gradient + emoji skin (consistent with chip-only steps).
+// Adding stale imagePaths here causes a 404 per render and the OptionImageCard
+// briefly tries to load before giving up, which read as "old/wrong image"
+// to users.
 export const CHAT_STYLES: ChatStyleOption[] = [
   {
     value: 'default',
     labelKey: 'builder.options.chatStyle.default',
-    imagePath: '/builder/chat-style/default.jpg',
     emoji: '💬',
     gradient: ['#cfb89a', '#2c2218'],
     systemPromptDirective:
@@ -395,7 +399,6 @@ export const CHAT_STYLES: ChatStyleOption[] = [
   {
     value: 'deep_roleplay',
     labelKey: 'builder.options.chatStyle.deepRoleplay',
-    imagePath: '/builder/chat-style/deep_roleplay.jpg',
     emoji: '🎭',
     gradient: ['#7a4f9c', '#160a26'],
     systemPromptDirective:
@@ -404,7 +407,6 @@ export const CHAT_STYLES: ChatStyleOption[] = [
   {
     value: 'creative',
     labelKey: 'builder.options.chatStyle.creative',
-    imagePath: '/builder/chat-style/creative.jpg',
     emoji: '🎨',
     gradient: ['#b07aff', '#1f1138'],
     systemPromptDirective:
@@ -413,7 +415,6 @@ export const CHAT_STYLES: ChatStyleOption[] = [
   {
     value: 'realistic',
     labelKey: 'builder.options.chatStyle.realistic',
-    imagePath: '/builder/chat-style/realistic.jpg',
     emoji: '📱',
     gradient: ['#a3b6cc', '#0f1a26'],
     systemPromptDirective:

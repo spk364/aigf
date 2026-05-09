@@ -445,6 +445,7 @@
       "nameCelebrity": "Celebrity names are not allowed.",
       "nameTooShort": "Name must be at least 2 characters.",
       "previewLimitReached": "You have reached the 5 preview sets limit for this draft.",
+      "previewSafetyFiltered": "The image generator filtered every preview as unsafe. Try softening the description or switching art style, then regenerate.",
       "validationFailed": "Please check your inputs and try again."
     }
   },
