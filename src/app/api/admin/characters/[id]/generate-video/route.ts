@@ -20,6 +20,8 @@ import {
   type MotionStrength,
   type MotionMood,
 } from '@/features/video/motion-presets'
+import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
+import { VIDEO_GEN_LIMIT } from '@/shared/rate-limit/presets'
 
 const bodySchema = z.object({
   motionStrength: z.enum(['subtle', 'medium', 'strong']).default('medium'),
@@ -69,6 +71,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const user = await getCurrentUser()
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  const rl = await checkRateLimit(VIDEO_GEN_LIMIT, `u:${user.id}`)
+  if (!rl.allowed) {
+    return NextResponse.json(rateLimitResponseBody(rl), {
+      status: 429,
+      headers: rateLimitHeaders(rl),
+    })
   }
 
   let body: z.infer<typeof bodySchema>
