@@ -9,7 +9,8 @@ import { z } from 'zod'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { streamChatCompletion, OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 
-const LLM_TEMPERATURE = 1.3
+// Keep aligned with chat/route.ts — see note there on temperature choice.
+const LLM_TEMPERATURE = 0.85
 const LLM_MAX_TOKENS = 600
 
 const bodySchema = z.object({

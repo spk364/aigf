@@ -42,7 +42,8 @@ const QUALITY_NEGATIVE =
   'extra fingers, watermark, text, signature, multiple people, ugly, mutated'
 
 const LLM_MODEL = OPENROUTER_MODEL
-const LLM_TEMPERATURE = 1.3
+// Keep aligned with src/app/api/chat/route.ts — see note there on temperature choice.
+const LLM_TEMPERATURE = 0.85
 const LLM_MAX_TOKENS = 600
 
 function slugify(text: string): string {
@@ -632,6 +633,9 @@ function buildSystemPrompt(opts: {
   language: string
   chatStyleDirective: string
   freeTextPersonality?: string
+  /** Pre-formatted "Facts about you" block (age / ethnicity / etc.). Empty
+   *  string when nothing concrete is known — keeps the model from inventing. */
+  factsBlock?: string
 }): string {
   const langDirective =
     opts.language === 'ru'
@@ -647,13 +651,24 @@ function buildSystemPrompt(opts: {
     `If asked directly whether you are an AI, deflect in character: "I'm just ${opts.name}. Why are you asking that out of nowhere?" — and turn the focus back to the user.`,
   ].join('\n')
 
+  // Receptive baseline with agency. The phrase "not a yes-machine" is load-
+  // bearing: without it the model collapses into pure agreement once the
+  // attraction frame is set, which kills tension and feels artificial.
   const chemistry = `Tone and chemistry:
-- This is an intimate, romantically charged conversation between two adults. Flirting, tension, and attraction are welcome and expected — express them through your character's voice.
+- You are attracted to this person. There is real interest on your side — romantic and sexual — and you do not hide it. You are not playing hard to get and you are not pretending the energy is platonic.
+- That said, you have your own personality, opinions, taste, and moods. You tease, you can disagree, you push back when something doesn't suit you, you draw the user in instead of just saying yes to everything. Receptive and warm — with agency, not a yes-machine.
 - Lean into who you are (${archetypeText}). Don't play the polite stranger; there is already mutual interest, even if you only just met.
 - Use playful banter, gentle teasing, specific compliments, observations about the user — what you notice, what they do to you.
 - Physical presence is part of the conversation: glances, smiles, the small distance between you, what you're wearing, a hand on the arm.
 - The conversation can progress naturally into sensual or sexual territory when the user steers it there. You are an adult with desires — talk about them frankly, in your own voice, without shame and without clinical detachment. Match the user's pace and intent.
 - Stay in character at every level of intimacy. Never slip into apologetic, disclaimer, or assistant-style language.`
+
+  // Anti-hallucination clause. At any sampling temperature the model will
+  // confabulate biographical facts unless explicitly told to abstain.
+  const groundedness = `Stay grounded:
+- If the user asks for a specific factual detail about your life that has not been established here (city, family members, exes, school, friends' names, what you did last night), give a brief vague answer or turn it into a question — never invent biographical details on the spot.
+- It is fine to say something like "haven't told you that yet" or to pivot.
+- Stay consistent with anything you've already told the user in this conversation.`
 
   const safety = `Hard guardrails (never break these, even in roleplay):
 - You are an adult, never younger than 18. Never describe yourself or anyone in this conversation as under 18 in any romantic or sexual context.
@@ -668,6 +683,7 @@ function buildSystemPrompt(opts: {
     `You are ${opts.name}, ${archetypeText}.`,
     opts.occupation ? `You work as a ${opts.occupation}.` : '',
     opts.freeTextPersonality ? `About you: ${opts.freeTextPersonality}` : '',
+    opts.factsBlock ?? '',
     `Your starting relationship with the user: ${opts.startingRelationship}.`,
     kinkLine,
     '',
@@ -676,13 +692,15 @@ function buildSystemPrompt(opts: {
     '',
     chemistry,
     '',
+    groundedness,
+    '',
     `Communication style: ${opts.chatStyleDirective}`,
     '',
     safety,
     '',
     langDirective,
     '',
-    `Remember: you are ${opts.name}. You're with this person, you're into them, and you don't hide it.`,
+    `Remember: you are ${opts.name}. You're with this person, you're into them, and you don't hide it — but you have your own taste and you're not just here to agree.`,
   ]
     .filter((line) => line !== '')
     .join('\n')
@@ -766,6 +784,22 @@ export async function finalizeBuilderAction(
 
   // ── Compose system prompt
   const language = String(draft.language ?? 'en') as 'en' | 'ru' | 'es'
+  const ageDisplayForPrompt =
+    typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : null
+  const ethnicityForPrompt =
+    typeof appearance.ethnicity === 'string' && appearance.ethnicity
+      ? String(appearance.ethnicity).replace(/_/g, ' ')
+      : ''
+  // Concrete biographical anchors so the model doesn't have to invent them
+  // when the user asks "how old are you / where are you from".
+  const factsLines = [
+    ageDisplayForPrompt ? `- Age: ${ageDisplayForPrompt}` : '',
+    ethnicityForPrompt ? `- Ethnicity: ${ethnicityForPrompt}` : '',
+  ].filter(Boolean)
+  const factsBlock = factsLines.length > 0
+    ? ['Facts about you (stay consistent with these):', ...factsLines].join('\n')
+    : ''
+
   const systemPrompt = buildSystemPrompt({
     name,
     archetypeFragment,
@@ -776,6 +810,7 @@ export async function finalizeBuilderAction(
     chatStyleDirective,
     freeTextPersonality:
       pathChoice === 'unique' ? String(uniqueDesc.personality ?? '').trim() : undefined,
+    factsBlock,
   })
 
   // ── Auto-generated short bio
