@@ -210,16 +210,15 @@ export async function DashboardShell({
       <ul className="flex flex-col gap-1">
         {FOOTER_LINKS.map((item) => (
           <li key={item.label}>
-            <a
-              href="#"
+            <span
+              role="link"
               aria-disabled="true"
               title="Coming soon"
               className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-[var(--color-text-muted)]/80 hover:bg-white/5"
-              onClick={(e) => e.preventDefault()}
             >
               <span className="text-[var(--color-text-muted)]/70">{item.icon}</span>
               {item.label}
-            </a>
+            </span>
           </li>
         ))}
       </ul>
