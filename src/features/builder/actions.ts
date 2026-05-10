@@ -7,42 +7,26 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { z } from 'zod'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
-import {
-  generateImage,
-  FAL_ENDPOINT_REALISTIC_VISION,
-  FAL_ENDPOINT_FAST_SDXL,
-} from '@/shared/ai/fal'
+import { generateImage } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
 import { track } from '@/shared/analytics/posthog'
 import {
   ARCHETYPES,
-  ETHNICITIES,
-  HAIR_COLORS,
-  HAIR_LENGTHS,
-  HAIR_STYLES,
-  EYE_COLORS,
   CHAT_STYLES,
   OCCUPATIONS,
   KINKS,
   DEFAULT_TRAITS,
 } from './options'
+import {
+  buildPreviewPrompt,
+  buildPreviewNegativePrompt,
+  buildUniquePrompt,
+  resolveModelEndpoint,
+} from './prompt-builder'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
-import { getAgePolicy } from '@/shared/ai/age-safety'
 import { checkRateLimit } from '@/shared/rate-limit/limiter'
 import { IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
-
-// Quality + safety baseline applied to every preview generation. We push
-// back against under-18 markers but intentionally do NOT include "(young)"
-// — we *want* young-adult (18-22) looks; "young" is redundant with the
-// explicit positive age anchor and would otherwise blunt it.
-const SAFETY_NEGATIVE =
-  '(child:1.5), (teen:1.5), (kid:1.5), (loli:1.5), ' +
-  '(school uniform:1.3), (underage:1.5), (minor:1.5), (childlike features:1.5)'
-
-const QUALITY_NEGATIVE =
-  'low quality, worst quality, blurry, deformed, bad anatomy, extra limbs, ' +
-  'extra fingers, watermark, text, signature, multiple people, ugly, mutated'
 
 const LLM_MODEL = OPENROUTER_MODEL
 // Keep aligned with src/app/api/chat/route.ts — see note there on temperature choice.
@@ -119,6 +103,10 @@ const appearanceSchema = z.object({
   buttSize: z.enum(['slim', 'small', 'athletic', 'big', 'huge']).optional(),
   hair: z.object({ color: z.string(), length: z.string(), style: z.string() }).partial().optional(),
   eyes: z.object({ color: z.string() }).partial().optional(),
+  // Optional override picked on the preview screen — actions resolve via
+  // resolveModelEndpoint() so an unknown value falls back to the art-style
+  // default rather than blowing up the request.
+  modelEndpoint: z.string().max(120).optional(),
 })
 
 const identitySchema = z.object({
@@ -248,270 +236,9 @@ export async function saveDraftStepAction(
   return { ok: true, currentStep: newStep }
 }
 
-// ── Preview prompt builder ────────────────────────────────────────────────
-
-const BREAST_PROMPT: Record<string, { positive: string; negative: string }> = {
-  flat: {
-    positive: '(flat chest:1.4), (very small breasts:1.3)',
-    negative: '(huge breasts:1.4), (large breasts:1.3), busty',
-  },
-  small: {
-    positive: '(small breasts:1.3), (modest chest:1.2)',
-    negative: '(huge breasts:1.4), (large breasts:1.3), busty',
-  },
-  average: {
-    positive: '(medium breasts:1.2), balanced chest',
-    negative: '(huge breasts:1.3), (very small breasts:1.2)',
-  },
-  big: {
-    positive: '(large breasts:1.4), full chest, busty',
-    negative: '(small breasts:1.3), (flat chest:1.4)',
-  },
-  huge: {
-    positive: '(huge breasts:1.5), (very large breasts:1.4), busty figure',
-    negative: '(small breasts:1.4), (flat chest:1.5), (medium breasts:1.2)',
-  },
-}
-
-const BUTT_PROMPT: Record<string, { positive: string; negative: string }> = {
-  slim: {
-    positive: '(slim hips:1.2), (small butt:1.2), narrow waist',
-    negative: '(big butt:1.4), (wide hips:1.3), (thick thighs:1.3)',
-  },
-  small: {
-    positive: '(small butt:1.2), narrow hips',
-    negative: '(big butt:1.4), (wide hips:1.3)',
-  },
-  athletic: {
-    positive: '(athletic firm rear:1.3), toned glutes',
-    negative: '(huge butt:1.3), (flat butt:1.2)',
-  },
-  big: {
-    positive: '(large butt:1.4), (round hips:1.3), curvy hips',
-    negative: '(small butt:1.3), (narrow hips:1.3)',
-  },
-  huge: {
-    positive: '(huge butt:1.5), (big bubble butt:1.4), wide round hips, thick thighs',
-    negative: '(small butt:1.4), (narrow hips:1.4), (slim figure:1.2)',
-  },
-}
-
-const BODY_TYPE_WEIGHT: Record<string, string> = {
-  slim: '(slim slender build:1.3), slim figure',
-  athletic: '(athletic build:1.3), toned figure, fit body',
-  average: 'average build',
-  curvy: '(curvy figure:1.3), hourglass shape',
-  bbw: '(voluptuous figure:1.4), full curves, thick body',
-}
-
-// Decide framing based on which attributes the user picked. If they selected
-// breast/butt/body type, we want a fuller view than a head-and-shoulders
-// portrait — otherwise the model crops out the things the user just chose.
-function chooseFraming(appearance: Record<string, unknown>): string {
-  const hasBody =
-    !!appearance.bodyType ||
-    !!appearance.breastSize ||
-    !!appearance.buttSize
-  return hasBody
-    ? 'cowboy shot, head to thigh, full upper body visible, looking at camera'
-    : 'portrait, head and shoulders, looking at camera'
-}
-
-// fast-sdxl is a generic SDXL — not anime-tuned — so the usual NovelAI tag
-// stack ("masterpiece, best quality, vibrant colors") drifts the prior toward
-// epic action/fantasy illustrations. These constants pin the look toward the
-// product's "soft girlfriend" target instead of the model's default
-// "1girl warrior" prior.
-const ANIME_QUALITY_PREFIX =
-  'anime style, soft anime illustration, cute character art, gentle shading, clean lineart, soft color palette'
-const ANIME_QUALITY_TAIL =
-  'detailed face, expressive anime eyes, soft cheeks, gentle expression, sharp focus, soft natural lighting'
-const ANIME_FEMALE_ANCHOR =
-  'casual cute outfit, fully clothed, sundress or blouse and skirt, gentle smile, soft inviting pose, soft contrapposto, looking at viewer'
-const ANIME_MALE_ANCHOR =
-  'casual outfit, fully clothed, gentle smile, soft relaxed pose, looking at viewer'
-const ANIME_NEGATIVE =
-  '(armor:1.3), (weapon:1.3), (sword:1.2), (gun:1.2), (cape:1.2), ' +
-  '(superhero costume:1.3), (combat outfit:1.3), (mecha:1.3), ' +
-  '(fighting pose:1.3), (action pose:1.2), (battle scene:1.2), ' +
-  '(mature woman:1.2), (heavy makeup:1.1), (face mask:1.2)'
-
-// Hair fragments are inconsistent: some carry a trailing "hair" ("blonde
-// hair"), some carry comma-joined modifiers ("wavy hair, soft waves"). The
-// previous one-shot regex only stripped the first "hair" and left the comma
-// behind, producing `(long flowing wavy, soft waves blonde hair:1.3)` —
-// SDXL parses that as a broken weight and silently drops the hairstyle.
-function cleanHairFragment(fragment: string): string {
-  return fragment
-    .replace(/\bhair\b/g, '')
-    .replace(/[\s,]+/g, ' ')
-    .trim()
-}
-
-function buildHairPhrase(hair: Record<string, string>): string | null {
-  const bits = [
-    HAIR_LENGTHS.find((h) => h.value === hair.length)?.promptFragment,
-    HAIR_STYLES.find((h) => h.value === hair.style)?.promptFragment,
-    HAIR_COLORS.find((h) => h.value === hair.color)?.promptFragment,
-  ]
-    .filter((f): f is string => !!f)
-    .map(cleanHairFragment)
-    .filter(Boolean)
-  if (bits.length === 0) return null
-  return `(${bits.join(' ')} hair:1.3)`
-}
-
-function buildPreviewPrompt(appearance: Record<string, unknown>): string {
-  const parts: string[] = []
-  const artStyle = String(appearance.artStyle ?? 'realistic')
-  const isAnime = artStyle === 'anime'
-  const isMale = appearance.gender === 'male'
-
-  // Style first — early tokens get more attention from the U-Net. The
-  // realism quality tail ("8k uhd, professional photography") fights with
-  // the anime aesthetic when both are mixed, so we branch right at the top
-  // and use art-style-specific quality tags throughout.
-  if (isAnime) {
-    parts.push(ANIME_QUALITY_PREFIX)
-  } else {
-    parts.push('photorealistic, high detail, soft lighting, RAW photo')
-  }
-
-  // Subject anchoring with explicit single-subject + age markers. Policy
-  // branches by art style: realistic → 21+, anime → 18+. See age-safety.ts.
-  // The specific-age anchor uses weight 1.4 so it DOMINATES the broader
-  // "21+ years old" safety token (1.2) — without that ordering RealVis
-  // averages across 21..∞ and renders mid-30s "mature" instead of 22.
-  const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
-  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : agePolicy.defaultBaselineAge
-  const safeAge = Math.max(agePolicy.minAge, ageDisplay)
-  if (isMale) {
-    parts.push(
-      `1boy, solo, handsome young man, (${safeAge} year old:1.4)`,
-      agePolicy.youthDescriptor,
-      agePolicy.positiveMarkers,
-    )
-  } else {
-    parts.push(
-      `1girl, solo, beautiful young woman, (${safeAge} year old:1.4)`,
-      agePolicy.youthDescriptor,
-      agePolicy.positiveMarkers,
-    )
-  }
-
-  // Outfit + pose anchor for anime — without this, fast-sdxl's "1girl"
-  // prior renders combat/superhero outfits and action poses by default.
-  // Realistic uses RealVisXL which doesn't have that prior, so no anchor
-  // is needed there.
-  if (isAnime) {
-    parts.push(isMale ? ANIME_MALE_ANCHOR : ANIME_FEMALE_ANCHOR)
-  }
-
-  // Ethnicity (single value now). Still injected with weight.
-  const ethnicity = String(appearance.ethnicity ?? '')
-  const ethOpt = ETHNICITIES.find((e) => e.value === ethnicity)
-  if (ethOpt?.promptFragment) parts.push(`(${ethOpt.promptFragment}:1.2)`)
-
-  // Body shape — weighted, in priority order.
-  const bodyType = String(appearance.bodyType ?? '')
-  if (BODY_TYPE_WEIGHT[bodyType]) parts.push(BODY_TYPE_WEIGHT[bodyType]!)
-
-  if (!isMale) {
-    const breastSize = String(appearance.breastSize ?? '')
-    if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.positive)
-  }
-
-  const buttSize = String(appearance.buttSize ?? '')
-  if (BUTT_PROMPT[buttSize]) parts.push(BUTT_PROMPT[buttSize]!.positive)
-
-  // Hair — fold style + length + color into one weighted phrase so SD doesn't
-  // treat each piece independently. "(long wavy blonde hair:1.3)" reads better
-  // than three separate clauses.
-  const hairPhrase = buildHairPhrase((appearance.hair ?? {}) as Record<string, string>)
-  if (hairPhrase) parts.push(hairPhrase)
-
-  // Eyes — weighted, model often loses these without emphasis.
-  const eyes = (appearance.eyes ?? {}) as Record<string, string>
-  const eyeOpt = EYE_COLORS.find((e) => e.value === eyes.color)
-  if (eyeOpt?.promptFragment) parts.push(`(${eyeOpt.promptFragment}:1.3)`)
-
-  // Framing + style-aware quality tail.
-  parts.push(chooseFraming(appearance))
-  if (isAnime) {
-    parts.push(ANIME_QUALITY_TAIL)
-  } else {
-    parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
-  }
-
-  return parts.join(', ')
-}
-
-// Builds an adversarial negative prompt: pushes back against the opposite of
-// whatever sizes the user picked. Stops "huge breasts" from rendering as
-// "medium" because the model averaged everything out.
-function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string {
-  const parts: string[] = [QUALITY_NEGATIVE, SAFETY_NEGATIVE]
-  if (String(appearance.artStyle ?? 'realistic') === 'anime') parts.push(ANIME_NEGATIVE)
-  const breastSize = String(appearance.breastSize ?? '')
-  if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.negative)
-  const buttSize = String(appearance.buttSize ?? '')
-  if (BUTT_PROMPT[buttSize]) parts.push(BUTT_PROMPT[buttSize]!.negative)
-  return parts.filter(Boolean).join(', ')
-}
-
-// Free-text appearance: append the user's description after the safety
-// markers so the model picks it up without losing the age guard.
-function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Record<string, unknown>): string {
-  const parts: string[] = []
-  const isAnime = String(appearance.artStyle ?? 'realistic') === 'anime'
-
-  if (isAnime) {
-    parts.push(ANIME_QUALITY_PREFIX)
-  } else {
-    parts.push('photorealistic, high detail, soft lighting, RAW photo')
-  }
-
-  const isMale = appearance.gender === 'male'
-  const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
-  const baseline = `${agePolicy.defaultBaselineAge} year old`
-  parts.push(
-    isMale
-      ? `1boy, solo, handsome young man, (${baseline}:1.4)`
-      : `1girl, solo, beautiful young woman, (${baseline}:1.4)`,
-    agePolicy.youthDescriptor,
-    agePolicy.positiveMarkers,
-  )
-
-  if (isAnime) {
-    parts.push(isMale ? ANIME_MALE_ANCHOR : ANIME_FEMALE_ANCHOR)
-  }
-
-  const looks = String(uniqueDesc.looks ?? '').slice(0, 1500).trim()
-  if (looks) parts.push(looks)
-
-  parts.push('portrait, head and shoulders, looking at camera')
-  if (isAnime) {
-    parts.push(ANIME_QUALITY_TAIL)
-  } else {
-    parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
-  }
-  return parts.join(', ')
-}
-
-// Maps art style → fal endpoint. RealVisXL handles photoreal best; fast-sdxl
-// handles anime style well when the prompt is anime-tagged. FLUX is excluded
-// because it ignores negative_prompt — we rely on adversarial negatives.
-function pickEndpointForStyle(artStyle: string): string {
-  switch (artStyle) {
-    case 'anime':
-      return FAL_ENDPOINT_FAST_SDXL
-    case 'realistic':
-    default:
-      return FAL_ENDPOINT_REALISTIC_VISION
-  }
-}
-
 // ── Preview generation ────────────────────────────────────────────────────
+// Prompt-construction helpers live in ./prompt-builder so the client can
+// render the same final prompt the server is about to send to fal.
 
 export type GeneratePreviewsResult =
   | { ok: true; previews: Array<{ mediaAssetId: string | number; publicUrl: string }>; used: number }
@@ -550,7 +277,16 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
       ? buildUniquePrompt(uniqueDesc, appearance)
       : buildPreviewPrompt(appearance)
   const negativePrompt = buildPreviewNegativePrompt(appearance)
-  const endpoint = pickEndpointForStyle(String(appearance.artStyle ?? 'realistic'))
+  // The user can pin a model from the preview screen; fall back to the
+  // art-style default when they haven't (or when the saved value no longer
+  // maps to a known endpoint).
+  const selectedModel =
+    typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null
+  const endpoint = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
+  // RealVisXL responds best at 35 steps; the other SDXL/FLUX variants land
+  // their cleanest output around 30. (FLUX schnell internally caps at 4 steps
+  // — passing 30 there is a no-op, not an error.)
+  const isRealVis = endpoint.endsWith('realistic-vision')
 
   let result: Awaited<ReturnType<typeof generateImage>>
   try {
@@ -564,7 +300,7 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
       // Higher guidance pulls the result closer to the prompt (vs. the model's
       // priors). 6.5 is a good ceiling before details start to over-cook.
       guidanceScale: 6.5,
-      numInferenceSteps: endpoint === FAL_ENDPOINT_REALISTIC_VISION ? 35 : 30,
+      numInferenceSteps: isRealVis ? 35 : 30,
     })
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Image generation failed' }
