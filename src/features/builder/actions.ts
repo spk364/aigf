@@ -317,17 +317,62 @@ function chooseFraming(appearance: Record<string, unknown>): string {
     : 'portrait, head and shoulders, looking at camera'
 }
 
+// fast-sdxl is a generic SDXL — not anime-tuned — so the usual NovelAI tag
+// stack ("masterpiece, best quality, vibrant colors") drifts the prior toward
+// epic action/fantasy illustrations. These constants pin the look toward the
+// product's "soft girlfriend" target instead of the model's default
+// "1girl warrior" prior.
+const ANIME_QUALITY_PREFIX =
+  'anime style, soft anime illustration, cute character art, gentle shading, clean lineart, soft color palette'
+const ANIME_QUALITY_TAIL =
+  'detailed face, expressive anime eyes, soft cheeks, gentle expression, sharp focus, soft natural lighting'
+const ANIME_FEMALE_ANCHOR =
+  'casual cute outfit, fully clothed, sundress or blouse and skirt, gentle smile, soft inviting pose, soft contrapposto, looking at viewer'
+const ANIME_MALE_ANCHOR =
+  'casual outfit, fully clothed, gentle smile, soft relaxed pose, looking at viewer'
+const ANIME_NEGATIVE =
+  '(armor:1.3), (weapon:1.3), (sword:1.2), (gun:1.2), (cape:1.2), ' +
+  '(superhero costume:1.3), (combat outfit:1.3), (mecha:1.3), ' +
+  '(fighting pose:1.3), (action pose:1.2), (battle scene:1.2), ' +
+  '(mature woman:1.2), (heavy makeup:1.1), (face mask:1.2)'
+
+// Hair fragments are inconsistent: some carry a trailing "hair" ("blonde
+// hair"), some carry comma-joined modifiers ("wavy hair, soft waves"). The
+// previous one-shot regex only stripped the first "hair" and left the comma
+// behind, producing `(long flowing wavy, soft waves blonde hair:1.3)` —
+// SDXL parses that as a broken weight and silently drops the hairstyle.
+function cleanHairFragment(fragment: string): string {
+  return fragment
+    .replace(/\bhair\b/g, '')
+    .replace(/[\s,]+/g, ' ')
+    .trim()
+}
+
+function buildHairPhrase(hair: Record<string, string>): string | null {
+  const bits = [
+    HAIR_LENGTHS.find((h) => h.value === hair.length)?.promptFragment,
+    HAIR_STYLES.find((h) => h.value === hair.style)?.promptFragment,
+    HAIR_COLORS.find((h) => h.value === hair.color)?.promptFragment,
+  ]
+    .filter((f): f is string => !!f)
+    .map(cleanHairFragment)
+    .filter(Boolean)
+  if (bits.length === 0) return null
+  return `(${bits.join(' ')} hair:1.3)`
+}
+
 function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   const parts: string[] = []
   const artStyle = String(appearance.artStyle ?? 'realistic')
   const isAnime = artStyle === 'anime'
+  const isMale = appearance.gender === 'male'
 
   // Style first — early tokens get more attention from the U-Net. The
   // realism quality tail ("8k uhd, professional photography") fights with
   // the anime aesthetic when both are mixed, so we branch right at the top
   // and use art-style-specific quality tags throughout.
   if (isAnime) {
-    parts.push('anime style, masterpiece, best quality, detailed illustration, vibrant colors, clean lineart')
+    parts.push(ANIME_QUALITY_PREFIX)
   } else {
     parts.push('photorealistic, high detail, soft lighting, RAW photo')
   }
@@ -337,7 +382,6 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   // The specific-age anchor uses weight 1.4 so it DOMINATES the broader
   // "21+ years old" safety token (1.2) — without that ordering RealVis
   // averages across 21..∞ and renders mid-30s "mature" instead of 22.
-  const isMale = appearance.gender === 'male'
   const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
   const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : agePolicy.defaultBaselineAge
   const safeAge = Math.max(agePolicy.minAge, ageDisplay)
@@ -353,6 +397,14 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
       agePolicy.youthDescriptor,
       agePolicy.positiveMarkers,
     )
+  }
+
+  // Outfit + pose anchor for anime — without this, fast-sdxl's "1girl"
+  // prior renders combat/superhero outfits and action poses by default.
+  // Realistic uses RealVisXL which doesn't have that prior, so no anchor
+  // is needed there.
+  if (isAnime) {
+    parts.push(isMale ? ANIME_MALE_ANCHOR : ANIME_FEMALE_ANCHOR)
   }
 
   // Ethnicity (single value now). Still injected with weight.
@@ -375,19 +427,8 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   // Hair — fold style + length + color into one weighted phrase so SD doesn't
   // treat each piece independently. "(long wavy blonde hair:1.3)" reads better
   // than three separate clauses.
-  const hair = (appearance.hair ?? {}) as Record<string, string>
-  const hairLengthOpt = HAIR_LENGTHS.find((h) => h.value === hair.length)
-  const hairStyleOpt = HAIR_STYLES.find((h) => h.value === hair.style)
-  const hairColorOpt = HAIR_COLORS.find((h) => h.value === hair.color)
-  const hairBits = [
-    hairLengthOpt?.promptFragment,
-    hairStyleOpt?.promptFragment,
-    hairColorOpt?.promptFragment,
-  ].filter(Boolean)
-  if (hairBits.length > 0) {
-    const collapsed = hairBits.map((h) => String(h).replace(/\s*hair\b/, '').trim()).filter(Boolean)
-    parts.push(`(${collapsed.join(' ')} hair:1.3)`)
-  }
+  const hairPhrase = buildHairPhrase((appearance.hair ?? {}) as Record<string, string>)
+  if (hairPhrase) parts.push(hairPhrase)
 
   // Eyes — weighted, model often loses these without emphasis.
   const eyes = (appearance.eyes ?? {}) as Record<string, string>
@@ -397,7 +438,7 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
   // Framing + style-aware quality tail.
   parts.push(chooseFraming(appearance))
   if (isAnime) {
-    parts.push('detailed face, expressive eyes, sharp focus, anime aesthetic, vibrant colors')
+    parts.push(ANIME_QUALITY_TAIL)
   } else {
     parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
   }
@@ -410,6 +451,7 @@ function buildPreviewPrompt(appearance: Record<string, unknown>): string {
 // "medium" because the model averaged everything out.
 function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string {
   const parts: string[] = [QUALITY_NEGATIVE, SAFETY_NEGATIVE]
+  if (String(appearance.artStyle ?? 'realistic') === 'anime') parts.push(ANIME_NEGATIVE)
   const breastSize = String(appearance.breastSize ?? '')
   if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.negative)
   const buttSize = String(appearance.buttSize ?? '')
@@ -424,7 +466,7 @@ function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Reco
   const isAnime = String(appearance.artStyle ?? 'realistic') === 'anime'
 
   if (isAnime) {
-    parts.push('anime style, masterpiece, best quality, detailed illustration, vibrant colors, clean lineart')
+    parts.push(ANIME_QUALITY_PREFIX)
   } else {
     parts.push('photorealistic, high detail, soft lighting, RAW photo')
   }
@@ -440,12 +482,16 @@ function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Reco
     agePolicy.positiveMarkers,
   )
 
+  if (isAnime) {
+    parts.push(isMale ? ANIME_MALE_ANCHOR : ANIME_FEMALE_ANCHOR)
+  }
+
   const looks = String(uniqueDesc.looks ?? '').slice(0, 1500).trim()
   if (looks) parts.push(looks)
 
   parts.push('portrait, head and shoulders, looking at camera')
   if (isAnime) {
-    parts.push('detailed face, expressive eyes, sharp focus, anime aesthetic, vibrant colors')
+    parts.push(ANIME_QUALITY_TAIL)
   } else {
     parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
   }
