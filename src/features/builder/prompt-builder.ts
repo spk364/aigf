@@ -14,12 +14,15 @@ import {
   EYE_COLORS,
 } from './options'
 import { getAgePolicy } from '@/shared/ai/age-safety'
-import {
-  FAL_ENDPOINT_FAST_SDXL,
-  FAL_ENDPOINT_FLUX_DEV,
-  FAL_ENDPOINT_FLUX_SCHNELL,
-  FAL_ENDPOINT_REALISTIC_VISION,
-} from '@/shared/ai/fal'
+
+// Endpoint slugs duplicated as literals (rather than imported from `@/shared/ai/fal`)
+// because that adapter is `'server-only'` and this module is bundled into the
+// client through `CharacterBuilderWizard`. Keep these in sync with FAL_ENDPOINT_*
+// in `@/shared/ai/fal`.
+const FAL_ENDPOINT_REALISTIC_VISION = 'fal-ai/realistic-vision'
+const FAL_ENDPOINT_FAST_SDXL = 'fal-ai/fast-sdxl'
+const FAL_ENDPOINT_FLUX_SCHNELL = 'fal-ai/flux/schnell'
+const FAL_ENDPOINT_FLUX_DEV = 'fal-ai/flux/dev'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
