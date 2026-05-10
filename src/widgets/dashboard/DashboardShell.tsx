@@ -34,9 +34,9 @@ export type SidebarIcon =
 
 type Props = {
   locale: string
-  displayName: string
-  email: string
-  isPremium: boolean
+  displayName?: string | null
+  email?: string | null
+  isPremium?: boolean
   active?: SidebarKey
   children: React.ReactNode
 }
@@ -91,7 +91,7 @@ export function buildNavItems(
   active: SidebarKey | undefined,
 ): SidebarNavItem[] {
   return [
-    { href: `/${locale}/dashboard`, label: 'Home', icon: 'home', active: active === 'home' },
+    { href: `/${locale}`, label: 'Home', icon: 'home', active: active === 'home' },
     { href: `/${locale}/explore`, label: 'Discover', icon: 'compass', active: active === 'discover' },
     { href: `/${locale}/chat`, label: 'Chat', icon: 'chat', active: active === 'chat' },
     // TODO: dedicated /collection route — saved/bookmarked personas + media gallery.
@@ -156,6 +156,7 @@ export async function DashboardShell({
   children,
 }: Props) {
   const navItems = buildNavItems(locale, active)
+  const isAuthed = !!(displayName || email)
   const initial = (displayName || email || '?').charAt(0).toUpperCase()
 
   async function handleLogout() {
@@ -164,7 +165,7 @@ export async function DashboardShell({
     redirect(`/${locale}/login`)
   }
 
-  const profileBlock = (
+  const profileBlock = isAuthed ? (
     <div className="border-t border-[var(--color-border)] p-3">
       <div className="mb-2 flex items-center gap-2 rounded-lg p-2">
         <div
@@ -178,7 +179,7 @@ export async function DashboardShell({
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--color-text)]">
-            {displayName}
+            {displayName || email}
           </p>
           <p className="text-xs text-[var(--color-text-muted)]">
             {isPremium ? (
@@ -201,6 +202,26 @@ export async function DashboardShell({
             Sign out
           </button>
         </form>
+      </div>
+    </div>
+  ) : (
+    <div className="border-t border-[var(--color-border)] p-3">
+      <div className="flex flex-col gap-2">
+        <Link
+          href={`/${locale}/signup`}
+          className="inline-flex items-center justify-center rounded-lg bg-[var(--color-accent-strong)] px-3 py-2 text-xs font-bold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
+        >
+          Create free account
+        </Link>
+        <Link
+          href={`/${locale}/login`}
+          className="inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
+        >
+          Sign in
+        </Link>
+        <div className="mt-1">
+          <LocaleSwitcher locale={locale} />
+        </div>
       </div>
     </div>
   )
@@ -285,7 +306,7 @@ export async function DashboardShell({
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]/60 backdrop-blur-sm md:flex">
         <Link
-          href={`/${locale}/dashboard`}
+          href={`/${locale}`}
           className="flex h-16 items-center gap-2 border-b border-[var(--color-border)] px-5"
         >
           <span
@@ -304,7 +325,7 @@ export async function DashboardShell({
       {/* Mobile drawer (client component handles open/close state) */}
       <MobileSidebar>
         <div className="flex h-14 items-center border-b border-[var(--color-border)] px-4">
-          <Link href={`/${locale}/dashboard`} className="flex items-center gap-2">
+          <Link href={`/${locale}`} className="flex items-center gap-2">
             <span
               aria-hidden
               className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-strong)] text-sm font-black text-[var(--color-bg)]"
@@ -336,7 +357,7 @@ function LocaleSwitcher({ locale }: { locale: string }) {
       {locales.map((loc) => (
         <Link
           key={loc.code}
-          href={`/${loc.code}/dashboard`}
+          href={`/${loc.code}`}
           aria-current={loc.code === locale ? 'page' : undefined}
           className={
             'rounded-md px-1.5 py-1 text-[10px] font-bold transition-colors ' +
