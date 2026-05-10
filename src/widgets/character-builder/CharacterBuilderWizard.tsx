@@ -34,6 +34,14 @@ import {
   suggestNameAction,
 } from '@/features/builder/actions'
 import {
+  buildPreviewPrompt,
+  buildPreviewNegativePrompt,
+  buildUniquePrompt,
+  resolveModelEndpoint,
+  IMAGE_MODELS,
+  type ModelOption,
+} from '@/features/builder/prompt-builder'
+import {
   parseUrlState,
   serializeUrlState,
   draftToUrlState,
@@ -623,25 +631,367 @@ function HairEyesScreen({
 
 // ── Preview generation step ───────────────────────────────────────────────
 
+// Read-only prompt display with copy-to-clipboard. Surfaces the exact text
+// the server is about to send to fal so the user can sanity-check / iterate
+// before they spend a generation slot.
+function PromptDisplay({
+  label,
+  value,
+  strings,
+  disabled,
+}: {
+  label: string
+  value: string
+  strings: Record<string, unknown>
+  disabled?: boolean
+}) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // navigator.clipboard isn't available over plain http or in some
+      // sandboxed iframes — silently no-op rather than blowing up the UI.
+    }
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          disabled={disabled || !value}
+          className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40"
+        >
+          {copied
+            ? t(strings, 'builder.actions.copiedPrompt', 'Copied')
+            : t(strings, 'builder.actions.copyPrompt', 'Copy')}
+        </button>
+      </div>
+      <textarea
+        readOnly
+        value={value}
+        rows={Math.min(8, Math.max(3, Math.ceil(value.length / 80)))}
+        disabled={disabled}
+        className="w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-xs font-mono text-[var(--color-text)] disabled:opacity-50"
+      />
+    </div>
+  )
+}
+
+// Pill row for picking the fal endpoint. We don't gate FLUX behind a
+// premium flag here — the picker is just a transparent override of the
+// art-style default; the rate limiter protects spend.
+function ModelPicker({
+  models,
+  selectedEndpoint,
+  artStyle,
+  strings,
+  onSelect,
+}: {
+  models: ModelOption[]
+  selectedEndpoint: string
+  artStyle: string
+  strings: Record<string, unknown>
+  onSelect: (endpoint: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+        {t(strings, 'builder.modelPicker.heading', 'Image model')}
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {models.map((m) => {
+          const selected = m.endpoint === selectedEndpoint
+          const isRecommended = m.recommendedFor === artStyle
+          return (
+            <button
+              key={m.endpoint}
+              type="button"
+              onClick={() => onSelect(m.endpoint)}
+              className={[
+                'flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors',
+                selected
+                  ? 'border-[var(--color-accent-strong)] bg-[var(--color-accent-strong)]/15'
+                  : 'border-[var(--color-border)] bg-[var(--color-surface-2)] hover:border-[var(--color-accent-strong)]/60',
+              ].join(' ')}
+            >
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text)]">
+                {t(strings, m.labelKey, m.endpoint)}
+                {isRecommended && (
+                  <span className="rounded-md bg-[var(--color-accent-strong)]/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--color-accent-strong)]">
+                    {t(strings, 'builder.modelPicker.recommended', 'Recommended')}
+                  </span>
+                )}
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)]">
+                {t(strings, m.descriptionKey, '')}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// One labelled row of chip choices. Dense layout that fits multiple param
+// rows on a single screen — meant to live inside CompactParamsEditor below.
+function CompactChipRow({
+  label,
+  options,
+  value,
+  onChange,
+  strings,
+}: {
+  label: string
+  options: BuilderOption[]
+  value: string | undefined
+  onChange: (v: string) => void
+  strings: Record<string, unknown>
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => (
+          <Chip
+            key={o.value}
+            emoji={o.emoji}
+            label={t(strings, o.labelKey)}
+            selected={value === o.value}
+            onClick={() => onChange(o.value)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Compact rewrite of the appearance/unique-desc steps so the user can
+// tweak any choice without walking back through the wizard. Only renders
+// the prompt-affecting fields; identity/backstory don't influence the
+// image so we leave them in their dedicated steps.
+function CompactParamsEditor({
+  pathChoice,
+  appearance,
+  uniqueDesc,
+  strings,
+  onAppearanceChange,
+  onUniqueDescChange,
+}: {
+  pathChoice: string
+  appearance: Record<string, unknown>
+  uniqueDesc: Record<string, unknown>
+  strings: Record<string, unknown>
+  onAppearanceChange: (next: Record<string, unknown>) => void
+  onUniqueDescChange: (next: Record<string, unknown>) => void
+}) {
+  const isMale = appearance.gender === 'male'
+  const hair = (appearance.hair ?? {}) as Record<string, string>
+  const eyes = (appearance.eyes ?? {}) as Record<string, string>
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3">
+      <CompactChipRow
+        label={t(strings, 'builder.sections.gender')}
+        options={GENDERS}
+        value={String(appearance.gender ?? '')}
+        onChange={(v) => onAppearanceChange({ ...appearance, gender: v })}
+        strings={strings}
+      />
+
+      <CompactChipRow
+        label={t(strings, 'builder.sections.artStyle')}
+        options={ART_STYLES}
+        value={String(appearance.artStyle ?? '')}
+        onChange={(v) => onAppearanceChange({ ...appearance, artStyle: v })}
+        strings={strings}
+      />
+
+      {pathChoice !== 'unique' && (
+        <>
+          <CompactChipRow
+            label={t(strings, 'builder.sections.age')}
+            options={AGE_RANGES}
+            value={String(appearance.ageRange ?? '')}
+            onChange={(v) => onAppearanceChange({ ...appearance, ageRange: v })}
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.ethnicity')}
+            options={ETHNICITIES}
+            value={String(appearance.ethnicity ?? '')}
+            onChange={(v) => onAppearanceChange({ ...appearance, ethnicity: v })}
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.physique')}
+            options={BODY_TYPES}
+            value={String(appearance.bodyType ?? '')}
+            onChange={(v) => onAppearanceChange({ ...appearance, bodyType: v })}
+            strings={strings}
+          />
+
+          {!isMale && (
+            <CompactChipRow
+              label={t(strings, 'builder.sections.breasts')}
+              options={BREAST_SIZES}
+              value={String(appearance.breastSize ?? '')}
+              onChange={(v) => onAppearanceChange({ ...appearance, breastSize: v })}
+              strings={strings}
+            />
+          )}
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.butt')}
+            options={BUTT_SIZES}
+            value={String(appearance.buttSize ?? '')}
+            onChange={(v) => onAppearanceChange({ ...appearance, buttSize: v })}
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.hairLength')}
+            options={HAIR_LENGTHS}
+            value={hair.length}
+            onChange={(v) =>
+              onAppearanceChange({ ...appearance, hair: { ...hair, length: v } })
+            }
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.hairStyle')}
+            options={HAIR_STYLES}
+            value={hair.style}
+            onChange={(v) =>
+              onAppearanceChange({ ...appearance, hair: { ...hair, style: v } })
+            }
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.hairColor')}
+            options={HAIR_COLORS}
+            value={hair.color}
+            onChange={(v) =>
+              onAppearanceChange({ ...appearance, hair: { ...hair, color: v } })
+            }
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.eyeColor')}
+            options={EYE_COLORS}
+            value={eyes.color}
+            onChange={(v) =>
+              onAppearanceChange({ ...appearance, eyes: { ...eyes, color: v } })
+            }
+            strings={strings}
+          />
+        </>
+      )}
+
+      {pathChoice === 'unique' && (
+        <>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+              {t(strings, 'builder.sections.uniqueLooks')}
+            </span>
+            <textarea
+              value={String(uniqueDesc.looks ?? '')}
+              onChange={(e) => onUniqueDescChange({ ...uniqueDesc, looks: e.target.value })}
+              rows={4}
+              maxLength={2000}
+              placeholder={t(strings, 'builder.placeholders.uniqueLooks')}
+              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)]/50 outline-none focus:border-[var(--color-accent-strong)] focus:ring-1 focus:ring-[var(--color-accent-strong)] resize-y"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+              {t(strings, 'builder.sections.uniquePersonality')}
+            </span>
+            <textarea
+              value={String(uniqueDesc.personality ?? '')}
+              onChange={(e) =>
+                onUniqueDescChange({ ...uniqueDesc, personality: e.target.value })
+              }
+              rows={4}
+              maxLength={2000}
+              placeholder={t(strings, 'builder.placeholders.uniquePersonality')}
+              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)]/50 outline-none focus:border-[var(--color-accent-strong)] focus:ring-1 focus:ring-[var(--color-accent-strong)] resize-y"
+            />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function PreviewScreen({
   strings,
   draftId,
+  pathChoice,
+  appearance,
+  uniqueDesc,
   previewGenerations,
   selectedReferenceId,
+  onAppearanceChange,
+  onUniqueDescChange,
   onPreviewsGenerated,
   onReferenceSelected,
 }: {
   strings: Record<string, unknown>
   draftId: string
+  pathChoice: string
+  appearance: Record<string, unknown>
+  uniqueDesc: Record<string, unknown>
   previewGenerations: PreviewGeneration[]
   selectedReferenceId: string | null
+  onAppearanceChange: (next: Record<string, unknown>) => void
+  onUniqueDescChange: (next: Record<string, unknown>) => void
   onPreviewsGenerated: (gens: PreviewGeneration[]) => void
   onReferenceSelected: (id: string) => void
 }) {
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
+  const [paramsOpen, setParamsOpen] = useState(false)
+  const [promptOpen, setPromptOpen] = useState(true)
 
   const previewCount = previewGenerations.length
+
+  // Recompute the live prompt whenever the user tweaks anything in the
+  // compact editor — the textarea below mirrors what the server will send.
+  const prompt = useMemo(
+    () =>
+      pathChoice === 'unique'
+        ? buildUniquePrompt(uniqueDesc, appearance)
+        : buildPreviewPrompt(appearance),
+    [pathChoice, uniqueDesc, appearance],
+  )
+  const negativePrompt = useMemo(() => buildPreviewNegativePrompt(appearance), [appearance])
+  const selectedEndpoint = useMemo(
+    () =>
+      resolveModelEndpoint(
+        typeof appearance.modelEndpoint === 'string'
+          ? (appearance.modelEndpoint as string)
+          : null,
+        String(appearance.artStyle ?? 'realistic'),
+      ),
+    [appearance],
+  )
+  const selectedModel = IMAGE_MODELS.find((m) => m.endpoint === selectedEndpoint)
+  const supportsNegative = selectedModel?.supportsNegativePrompt ?? true
 
   const handleGenerate = async () => {
     setGenerating(true)
@@ -679,6 +1029,86 @@ function PreviewScreen({
         title={t(strings, 'builder.questions.preview')}
         hint={t(strings, 'builder.hints.previewIntro')}
       />
+
+      {/* Compact param editor — collapsed by default to keep the screen
+          short for users who are happy with their picks. */}
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setParamsOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] hover:border-[var(--color-accent-strong)]/60"
+        >
+          <span>
+            {paramsOpen
+              ? t(strings, 'builder.actions.hideParams', 'Hide parameters')
+              : t(strings, 'builder.actions.editParams', 'Edit parameters')}
+          </span>
+          <span aria-hidden>{paramsOpen ? '▴' : '▾'}</span>
+        </button>
+        {paramsOpen && (
+          <div className="mt-3">
+            <CompactParamsEditor
+              pathChoice={pathChoice}
+              appearance={appearance}
+              uniqueDesc={uniqueDesc}
+              strings={strings}
+              onAppearanceChange={onAppearanceChange}
+              onUniqueDescChange={onUniqueDescChange}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4">
+        <ModelPicker
+          models={IMAGE_MODELS}
+          selectedEndpoint={selectedEndpoint}
+          artStyle={String(appearance.artStyle ?? 'realistic')}
+          strings={strings}
+          onSelect={(endpoint) => onAppearanceChange({ ...appearance, modelEndpoint: endpoint })}
+        />
+      </div>
+
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setPromptOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] hover:border-[var(--color-accent-strong)]/60"
+        >
+          <span>
+            {promptOpen
+              ? t(strings, 'builder.actions.hidePrompt', 'Hide prompt')
+              : t(strings, 'builder.actions.showPrompt', 'Show final prompt')}
+          </span>
+          <span aria-hidden>{promptOpen ? '▴' : '▾'}</span>
+        </button>
+        {promptOpen && (
+          <div className="mt-3 flex flex-col gap-3">
+            <PromptDisplay
+              label={t(strings, 'builder.promptPreview.positive', 'Prompt')}
+              value={prompt}
+              strings={strings}
+            />
+            <div>
+              <PromptDisplay
+                label={t(strings, 'builder.promptPreview.negative', 'Negative prompt')}
+                value={negativePrompt}
+                strings={strings}
+                disabled={!supportsNegative}
+              />
+              {!supportsNegative && (
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                  {t(
+                    strings,
+                    'builder.promptPreview.negativeUnsupported',
+                    'This model ignores negative prompts.',
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center justify-between mb-4">
         <span className="text-xs text-[var(--color-text-muted)]">
@@ -1590,8 +2020,13 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
           <PreviewScreen
             strings={strings}
             draftId={draftId}
+            pathChoice={String(draftData.pathChoice ?? 'presets')}
+            appearance={appearance}
+            uniqueDesc={uniqueDesc}
             previewGenerations={previewGenerations}
             selectedReferenceId={draftData.selectedReferenceMediaAssetId ?? null}
+            onAppearanceChange={updateAppearance}
+            onUniqueDescChange={updateUniqueDesc}
             onPreviewsGenerated={setPreviewGenerations}
             onReferenceSelected={handleReferenceSelected}
           />

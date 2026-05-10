@@ -435,7 +435,41 @@
       "next": "Далее",
       "finalize": "Завершить",
       "create": "Создать {name}",
-      "showMore": "Показать ещё ({count})"
+      "showMore": "Показать ещё ({count})",
+      "showPrompt": "Показать итоговый промпт",
+      "hidePrompt": "Скрыть промпт",
+      "copyPrompt": "Скопировать",
+      "copiedPrompt": "Скопировано",
+      "editParams": "Изменить параметры",
+      "hideParams": "Свернуть параметры"
+    },
+    "promptPreview": {
+      "heading": "Промпт, который пойдёт в модель",
+      "positive": "Промпт",
+      "negative": "Negative prompt",
+      "negativeUnsupported": "Эта модель игнорирует negative prompt."
+    },
+    "modelPicker": {
+      "heading": "Модель генерации",
+      "recommended": "Рекомендуется"
+    },
+    "models": {
+      "realisticVision": {
+        "label": "RealVisXL",
+        "description": "Лучшее для фотореализма. ~20-50 сек."
+      },
+      "fastSdxl": {
+        "label": "Fast SDXL",
+        "description": "Универсальный SDXL, хорош для аниме. ~5-10 сек."
+      },
+      "fluxSchnell": {
+        "label": "FLUX schnell",
+        "description": "Очень быстрый, 4 шага. Без negative prompt."
+      },
+      "fluxDev": {
+        "label": "FLUX dev",
+        "description": "Качественный FLUX. Без negative prompt."
+      }
     },
     "review": {
       "relationship": "Стартовые отношения"

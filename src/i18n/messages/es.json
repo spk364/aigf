@@ -435,7 +435,41 @@
       "next": "Siguiente",
       "finalize": "Finalizar",
       "create": "Crear a {name}",
-      "showMore": "Mostrar más ({count})"
+      "showMore": "Mostrar más ({count})",
+      "showPrompt": "Mostrar el prompt final",
+      "hidePrompt": "Ocultar prompt",
+      "copyPrompt": "Copiar",
+      "copiedPrompt": "Copiado",
+      "editParams": "Editar parámetros",
+      "hideParams": "Ocultar parámetros"
+    },
+    "promptPreview": {
+      "heading": "Prompt enviado al modelo",
+      "positive": "Prompt",
+      "negative": "Negative prompt",
+      "negativeUnsupported": "Este modelo ignora el negative prompt."
+    },
+    "modelPicker": {
+      "heading": "Modelo de imagen",
+      "recommended": "Recomendado"
+    },
+    "models": {
+      "realisticVision": {
+        "label": "RealVisXL",
+        "description": "Mejor para retratos fotorrealistas. ~20-50 s."
+      },
+      "fastSdxl": {
+        "label": "Fast SDXL",
+        "description": "SDXL genérico, bueno para anime. ~5-10 s."
+      },
+      "fluxSchnell": {
+        "label": "FLUX schnell",
+        "description": "Muy rápido, 4 pasos. Sin negative prompt."
+      },
+      "fluxDev": {
+        "label": "FLUX dev",
+        "description": "FLUX de alta calidad. Sin negative prompt."
+      }
     },
     "review": {
       "relationship": "Relación inicial"
