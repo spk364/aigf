@@ -308,11 +308,18 @@ function PhaseIndicator({
   steps,
   stepIdx,
   strings,
+  onJumpToPhase,
 }: {
   currentPhase: number
   steps: StepDef[]
   stepIdx: number
   strings: Record<string, unknown>
+  // Click-to-navigate. Receives the phase number (1-4) and is expected to
+  // move stepIdx to the first step of that phase. Forward jumps are
+  // allowed — the canAdvance gating still keeps the user from finalising
+  // a draft with unfilled required fields, so all this does is short-cut
+  // navigation. Backwards jumps are always safe.
+  onJumpToPhase?: (phase: number) => void
 }) {
   // Compute position within the active phase so the user can tell that
   // they're moving forward even when they're walking through the five
@@ -325,6 +332,12 @@ function PhaseIndicator({
   const subTotal = activePhaseSteps.length
   const progressPct = ((stepIdx + 1) / steps.length) * 100
 
+  // The unique path skips identity (phase 2 maps to unique_desc) and
+  // backstory (phase 3) — only show pills for phases that have at least
+  // one step in the current path so we don't render dead "Personality" /
+  // "Story" pills that go nowhere.
+  const pathHasPhase = (phase: number) => steps.some((s) => s.phase === phase)
+
   return (
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-2">
@@ -332,9 +345,26 @@ function PhaseIndicator({
           const idx = i + 1
           const isActive = idx === currentPhase
           const isDone = idx < currentPhase
+          const isReachable = pathHasPhase(idx)
+          const clickable = isReachable && !isActive && !!onJumpToPhase
+          const PillTag = clickable ? 'button' : 'div'
           return (
             <React.Fragment key={key}>
-              <div className="flex items-center gap-2">
+              <PillTag
+                type={clickable ? 'button' : undefined}
+                onClick={clickable ? () => onJumpToPhase!(idx) : undefined}
+                aria-label={clickable ? `Jump to ${t(strings, `builder.phases.${key}`)}` : undefined}
+                className={[
+                  'flex items-center gap-2 rounded-lg p-0.5 -m-0.5',
+                  clickable
+                    ? 'cursor-pointer hover:bg-[var(--color-surface-2)] transition-colors'
+                    : 'cursor-default',
+                  !isReachable && 'opacity-40',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                disabled={clickable ? undefined : true}
+              >
                 <div
                   className={[
                     'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors',
@@ -347,7 +377,7 @@ function PhaseIndicator({
                 >
                   {isDone ? '✓' : idx}
                 </div>
-                <div className="hidden sm:flex flex-col leading-tight">
+                <div className="hidden sm:flex flex-col leading-tight text-left">
                   <span
                     className={[
                       'text-sm',
@@ -364,7 +394,7 @@ function PhaseIndicator({
                     </span>
                   )}
                 </div>
-              </div>
+              </PillTag>
               {i < PHASE_KEYS.length - 1 && (
                 <div
                   className={[
@@ -1065,6 +1095,8 @@ function PreviewScreen({
   draftId,
   pathChoice,
   appearance,
+  identity,
+  backstory,
   uniqueDesc,
   previewGenerations,
   selectedReferenceId,
@@ -1077,6 +1109,8 @@ function PreviewScreen({
   draftId: string
   pathChoice: string
   appearance: Record<string, unknown>
+  identity: Record<string, unknown>
+  backstory: Record<string, unknown>
   uniqueDesc: Record<string, unknown>
   previewGenerations: PreviewGeneration[]
   selectedReferenceId: string | null
@@ -1104,12 +1138,14 @@ function PreviewScreen({
 
   // Recompute the live prompt whenever the user tweaks anything in the
   // compact editor — the textarea below mirrors what the server will send.
+  // Pass identity + backstory so archetype mood and occupation outfit show
+  // up in the preview (and in the rendered image once Generate fires).
   const prompt = useMemo(
     () =>
       pathChoice === 'unique'
         ? buildUniquePrompt(uniqueDesc, appearance)
-        : buildPreviewPrompt(appearance),
-    [pathChoice, uniqueDesc, appearance],
+        : buildPreviewPrompt(appearance, identity, backstory),
+    [pathChoice, uniqueDesc, appearance, identity, backstory],
   )
   const negativePrompt = useMemo(() => buildPreviewNegativePrompt(appearance), [appearance])
   const selectedEndpoint = useMemo(
@@ -2211,6 +2247,8 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
             draftId={draftId}
             pathChoice={String(draftData.pathChoice ?? 'presets')}
             appearance={appearance}
+            identity={identity}
+            backstory={backstory}
             uniqueDesc={uniqueDesc}
             previewGenerations={previewGenerations}
             selectedReferenceId={draftData.selectedReferenceMediaAssetId ?? null}
@@ -2276,6 +2314,14 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
         steps={STEPS}
         stepIdx={safeStepIdx}
         strings={strings}
+        onJumpToPhase={(phase) => {
+          // Jump to the first step of the requested phase. Forward jumps
+          // are allowed — canAdvance() still gates the Next button per
+          // step, so an under-filled draft can't be finalised. Backward
+          // jumps are always safe (data is preserved).
+          const targetIdx = STEPS.findIndex((s) => s.phase === phase)
+          if (targetIdx >= 0) setStepIdx(targetIdx)
+        }}
       />
 
       <Card className="mb-6">{renderStep()}</Card>
