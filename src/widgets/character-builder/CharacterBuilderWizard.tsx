@@ -1977,9 +1977,22 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
   const handleFinalize = async () => {
     setFinalizing(true)
     setFinalizeError(null)
-    const result = await finalizeBuilderAction(draftId)
-    if (result && !result.ok) {
-      setFinalizeError(result.error)
+    // try/catch so a server-side throw (Payload validation, redirect failure,
+    // anything) doesn't leave the Finalize button stranded in its disabled
+    // "..." state. On the success path the action calls redirect() which
+    // throws NEXT_REDIRECT — Next handles it before this catch sees anything.
+    try {
+      const result = await finalizeBuilderAction(draftId)
+      if (result && !result.ok) {
+        setFinalizeError(result.error)
+        setFinalizing(false)
+      }
+    } catch (e) {
+      console.error('[builder-finalize] finalizeBuilderAction threw', e)
+      setFinalizeError(
+        t(strings, 'builder.errors.finalizeFailed',
+          'Could not finalize the character. Try again, or contact support if the problem persists.'),
+      )
       setFinalizing(false)
     }
   }
