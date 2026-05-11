@@ -28,7 +28,14 @@ export const SAFETY_NEGATIVE =
 
 export const QUALITY_NEGATIVE =
   'low quality, worst quality, blurry, deformed, bad anatomy, extra limbs, ' +
-  'extra fingers, watermark, text, signature, multiple people, ugly, mutated'
+  'extra fingers, watermark, text, signature, multiple people, ugly, mutated, ' +
+  // Framing negatives — counter the model's tendency to crop above the waist
+  // and to render the subject in 3/4 view when the positive prompt asks for
+  // full body / front view. SDXL anime checkpoints in particular default to
+  // bust shots without these.
+  '(cropped:1.3), (out of frame:1.2), (cut off:1.2), ' +
+  '(side view:1.2), (profile view:1.2), (back view:1.3), ' +
+  '(bust shot:1.2), (close-up:1.2), (portrait crop:1.2)'
 
 const BREAST_PROMPT: Record<string, { positive: string; negative: string }> = {
   flat: {
@@ -94,10 +101,15 @@ const ANIME_QUALITY_TAIL =
 // body/breast tokens the user picked. Outfit/scene now come from the
 // user's selections (or, when absent, the model's own priors) instead
 // of a baked-in safe default.
+//
+// `front view, facing camera` is load-bearing — without it SDXL anime
+// checkpoints default to a 3/4 angle. We dropped `soft contrapposto`
+// for the same reason; an asymmetric weight-on-one-leg pose almost
+// always renders the subject in profile.
 const ANIME_FEMALE_ANCHOR =
-  'alluring pose, soft contrapposto, gentle smile, looking at viewer'
+  'alluring pose, standing pose, front view, facing camera, gentle smile, looking at viewer'
 const ANIME_MALE_ANCHOR =
-  'confident pose, gentle smile, looking at viewer'
+  'confident pose, standing pose, front view, facing camera, gentle smile, looking at viewer'
 const ANIME_NEGATIVE =
   '(armor:1.3), (weapon:1.3), (sword:1.2), (gun:1.2), (cape:1.2), ' +
   '(superhero costume:1.3), (combat outfit:1.3), (mecha:1.3), ' +
@@ -109,9 +121,15 @@ const ANIME_NEGATIVE =
 function chooseFraming(appearance: Record<string, unknown>): string {
   const hasBody =
     !!appearance.bodyType || !!appearance.breastSize || !!appearance.buttSize
+  // For body-aware previews we want the whole figure visible from head to
+  // toe, dead-on. The previous "cowboy shot, head to thigh, full upper body
+  // visible" combination consistently rendered a 3/4 view cropped at the
+  // waist on anime SDXL checkpoints — the model reads "upper body" and
+  // ignores the implicit lower-body framing. Use explicit "full body" tokens
+  // and keep the front-view anchor in line with the pose anchor above.
   return hasBody
-    ? 'cowboy shot, head to thigh, full upper body visible, looking at camera'
-    : 'portrait, head and shoulders, looking at camera'
+    ? 'full body shot, head to toe, full figure visible, standing pose, front view, facing camera'
+    : 'portrait, head and shoulders, front view, facing camera'
 }
 
 function cleanHairFragment(fragment: string): string {
@@ -292,14 +310,20 @@ export type ModelOption = {
 //   - FLUX schnell: works for both realistic and anime (user-confirmed).
 //   - Fast SDXL: works but fal's model-level filter sometimes returns
 //     black frames for explicit prompts.
-//   - CyberRealistic Pony / WAI Illustrious / Hassaku Illustrious: not yet
-//     user-validated; kept opt-in with cold-start warning.
 //
-// Removed (do NOT re-add without re-verifying):
+// Removed (do NOT re-add without re-verifying / a submit+poll backend):
 //   - fal-ai/flux/dev — fal's NSFW classifier blocks every output for adult
 //     prompts even with enable_safety_checker=false.
 //   - John6666/pony-realism-v22-main-sdxl — fal returns "Invalid URL or
 //     repository key" 422; the slug doesn't resolve on fal-ai/lora.
+//   - John6666/cyberrealistic-pony-v110-sdxl,
+//     John6666/wai-nsfw-illustrious-sdxl-v150-sdxl,
+//     John6666/hassaku-xl-illustrious-v31-sdxl —
+//     2-3 min fal cold start exceeds the 60s server-action budget on every
+//     first hit, surfacing as a Vercel FUNCTION_INVOCATION_TIMEOUT page that
+//     bypasses our client-side error handling. Bring them back when we
+//     migrate the builder to submit+poll like the admin route does (see
+//     src/app/api/admin/characters/[id]/generate-image/route.ts).
 const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: string }> = {
   // Fast warm fal-native endpoints — low-latency defaults.
   'fal-ai/fast-sdxl': {
@@ -309,21 +333,6 @@ const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: str
   'fal-ai/flux/schnell': {
     labelKey: 'builder.models.fluxSchnell.label',
     descriptionKey: 'builder.models.fluxSchnell.description',
-  },
-  // Pony realism LoRA — NSFW-strong realistic. Cold start 2-3 min, warm
-  // 30-60 s. Opt-in.
-  'John6666/cyberrealistic-pony-v110-sdxl': {
-    labelKey: 'builder.models.cyberrealisticPony.label',
-    descriptionKey: 'builder.models.cyberrealisticPony.description',
-  },
-  // Illustrious anime LoRAs — NSFW-strong anime. Same cold-start profile.
-  'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl': {
-    labelKey: 'builder.models.waiIllustrious.label',
-    descriptionKey: 'builder.models.waiIllustrious.description',
-  },
-  'John6666/hassaku-xl-illustrious-v31-sdxl': {
-    labelKey: 'builder.models.hassakuIllustrious.label',
-    descriptionKey: 'builder.models.hassakuIllustrious.description',
   },
 }
 
