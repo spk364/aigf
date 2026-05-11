@@ -297,13 +297,19 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
 
   const draftData = (draft.data ?? {}) as Record<string, unknown>
   const appearance = (draftData.appearance ?? {}) as Record<string, unknown>
+  const identity = (draftData.identity ?? {}) as Record<string, unknown>
+  const backstory = (draftData.backstory ?? {}) as Record<string, unknown>
   const uniqueDesc = (draftData.uniqueDesc ?? {}) as Record<string, unknown>
   const pathChoice = String(draftData.pathChoice ?? 'presets')
 
+  // Pass identity + backstory so the prompt can reflect archetype mood
+  // (expression / vibe) and occupation outfit when those have been picked.
+  // They're optional — the preview step can run before the user has filled
+  // them, in which case we degrade to the default sexy-but-clothed anchor.
   const prompt =
     pathChoice === 'unique'
       ? buildUniquePrompt(uniqueDesc, appearance)
-      : buildPreviewPrompt(appearance)
+      : buildPreviewPrompt(appearance, identity, backstory)
   const negativePrompt = buildPreviewNegativePrompt(appearance)
   // The user can pin a model from the preview screen; fall back to the
   // art-style default when they haven't (or when the saved value no longer

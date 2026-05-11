@@ -37,6 +37,17 @@ export const QUALITY_NEGATIVE =
   '(side view:1.2), (profile view:1.2), (back view:1.3), ' +
   '(bust shot:1.2), (close-up:1.2), (portrait crop:1.2)'
 
+// Push back against lingerie / undress on the preview. The product brief
+// is "openly sexy but clothed" — visible cleavage and exposed legs are
+// allowed (and explicit positive tokens); lingerie / underwear / nudity
+// are not. Without these negatives the body-size positives (huge breasts,
+// big butt) plus "alluring pose" can pull the model into bra-and-panties
+// territory on every other roll.
+export const NSFW_RESTRAINT_NEGATIVE =
+  '(lingerie:1.3), (underwear:1.3), (bra and panties:1.3), (panties:1.3), ' +
+  '(bra:1.2), (nude:1.4), (topless:1.3), (bottomless:1.3), (naked:1.4), ' +
+  '(nipples:1.3), (exposed breasts:1.3)'
+
 const BREAST_PROMPT: Record<string, { positive: string; negative: string }> = {
   flat: {
     positive: '(flat chest:1.4), (very small breasts:1.3)',
@@ -116,6 +127,61 @@ const ANIME_NEGATIVE =
   '(fighting pose:1.3), (action pose:1.2), (battle scene:1.2), ' +
   '(mature woman:1.2), (heavy makeup:1.1), (face mask:1.2)'
 
+// Default outfit when no occupation-specific outfit is in play. Tasteful
+// but suggestive: visible cleavage and exposed legs, but explicitly NOT
+// lingerie/underwear/nude (per product brief — fully clothed but openly
+// sexy). Each slot has its own mild weight so a subsequent occupation
+// outfit can override without fighting these tokens.
+const DEFAULT_FEMALE_OUTFIT =
+  '(deep v-neck top:1.2), (visible cleavage:1.2), (mini skirt:1.2), ' +
+  '(exposed thighs:1.2), bare legs, fitted dress, alluring fashion, ' +
+  'tasteful but sexy, fully clothed'
+const DEFAULT_MALE_OUTFIT =
+  'fitted t-shirt, casual jeans, smart casual, fully clothed'
+
+// Outfit tokens keyed by occupation value. When set on identity, this
+// replaces the default outfit so the character looks the part. Keep them
+// "openly sexy professional" — uniform-coded but with the same revealing
+// silhouette philosophy as the default. School-coded outfits are excluded
+// for safety even though `student` is a valid occupation: the safety
+// negative already pushes hard against `school uniform`.
+const OCCUPATION_OUTFIT: Record<string, string> = {
+  massage_therapist: '(low-cut spa robe:1.2), open neckline, bare legs, fitted spa wear',
+  fitness_coach: '(tight sports bra:1.2), (low-rise yoga shorts:1.2), exposed midriff, athletic wear',
+  secretary: '(unbuttoned blouse:1.2), pencil skirt, exposed thighs, office heels, business chic',
+  flight_attendant: '(fitted flight attendant uniform:1.2), short skirt, neckerchief, heels',
+  librarian: '(unbuttoned blouse:1.2), pencil skirt, glasses, exposed thighs, sensible heels',
+  doctor: '(open white coat:1.2), low-cut blouse underneath, fitted skirt, exposed legs, stethoscope',
+  nurse: '(short nurse dress:1.2), low neckline, exposed thighs, white stockings, fitted uniform',
+  police_officer: '(fitted police shirt:1.2), short uniform skirt, exposed thighs, duty belt, NOT military, NOT armor',
+  teacher: '(unbuttoned blouse:1.2), pencil skirt, glasses, exposed thighs, sensible heels',
+  // `student` is intentionally translated to "young adult casualwear" — never
+  // school uniform, kept as casual/college-aged styling to avoid the
+  // school-coded prior.
+  student: 'casual crop top, fitted jeans, exposed midriff, college student style, NOT school uniform',
+  artist: 'paint-stained tank top, denim shorts, exposed legs, bohemian style',
+  lawyer: '(open suit jacket:1.2), low-cut blouse, fitted pencil skirt, exposed legs, heels',
+  streamer: 'fitted gaming hoodie, short shorts, exposed thighs, headphones around neck',
+  actress: 'glamorous low-cut evening dress, exposed back, high slit skirt, red carpet styling',
+  model: 'high-fashion dress, exposed shoulders, plunging neckline, runway styling',
+}
+
+// Mood / expression tokens keyed by archetype value. Subtle — they nudge
+// expression and pose vibe toward the personality without dominating the
+// frame.
+const ARCHETYPE_MOOD: Record<string, string> = {
+  sweet_girlfriend: 'warm gentle smile, affectionate expression, soft eyes',
+  adventurous_spirit: 'bright excited smile, energetic stance, lively expression',
+  mysterious_one: 'subtle knowing smile, intense gaze, thoughtful expression',
+  confident_leader: 'confident smirk, commanding posture, sharp gaze',
+  shy_romantic: 'soft blushing smile, slightly downcast gaze, delicate expression',
+  intellectual: 'thoughtful smile, intelligent gaze, refined expression',
+  free_spirit: 'carefree wide smile, relaxed playful pose, bright eyes',
+  caretaker: 'warm nurturing smile, soft attentive gaze, kind expression',
+  dominant_temptress: 'sultry confident smirk, alluring half-lidded gaze, magnetic pose',
+  playful_brat: 'mischievous teasing smile, playful tongue out, cheeky gaze',
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function chooseFraming(appearance: Record<string, unknown>): string {
@@ -154,7 +220,17 @@ function buildHairPhrase(hair: Record<string, string>): string | null {
 
 // ── Prompt builders ────────────────────────────────────────────────────────
 
-export function buildPreviewPrompt(appearance: Record<string, unknown>): string {
+export function buildPreviewPrompt(
+  appearance: Record<string, unknown>,
+  // Identity (archetype, occupation) and backstory inputs are optional —
+  // the preview step on the presets path runs before they're filled, so we
+  // gracefully degrade. When they ARE present, the prompt picks up an
+  // archetype-mood expression and an occupation-specific outfit so the
+  // image actually reflects "playful brat nurse" rather than a generic
+  // anime girl in a generic dress.
+  identity?: Record<string, unknown>,
+  _backstory?: Record<string, unknown>,
+): string {
   const parts: string[] = []
   const artStyle = String(appearance.artStyle ?? 'realistic')
   const isAnime = artStyle === 'anime'
@@ -190,6 +266,12 @@ export function buildPreviewPrompt(appearance: Record<string, unknown>): string 
     parts.push(isMale ? ANIME_MALE_ANCHOR : ANIME_FEMALE_ANCHOR)
   }
 
+  // Archetype mood is optional — overrides the anchor's neutral expression
+  // when the user has picked one. Goes early so it can influence pose/face,
+  // before body details lock in.
+  const archetype = identity ? String(identity.archetype ?? '') : ''
+  if (ARCHETYPE_MOOD[archetype]) parts.push(ARCHETYPE_MOOD[archetype]!)
+
   const ethnicity = String(appearance.ethnicity ?? '')
   const ethOpt = ETHNICITIES.find((e) => e.value === ethnicity)
   if (ethOpt?.promptFragment) parts.push(`(${ethOpt.promptFragment}:1.2)`)
@@ -212,6 +294,20 @@ export function buildPreviewPrompt(appearance: Record<string, unknown>): string 
   const eyeOpt = EYE_COLORS.find((e) => e.value === eyes.color)
   if (eyeOpt?.promptFragment) parts.push(`(${eyeOpt.promptFragment}:1.3)`)
 
+  // Outfit slot. Occupation-specific outfit wins (so a "nurse" looks like a
+  // sexy nurse, not a generic alluring girl). Falls back to the default
+  // sexy-but-clothed anchor (visible cleavage + exposed legs, no lingerie)
+  // when no occupation is set.
+  const occupation = identity ? String(identity.occupation ?? '') : ''
+  const occupationOutfit = OCCUPATION_OUTFIT[occupation]
+  if (occupationOutfit) {
+    parts.push(occupationOutfit)
+  } else if (!isMale) {
+    parts.push(DEFAULT_FEMALE_OUTFIT)
+  } else {
+    parts.push(DEFAULT_MALE_OUTFIT)
+  }
+
   parts.push(chooseFraming(appearance))
   if (isAnime) {
     parts.push(ANIME_QUALITY_TAIL)
@@ -223,7 +319,7 @@ export function buildPreviewPrompt(appearance: Record<string, unknown>): string 
 }
 
 export function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string {
-  const parts: string[] = [QUALITY_NEGATIVE, SAFETY_NEGATIVE]
+  const parts: string[] = [QUALITY_NEGATIVE, SAFETY_NEGATIVE, NSFW_RESTRAINT_NEGATIVE]
   if (String(appearance.artStyle ?? 'realistic') === 'anime') parts.push(ANIME_NEGATIVE)
   const breastSize = String(appearance.breastSize ?? '')
   if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.negative)
