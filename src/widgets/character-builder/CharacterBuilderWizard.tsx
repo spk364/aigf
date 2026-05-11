@@ -402,6 +402,88 @@ const UNIQUE_STEPS: StepDef[] = [
   { key: 'review', phase: 4 },
 ]
 
+// Same gating semantics as the runtime canAdvance() inside the component, but
+// exposed as a pure function so the initial-step inference (initialSubIdx)
+// can replay it across the persisted draft. Update in lockstep with
+// canAdvance() — both encode the same per-step data prerequisite.
+function isStepDataSatisfied(
+  stepKey: StepKey,
+  draft: {
+    pathChoice?: 'presets' | 'unique'
+    appearance?: Record<string, unknown>
+    identity?: Record<string, unknown>
+    backstory?: Record<string, unknown>
+    uniqueDesc?: Record<string, unknown>
+    selectedReferenceMediaAssetId?: string | null
+  },
+): boolean {
+  const a = (draft.appearance ?? {}) as Record<string, unknown>
+  const i = (draft.identity ?? {}) as Record<string, unknown>
+  const b = (draft.backstory ?? {}) as Record<string, unknown>
+  const u = (draft.uniqueDesc ?? {}) as Record<string, unknown>
+  const hair = (a.hair ?? {}) as Record<string, string>
+  const eyes = (a.eyes ?? {}) as Record<string, string>
+
+  switch (stepKey) {
+    case 'intro':
+      return !!a.gender && !!a.artStyle && !!draft.pathChoice
+    case 'unique_desc': {
+      const name = String(u.name ?? '')
+      return name.length >= 2 && validateName(name).ok && !!String(u.personality ?? '').trim()
+    }
+    case 'age_ethnicity':
+      return !!a.ageRange && !!a.ethnicity
+    case 'body':
+      return !!a.bodyType && (a.gender === 'male' || !!a.breastSize) && !!a.buttSize
+    case 'hair_eyes':
+      return !!hair.style && !!hair.color && !!hair.length && !!eyes.color
+    case 'preview':
+      return !!draft.selectedReferenceMediaAssetId
+    case 'archetype':
+      return !!i.archetype
+    case 'name_orientation': {
+      const name = String(i.name ?? '')
+      return name.length >= 2 && validateName(name).ok && !!i.sexualOrientation
+    }
+    case 'chat_style':
+      return !!b.chatStyle
+    case 'occupation':
+      return (
+        !!i.occupation &&
+        (i.occupation !== 'custom' || !!String(i.occupationCustom ?? '').trim())
+      )
+    case 'relationship':
+      return (
+        !!b.startingRelationship &&
+        (b.startingRelationship !== 'custom' ||
+          !!String(b.startingRelationshipCustom ?? '').trim())
+      )
+    case 'kinks':
+      return Array.isArray(b.kinks) // user reached this step (kinks are optional but the field gets initialised on entry)
+    case 'review':
+      return false // review has no "data" of its own — never claim it as the furthest step
+  }
+}
+
+// Walk steps backwards and return the index of the highest step whose data
+// prerequisite is satisfied. A returning user with a populated draft lands
+// at their last position instead of getting bounced to the intro by a stale
+// `step=0` URL or a phase-only currentStep fallback.
+function inferFurthestStepIdx(
+  steps: StepDef[],
+  draft: Parameters<typeof isStepDataSatisfied>[1],
+): number {
+  for (let i = steps.length - 1; i >= 0; i--) {
+    if (isStepDataSatisfied(steps[i]!.key, draft)) {
+      // If the user satisfied step N's data, they were at N+1 next (or review
+      // if N is the last data step). Clamp to the last index so we never
+      // overrun.
+      return Math.min(i + 1, steps.length - 1)
+    }
+  }
+  return 0
+}
+
 // ── Intro screen (gender + art style + path choice) ─────────────────────
 
 function IntroScreen({
@@ -1821,16 +1903,27 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
     [draftData.pathChoice],
   )
 
-  // Sub-step index. URL `step` wins over DB-derived phase position because
-  // URL is the explicit user intent (shared link to "step=4" lands there).
+  // Sub-step index. URL `step > 0` wins as explicit user intent (shared link
+  // to "step=4" lands there). step=0 or no step param falls back to walking
+  // the persisted draft and resuming at the highest data-satisfied position
+  // — otherwise a returning user with a fully-filled draft gets bounced to
+  // the intro by a stale `step=0` written during a previous mount, or by the
+  // phase-only currentStep fallback (currentStep tracks phase 1-4, which
+  // resolves to the FIRST sub-step of that phase and loses position within).
   const initialSubIdx = useMemo(() => {
+    const stepsForPath = draftData.pathChoice === 'unique' ? UNIQUE_STEPS : PRESETS_STEPS
+    const totalLen = stepsForPath.length
     const urlStep = searchParams ? Number(searchParams.get('step')) : NaN
-    if (Number.isFinite(urlStep) && urlStep >= 0) {
-      const totalLen = (draftData.pathChoice === 'unique' ? UNIQUE_STEPS : PRESETS_STEPS).length
+    if (Number.isFinite(urlStep) && urlStep > 0) {
       return Math.min(Math.max(0, Math.floor(urlStep)), totalLen - 1)
     }
+    const inferred = inferFurthestStepIdx(stepsForPath, draftData)
+    if (inferred > 0) return inferred
+    // Genuinely fresh draft (no data inferred). Honour the saved phase as a
+    // last-resort hint so a draft that was created with a non-default phase
+    // still lands at that phase's first step.
     const phase = Math.max(1, Math.min(4, initialDraft.currentStep ?? 1))
-    const idx = STEPS.findIndex((s) => s.phase === phase)
+    const idx = stepsForPath.findIndex((s) => s.phase === phase)
     return idx >= 0 ? idx : 0
     // STEPS depends on pathChoice and is computed above; we deliberately
     // run this once at mount (linter wants STEPS in deps but its identity
