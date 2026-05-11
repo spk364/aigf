@@ -1,11 +1,12 @@
 'use server'
 // TODO(safety): run scorer on free-text fields (name, occupation custom, relationship custom, looks/personality desc) when pipeline lands
-
+//
 // Pony/Illustrious LoRA checkpoints exposed in the picker have a 2-3 min
-// cold start; warm calls land in 30-60 s for 4 images. 60 s gives us a
-// shot at warm dispatches without timing out, while still failing fast on
-// cold cases (the user retries; second hit is warm).
-export const maxDuration = 60
+// cold start; warm calls land in 30-60 s for 4 images. The 60 s budget
+// for generatePreviewsAction is set on the route segment that calls into
+// us — see `src/app/(app)/[locale]/builder/[draftId]/page.tsx`. (Server
+// action files can only export async functions, so the config must live
+// on the page.)
 
 import { redirect } from 'next/navigation'
 import { getLocale } from 'next-intl/server'
