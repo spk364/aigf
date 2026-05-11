@@ -14,7 +14,7 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { z } from 'zod'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
-import { generateImage } from '@/shared/ai/fal'
+import { generateImage, submitImageJob, fetchImageJobStatus } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
 import { track } from '@/shared/analytics/posthog'
@@ -405,6 +405,252 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
   })
 
   return { ok: true, previews, used: previewGenerations.length + 1 }
+}
+
+// ── Submit + poll preview generation ──────────────────────────────────────
+// Replaces the synchronous generatePreviewsAction above for the wizard's
+// preview step. The sync path can't handle 2-3 min cold starts on
+// Pony/Illustrious LoRA endpoints (Vercel kills the function at
+// maxDuration=60 and returns FUNCTION_INVOCATION_TIMEOUT, bypassing the
+// client's error handling). Splitting into submit + poll keeps each call
+// fast and gives us LoRA support back. The pending job is persisted on
+// draft.data.pendingPreviewJob so the poll action doesn't have to trust
+// client-supplied URLs (which would be a redirect/SSRF surface).
+
+export type PendingPreviewJob = {
+  // Persisted opaque handles returned by fal's submit response.
+  requestId: string
+  statusUrl: string
+  responseUrl: string
+  endpoint: string
+  modelName: string
+  // Snapshotted so the completion path can persist the prompt actually
+  // sent without re-deriving it from a draft that might have changed.
+  prompt: string
+  startedAtMs: number
+}
+
+export type SubmitPreviewResult =
+  | { ok: true; status: 'pending'; queuePosition?: number; lastLog?: string }
+  | { ok: false; error: string }
+
+const POLL_DEADLINE_MS = 4 * 60 * 1000 // 4 min — covers Pony/Illustrious cold start with margin
+
+export async function submitPreviewJobAction(draftId: string): Promise<SubmitPreviewResult> {
+  const user = await requireCompleteProfile()
+
+  const rl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+  if (!rl.allowed) {
+    return { ok: false, error: 'rate_limited' }
+  }
+
+  const payload = await getPayload({ config })
+
+  let draft: Awaited<ReturnType<typeof loadDraftOwned>>
+  try {
+    draft = await loadDraftOwned(payload, draftId, user.id)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Unknown error' }
+  }
+
+  const previewGenerations = (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>
+  const generationCount = new Set(
+    previewGenerations.map((g) => String(g.generatedAt ?? '')).filter(Boolean),
+  ).size
+  if (generationCount >= 5) {
+    return { ok: false, error: 'preview_limit_reached' }
+  }
+
+  const draftData = (draft.data ?? {}) as Record<string, unknown>
+  const appearance = (draftData.appearance ?? {}) as Record<string, unknown>
+  const identity = (draftData.identity ?? {}) as Record<string, unknown>
+  const backstory = (draftData.backstory ?? {}) as Record<string, unknown>
+  const uniqueDesc = (draftData.uniqueDesc ?? {}) as Record<string, unknown>
+  const pathChoice = String(draftData.pathChoice ?? 'presets')
+
+  const prompt =
+    pathChoice === 'unique'
+      ? buildUniquePrompt(uniqueDesc, appearance)
+      : buildPreviewPrompt(appearance, identity, backstory)
+  const negativePrompt = buildPreviewNegativePrompt(appearance)
+  const selectedModel =
+    typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null
+  const modelId = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
+  const { endpoint, modelName } = resolveFalDispatch(modelId)
+  const numInferenceSteps = endpoint === 'fal-ai/flux/schnell' ? 4 : 30
+
+  let handles: Awaited<ReturnType<typeof submitImageJob>>
+  try {
+    handles = await submitImageJob({
+      prompt,
+      negativePrompt,
+      imageSize: { width: 832, height: 1216 },
+      numImages: 1,
+      endpoint,
+      modelName,
+      guidanceScale: 6.5,
+      numInferenceSteps,
+    })
+  } catch (e) {
+    console.error('[builder-preview-submit] failed', { modelId, endpoint, modelName, error: e })
+    return { ok: false, error: e instanceof Error ? e.message : 'submit_failed' }
+  }
+
+  const pending: PendingPreviewJob = {
+    requestId: handles.requestId,
+    statusUrl: handles.statusUrl,
+    responseUrl: handles.responseUrl,
+    endpoint: handles.endpoint,
+    modelName: handles.modelName,
+    prompt,
+    startedAtMs: Date.now(),
+  }
+
+  await payload.update({
+    collection: 'character-drafts',
+    id: draftId,
+    data: {
+      data: { ...draftData, pendingPreviewJob: pending },
+    },
+    overrideAccess: true,
+  })
+
+  return { ok: true, status: 'pending' }
+}
+
+export type FetchPreviewStatusResult =
+  | { ok: true; status: 'pending'; queuePosition?: number; lastLog?: string }
+  | { ok: true; status: 'completed'; preview: { mediaAssetId: string | number; publicUrl: string }; used: number }
+  | { ok: false; error: string }
+
+export async function fetchPreviewJobStatusAction(draftId: string): Promise<FetchPreviewStatusResult> {
+  const user = await requireCompleteProfile()
+  const payload = await getPayload({ config })
+
+  let draft: Awaited<ReturnType<typeof loadDraftOwned>>
+  try {
+    draft = await loadDraftOwned(payload, draftId, user.id)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Unknown error' }
+  }
+
+  const draftData = (draft.data ?? {}) as Record<string, unknown>
+  const pending = draftData.pendingPreviewJob as PendingPreviewJob | undefined
+  if (!pending || typeof pending !== 'object' || !pending.statusUrl) {
+    return { ok: false, error: 'no_pending_job' }
+  }
+
+  // Hard deadline so we don't poll forever on a stuck fal queue.
+  if (Date.now() - pending.startedAtMs > POLL_DEADLINE_MS) {
+    await clearPendingPreviewJob(payload, draftId, draftData)
+    return { ok: false, error: 'poll_timed_out' }
+  }
+
+  let status: Awaited<ReturnType<typeof fetchImageJobStatus>>
+  try {
+    status = await fetchImageJobStatus({
+      statusUrl: pending.statusUrl,
+      responseUrl: pending.responseUrl,
+      requestId: pending.requestId,
+      endpoint: pending.endpoint,
+      modelName: pending.modelName,
+      startedAtMs: pending.startedAtMs,
+    })
+  } catch (e) {
+    console.error('[builder-preview-poll] failed', { error: e })
+    return { ok: false, error: e instanceof Error ? e.message : 'poll_failed' }
+  }
+
+  if (status.status === 'pending') {
+    return {
+      ok: true,
+      status: 'pending',
+      queuePosition: status.queuePosition,
+      lastLog: status.lastLog,
+    }
+  }
+
+  if (status.status === 'failed') {
+    await clearPendingPreviewJob(payload, draftId, draftData)
+    return { ok: false, error: status.error }
+  }
+
+  // ── status === 'completed' — mirror to R2 + persist ──────────────────────
+  const result = status.result
+  const previewGenerations = (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>
+
+  let persisted: Awaited<ReturnType<typeof persistGeneratedImage>> | null = null
+  for (const img of result.images) {
+    try {
+      const analysis = await fetchAndAnalyzeImage(img.url)
+      if (detectSafetyFilteredFrame(analysis).kind === 'filtered') continue
+    } catch {
+      // Analysis failure is non-fatal — fall through and persist anyway.
+    }
+    try {
+      persisted = await persistGeneratedImage({
+        payload,
+        fromUrl: img.url,
+        width: img.width,
+        height: img.height,
+        contentType: img.contentType,
+        kind: 'character-preview',
+        ownerUserId: user.id,
+      })
+      break // numImages=1 above; defensively break on first success.
+    } catch (e) {
+      console.warn('[builder-preview-poll] persistGeneratedImage failed', e)
+      continue
+    }
+  }
+
+  if (!persisted) {
+    await clearPendingPreviewJob(payload, draftId, draftData)
+    return { ok: false, error: 'safety_filtered' }
+  }
+
+  const generatedAt = new Date().toISOString()
+  const newEntry = {
+    mediaAssetId: String(persisted.mediaAssetId),
+    promptUsed: pending.prompt,
+    generatedAt,
+    selectedAsReference: false,
+  }
+
+  const nextDraftData = { ...draftData }
+  delete (nextDraftData as Record<string, unknown>).pendingPreviewJob
+
+  await payload.update({
+    collection: 'character-drafts',
+    id: draftId,
+    data: {
+      data: nextDraftData,
+      previewGenerations: [...previewGenerations, newEntry],
+    },
+    overrideAccess: true,
+  })
+
+  return {
+    ok: true,
+    status: 'completed',
+    preview: { mediaAssetId: persisted.mediaAssetId, publicUrl: persisted.publicUrl },
+    used: previewGenerations.length + 1,
+  }
+}
+
+async function clearPendingPreviewJob(
+  payload: Awaited<ReturnType<typeof getPayload>>,
+  draftId: string,
+  draftData: Record<string, unknown>,
+): Promise<void> {
+  const next = { ...draftData }
+  delete (next as Record<string, unknown>).pendingPreviewJob
+  await payload.update({
+    collection: 'character-drafts',
+    id: draftId,
+    data: { data: next },
+    overrideAccess: true,
+  })
 }
 
 export async function selectReferenceAction(
