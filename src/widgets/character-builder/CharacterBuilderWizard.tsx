@@ -469,11 +469,18 @@ function isStepDataSatisfied(
 // prerequisite is satisfied. A returning user with a populated draft lands
 // at their last position instead of getting bounced to the intro by a stale
 // `step=0` URL or a phase-only currentStep fallback.
+//
+// Important: we start the walk at i=1, not i=0. The intro step's data
+// (gender, artStyle, pathChoice) is pre-seeded by createDraftAction so a
+// brand-new draft would otherwise satisfy intro's check and skip straight
+// to age_ethnicity — the user would never see the realistic/anime picker.
+// Only treat the draft as "past intro" when something further along has
+// real user data.
 function inferFurthestStepIdx(
   steps: StepDef[],
   draft: Parameters<typeof isStepDataSatisfied>[1],
 ): number {
-  for (let i = steps.length - 1; i >= 0; i--) {
+  for (let i = steps.length - 1; i >= 1; i--) {
     if (isStepDataSatisfied(steps[i]!.key, draft)) {
       // If the user satisfied step N's data, they were at N+1 next (or review
       // if N is the last data step). Clamp to the last index so we never

@@ -283,10 +283,11 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
 
   const previewGenerations = (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>
 
-  // Each generation appends N entries (numImages=4 below). Count distinct
-  // generatedAt timestamps so the cap matches user-perceived clicks (5 sets,
-  // not 5 individual images). Mirrors the client check in
-  // CharacterBuilderWizard.tsx — keep them in sync.
+  // Each generation appends N entries (numImages=1 below — was 4, dropped
+  // to match user expectation of one click → one preview). Count distinct
+  // generatedAt timestamps so the cap matches user-perceived clicks (5
+  // generations) regardless of any future numImages change. Mirrors the
+  // client check in CharacterBuilderWizard.tsx — keep them in sync.
   const generationCount = new Set(
     previewGenerations.map((g) => String(g.generatedAt ?? '')).filter(Boolean),
   ).size
@@ -321,10 +322,14 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
     result = await generateImage({
       prompt,
       negativePrompt,
-      // Native SDXL bucket — fast-sdxl, Pony, and Illustrious LoRAs all render
-      // their best at 832×1216.
+      // Native SDXL bucket — fast-sdxl renders its best at 832×1216.
       imageSize: { width: 832, height: 1216 },
-      numImages: 4,
+      // One image per click. The previous numImages=4 produced a 4-up grid
+      // the user found confusing — they expected one click → one preview.
+      // The 5-set limit (counted by distinct generatedAt) still gives 5
+      // chances to retry; safety-filtered runs return early with
+      // 'safety_filtered' so the user can adjust the prompt and retry.
+      numImages: 1,
       endpoint,
       modelName,
       // Higher guidance pulls the result closer to the prompt (vs. the model's
