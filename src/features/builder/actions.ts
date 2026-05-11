@@ -283,7 +283,14 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
 
   const previewGenerations = (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>
 
-  if (previewGenerations.length >= 5) {
+  // Each generation appends N entries (numImages=4 below). Count distinct
+  // generatedAt timestamps so the cap matches user-perceived clicks (5 sets,
+  // not 5 individual images). Mirrors the client check in
+  // CharacterBuilderWizard.tsx — keep them in sync.
+  const generationCount = new Set(
+    previewGenerations.map((g) => String(g.generatedAt ?? '')).filter(Boolean),
+  ).size
+  if (generationCount >= 5) {
     return { ok: false, error: 'preview_limit_reached' }
   }
 
@@ -365,10 +372,15 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
     return { ok: false, error: 'safety_filtered' }
   }
 
+  // Compute the generation timestamp once so every entry from this single
+  // dispatch shares it — the limit counter (here and on the client) groups by
+  // generatedAt to count "user clicks" rather than individual images. Calling
+  // new Date() per-entry would usually give the same ms but is not guaranteed.
+  const generatedAt = new Date().toISOString()
   const newEntries = previews.map((p) => ({
     mediaAssetId: String(p.mediaAssetId),
     promptUsed: prompt,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     selectedAsReference: false,
   }))
 

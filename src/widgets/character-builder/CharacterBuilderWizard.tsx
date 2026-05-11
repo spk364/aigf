@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Button, Card, Input } from '@/shared/ui'
 import {
   GENDERS,
@@ -1050,7 +1050,17 @@ function PreviewScreen({
   const [paramsOpen, setParamsOpen] = useState(false)
   const [promptOpen, setPromptOpen] = useState(true)
 
-  const previewCount = previewGenerations.length
+  // Each generation produces N images (numImages=4 server-side), all stamped
+  // with the same generatedAt. Count distinct timestamps so the 5-set limit
+  // means 5 user clicks, not 5 individual images. Without this the user gets
+  // the Generate button disabled after the second click (8 entries > 5),
+  // even though they only ran two generations.
+  const generationCount = useMemo(
+    () => new Set(previewGenerations.map((g) => g.generatedAt).filter(Boolean)).size,
+    [previewGenerations],
+  )
+  const PREVIEW_GEN_LIMIT = 5
+  const limitReached = generationCount >= PREVIEW_GEN_LIMIT
 
   // Recompute the live prompt whenever the user tweaks anything in the
   // compact editor — the textarea below mirrors what the server will send.
@@ -1156,6 +1166,10 @@ function PreviewScreen({
       </div>
 
       <div className="mb-4">
+        {/* onSelect only updates appearance.modelEndpoint and triggers a
+            debounced draft save (saveDraftStepAction). It does NOT call
+            generatePreviewsAction — image generation only fires from the
+            Generate button click below (handleGenerate). */}
         <ModelPicker
           models={IMAGE_MODELS}
           selectedEndpoint={selectedEndpoint}
@@ -1209,12 +1223,12 @@ function PreviewScreen({
       <div className="flex items-center justify-between mb-4">
         <span className="text-xs text-[var(--color-text-muted)]">
           {t(strings, 'builder.previewsRemaining')
-            .replace('{used}', String(previewCount))
-            .replace('{max}', '5')}
+            .replace('{used}', String(generationCount))
+            .replace('{max}', String(PREVIEW_GEN_LIMIT))}
         </span>
         <Button
           onClick={handleGenerate}
-          disabled={generating || previewCount >= 5}
+          disabled={generating || limitReached}
           variant="secondary"
           size="sm"
         >
@@ -1222,13 +1236,20 @@ function PreviewScreen({
             ? '...'
             : t(
                 strings,
-                previewCount === 0
+                generationCount === 0
                   ? 'builder.actions.generatePreviews'
                   : 'builder.actions.regenerate',
               )}
         </Button>
       </div>
 
+      {/* Surface the disabled-by-limit state so the button doesn't just sit
+          dead with no explanation. */}
+      {limitReached && !genError && (
+        <p className="text-xs text-[var(--color-text-muted)] mb-3">
+          {t(strings, 'builder.errors.previewLimitReached')}
+        </p>
+      )}
       {genError && <p className="text-xs text-[var(--color-danger)] mb-3">{genError}</p>}
 
       {previewGenerations.length === 0 ? (
@@ -1865,7 +1886,6 @@ function ReviewScreen({
 // ── Main wizard ───────────────────────────────────────────────────────────
 
 export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props) {
-  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
@@ -1938,20 +1958,29 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const urlSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sync local state → URL (debounced, replace not push so back button
-  // exits the wizard rather than walking through every keystroke).
+  // Sync local state → URL (debounced). Uses window.history.replaceState
+  // directly instead of router.replace because router.replace in App Router
+  // triggers an RSC payload re-fetch on every URL change — that shows up as
+  // POST /en/builder/<id>?_rsc=… in the network tab on every keystroke and
+  // every model switch, looking like spurious work even though no server
+  // action runs. history.replaceState is a pure client-side URL update:
+  // shareable URL, browser back exits the wizard, zero extra network. The
+  // saveDraftStepAction debounce (separate, 600ms) still persists state.
   useEffect(() => {
     if (urlSyncTimeoutRef.current) clearTimeout(urlSyncTimeoutRef.current)
     urlSyncTimeoutRef.current = setTimeout(() => {
       const url = draftToUrlState(draftData, stepIdx)
       const sp = serializeUrlState(url)
       const qs = sp.toString()
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+      const next = qs ? `${pathname}?${qs}` : pathname
+      if (typeof window !== 'undefined' && window.location.href.split('#')[0] !== window.location.origin + next) {
+        window.history.replaceState(window.history.state, '', next)
+      }
     }, 350)
     return () => {
       if (urlSyncTimeoutRef.current) clearTimeout(urlSyncTimeoutRef.current)
     }
-  }, [draftData, stepIdx, pathname, router])
+  }, [draftData, stepIdx, pathname])
 
   // Clamp stepIdx if the path changes (presets → unique or vice versa).
   const safeStepIdx = Math.min(stepIdx, STEPS.length - 1)
