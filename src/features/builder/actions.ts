@@ -117,7 +117,7 @@ const appearanceSchema = z.object({
   artStyle: z.enum(['realistic', 'anime']).optional(),
   ethnicity: z.enum(['european', 'asian', 'latina', 'african', 'south_asian', 'middle_eastern']).optional(),
   ageDisplay: z.number().min(18).max(99).optional(),
-  ageRange: z.enum(['twenties', 'thirties', 'forties', 'fifties']).optional(),
+  ageRange: z.enum(['young_adult', 'twenties', 'thirties', 'forties', 'fifties']).optional(),
   bodyType: z.enum(['slim', 'athletic', 'average', 'curvy', 'bbw']).optional(),
   breastSize: z.enum(['flat', 'small', 'average', 'big', 'huge']).optional(),
   buttSize: z.enum(['slim', 'small', 'athletic', 'big', 'huge']).optional(),

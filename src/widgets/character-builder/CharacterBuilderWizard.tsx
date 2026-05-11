@@ -488,7 +488,7 @@ function AgeEthnicityScreen({
           <Chip
             key={o.value}
             emoji={o.emoji}
-            label={`${t(strings, o.labelKey)} · ${o.rangeLabel}`}
+            label={t(strings, o.labelKey)}
             selected={ageRange === o.value}
             onClick={() =>
               onChange({ ...appearance, ageRange: o.value, ageDisplay: o.defaultAge })
@@ -996,26 +996,40 @@ function PreviewScreen({
   const handleGenerate = async () => {
     setGenerating(true)
     setGenError(null)
-    const result = await generatePreviewsAction(draftId)
-    setGenerating(false)
-    if (!result.ok) {
+    // try/finally so a thrown server-action error (504 timeout, network drop)
+    // never strands the button in its disabled "..." state.
+    try {
+      const result = await generatePreviewsAction(draftId)
+      if (!result.ok) {
+        setGenError(
+          result.error === 'preview_limit_reached'
+            ? t(strings, 'builder.errors.previewLimitReached')
+            : result.error === 'safety_filtered'
+              ? t(strings, 'builder.errors.previewSafetyFiltered')
+              : result.error,
+        )
+        return
+      }
+      const newEntries: PreviewGeneration[] = result.previews.map((p) => ({
+        mediaAssetId: String(p.mediaAssetId),
+        publicUrl: p.publicUrl,
+        promptUsed: '',
+        generatedAt: new Date().toISOString(),
+        selectedAsReference: false,
+      }))
+      onPreviewsGenerated([...previewGenerations, ...newEntries])
+    } catch (e) {
+      // Most likely Vercel 504 (FUNCTION_INVOCATION_TIMEOUT) when a cold
+      // Pony/Illustrious LoRA blows past maxDuration. Surface a clear hint
+      // instead of an opaque "Failed to fetch" toast.
       setGenError(
-        result.error === 'preview_limit_reached'
-          ? t(strings, 'builder.errors.previewLimitReached')
-          : result.error === 'safety_filtered'
-            ? t(strings, 'builder.errors.previewSafetyFiltered')
-            : result.error,
+        t(strings, 'builder.errors.previewTimeout',
+          'Generation timed out. Pick a faster model (FLUX schnell / fast-sdxl) or retry — Pony/Illustrious LoRAs warm up after the first hit.'),
       )
-      return
+      console.error('[builder-preview] generatePreviewsAction threw', e)
+    } finally {
+      setGenerating(false)
     }
-    const newEntries: PreviewGeneration[] = result.previews.map((p) => ({
-      mediaAssetId: String(p.mediaAssetId),
-      publicUrl: p.publicUrl,
-      promptUsed: '',
-      generatedAt: new Date().toISOString(),
-      selectedAsReference: false,
-    }))
-    onPreviewsGenerated([...previewGenerations, ...newEntries])
   }
 
   const handleSelect = async (id: string) => {

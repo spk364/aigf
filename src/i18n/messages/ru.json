@@ -263,10 +263,11 @@
         "middle_eastern": "Ближневосточная"
       },
       "ageRange": {
-        "twenties": "20-е",
-        "thirties": "30-е",
-        "forties": "40-е",
-        "fifties": "50-е"
+        "young_adult": "18-21",
+        "twenties": "22-29",
+        "thirties": "30-39",
+        "forties": "40-49",
+        "fifties": "50+"
       },
       "bodyType": {
         "slim": "Стройное",
@@ -454,29 +455,33 @@
       "recommended": "Рекомендуется"
     },
     "models": {
+      "fastSdxl": {
+        "label": "Fast SDXL",
+        "description": "~$0.005/изобр · ~5-10 сек · базовое аниме. Может фильтровать NSFW."
+      },
       "fluxSchnell": {
         "label": "FLUX schnell",
-        "description": "Самый быстрый фотореализм, 4 шага. Без negative prompt."
+        "description": "~$0.003/изобр · ~5-10 сек · быстрый фотореализм. Без negative prompt."
       },
       "fluxDev": {
         "label": "FLUX dev",
-        "description": "Качественный FLUX, медленнее. Без negative prompt."
+        "description": "~$0.025/изобр · ~30-60 сек · качественный FLUX. Без negative prompt."
       },
       "cyberrealisticPony": {
         "label": "CyberRealistic Pony",
-        "description": "Фотореализм NSFW. Первый запуск 2-3 мин, потом 30-60 сек."
+        "description": "~$0.05/изобр · фотореализм NSFW. ⚠ первый запуск 2-3 мин, потом 30-60 сек."
       },
       "ponyRealism": {
         "label": "Pony Realism",
-        "description": "Альтернативный NSFW фотореализм. Холодный старт."
+        "description": "~$0.05/изобр · альтернативный NSFW фотореализм. ⚠ холодный старт."
       },
       "waiIllustrious": {
         "label": "WAI Illustrious",
-        "description": "Лучшая аниме-NSFW модель. Первый запуск 2-3 мин."
+        "description": "~$0.05/изобр · лучшая аниме-NSFW модель. ⚠ первый запуск 2-3 мин."
       },
       "hassakuIllustrious": {
         "label": "Hassaku Illustrious",
-        "description": "Стилизованное аниме NSFW. Холодный старт."
+        "description": "~$0.05/изобр · стилизованное аниме NSFW. ⚠ холодный старт."
       }
     },
     "review": {
@@ -488,6 +493,7 @@
       "nameTooShort": "Имя должно содержать минимум 2 символа.",
       "previewLimitReached": "Вы достигли лимита в 5 наборов превью для этого черновика.",
       "previewSafetyFiltered": "Генератор изображений отфильтровал все превью как небезопасные. Смягчите описание или смените стиль и попробуйте снова.",
+      "previewTimeout": "Генерация превысила лимит времени. Выберите более быструю модель (FLUX schnell / Fast SDXL) или повторите — Pony/Illustrious прогреваются после первого запуска.",
       "finalizeFailed": "Не удалось завершить создание персонажа. Попробуйте ещё раз или напишите в поддержку, если проблема повторяется.",
       "validationFailed": "Пожалуйста, проверьте введённые данные и попробуйте снова."
     }

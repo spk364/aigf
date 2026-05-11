@@ -282,9 +282,18 @@ export type ModelOption = {
 }
 
 // i18n key map. Each entry the builder picker exposes must have a label/
-// description key here, otherwise it's filtered out.
+// description key here — this is the explicit allowlist for the user-facing
+// picker. fast-sdxl/RealVisXL are flagged nsfwFriendly:false in the catalogue
+// (model-level filter sometimes returns black frames for adult prompts) but
+// fast-sdxl stays in as the warm anime baseline because the alternatives
+// (Illustrious LoRAs) have a 2-3 min cold start that exceeds the 60 s
+// server-action budget on first hit.
 const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: string }> = {
-  // Fast warm fal-native endpoints — kept for low-latency previews.
+  // Fast warm fal-native endpoints — low-latency defaults.
+  'fal-ai/fast-sdxl': {
+    labelKey: 'builder.models.fastSdxl.label',
+    descriptionKey: 'builder.models.fastSdxl.description',
+  },
   'fal-ai/flux/schnell': {
     labelKey: 'builder.models.fluxSchnell.label',
     descriptionKey: 'builder.models.fluxSchnell.description',
@@ -314,17 +323,16 @@ const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: str
   },
 }
 
-// Defaults: warm fal-native endpoints to keep first-hit latency under the
-// 60 s server-action budget. Users who want NSFW-strong output can pick the
-// LoRA checkpoints from the picker (with the cold-start trade-off surfaced
-// in the description).
-const DEFAULT_ANIME_ID = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
+// Defaults are deliberately warm fal-native endpoints so the first-time user
+// doesn't hit a 2-3 min cold-start LoRA and time out the server action. Users
+// who want NSFW-strong output can opt into the LoRA checkpoints — the picker
+// description surfaces the cold-start trade-off.
+const DEFAULT_ANIME_ID = 'fal-ai/fast-sdxl'
 const DEFAULT_REALISTIC_ID = 'fal-ai/flux/schnell'
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
   .filter((m) =>
     detectImageProvider(m.id) === 'fal' &&
-    m.nsfwFriendly &&
     !m.id.includes('image-edit') &&
     BUILDER_MODEL_KEYS[m.id],
   )
