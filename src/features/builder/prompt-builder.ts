@@ -277,17 +277,29 @@ export type ModelOption = {
   // FLUX endpoints ignore negative_prompt; surface that to the user so they
   // don't expect adversarial negatives to take effect.
   supportsNegativePrompt: boolean
-  // Marks which option to highlight as the auto-pick for a given art style.
-  recommendedFor?: 'realistic' | 'anime'
+  // Art styles for which this model is the auto-pick. A single model may be
+  // the default for multiple styles (e.g. FLUX schnell currently is the
+  // recommended option for both realistic and anime).
+  recommendedFor: Array<'realistic' | 'anime'>
 }
 
 // i18n key map. Each entry the builder picker exposes must have a label/
 // description key here — this is the explicit allowlist for the user-facing
-// picker. fast-sdxl/RealVisXL are flagged nsfwFriendly:false in the catalogue
-// (model-level filter sometimes returns black frames for adult prompts) but
-// fast-sdxl stays in as the warm anime baseline because the alternatives
-// (Illustrious LoRAs) have a 2-3 min cold start that exceeds the 60 s
-// server-action budget on first hit.
+// picker. Catalogue lookup happens on top, so an id that isn't in
+// IMAGE_MODEL_OPTIONS is silently dropped.
+//
+// Verified-against-fal as of 2026-05-11:
+//   - FLUX schnell: works for both realistic and anime (user-confirmed).
+//   - Fast SDXL: works but fal's model-level filter sometimes returns
+//     black frames for explicit prompts.
+//   - CyberRealistic Pony / WAI Illustrious / Hassaku Illustrious: not yet
+//     user-validated; kept opt-in with cold-start warning.
+//
+// Removed (do NOT re-add without re-verifying):
+//   - fal-ai/flux/dev — fal's NSFW classifier blocks every output for adult
+//     prompts even with enable_safety_checker=false.
+//   - John6666/pony-realism-v22-main-sdxl — fal returns "Invalid URL or
+//     repository key" 422; the slug doesn't resolve on fal-ai/lora.
 const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: string }> = {
   // Fast warm fal-native endpoints — low-latency defaults.
   'fal-ai/fast-sdxl': {
@@ -298,19 +310,11 @@ const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: str
     labelKey: 'builder.models.fluxSchnell.label',
     descriptionKey: 'builder.models.fluxSchnell.description',
   },
-  'fal-ai/flux/dev': {
-    labelKey: 'builder.models.fluxDev.label',
-    descriptionKey: 'builder.models.fluxDev.description',
-  },
-  // Pony realism LoRAs (fal-ai/lora) — NSFW-strong realistic. Cold start
-  // 2-3 min, warm 30-60 s.
+  // Pony realism LoRA — NSFW-strong realistic. Cold start 2-3 min, warm
+  // 30-60 s. Opt-in.
   'John6666/cyberrealistic-pony-v110-sdxl': {
     labelKey: 'builder.models.cyberrealisticPony.label',
     descriptionKey: 'builder.models.cyberrealisticPony.description',
-  },
-  'John6666/pony-realism-v22-main-sdxl': {
-    labelKey: 'builder.models.ponyRealism.label',
-    descriptionKey: 'builder.models.ponyRealism.description',
   },
   // Illustrious anime LoRAs — NSFW-strong anime. Same cold-start profile.
   'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl': {
@@ -323,11 +327,12 @@ const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: str
   },
 }
 
-// Defaults are deliberately warm fal-native endpoints so the first-time user
-// doesn't hit a 2-3 min cold-start LoRA and time out the server action. Users
-// who want NSFW-strong output can opt into the LoRA checkpoints — the picker
-// description surfaces the cold-start trade-off.
-const DEFAULT_ANIME_ID = 'fal-ai/fast-sdxl'
+// FLUX Schnell is the only model user-validated to work for both realistic
+// and anime prompts as of 2026-05-11, so it's the warm default in both
+// modes. Anime users who want a stronger SDXL anime prior can switch to
+// fast-sdxl (faster but with the fal model-level filter risk) or one of
+// the Illustrious LoRA options (top quality, cold-start cost).
+const DEFAULT_ANIME_ID = 'fal-ai/flux/schnell'
 const DEFAULT_REALISTIC_ID = 'fal-ai/flux/schnell'
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
@@ -336,19 +341,17 @@ export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
     !m.id.includes('image-edit') &&
     BUILDER_MODEL_KEYS[m.id],
   )
-  .map((m) => {
+  .map((m): ModelOption => {
     const isFlux = m.id.startsWith('fal-ai/flux/')
+    const recommendedFor: Array<'realistic' | 'anime'> = []
+    if (m.id === DEFAULT_ANIME_ID) recommendedFor.push('anime')
+    if (m.id === DEFAULT_REALISTIC_ID) recommendedFor.push('realistic')
     return {
       id: m.id,
       labelKey: BUILDER_MODEL_KEYS[m.id]!.labelKey,
       descriptionKey: BUILDER_MODEL_KEYS[m.id]!.descriptionKey,
       supportsNegativePrompt: !isFlux,
-      recommendedFor:
-        m.id === DEFAULT_ANIME_ID
-          ? 'anime'
-          : m.id === DEFAULT_REALISTIC_ID
-            ? 'realistic'
-            : undefined,
+      recommendedFor,
     }
   })
 

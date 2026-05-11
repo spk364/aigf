@@ -708,7 +708,7 @@ function ModelPicker({
       <div className="flex flex-wrap gap-2">
         {models.map((m) => {
           const selected = m.id === selectedEndpoint
-          const isRecommended = m.recommendedFor === artStyle
+          const isRecommended = m.recommendedFor.includes(artStyle as 'realistic' | 'anime')
           return (
             <button
               key={m.id}
