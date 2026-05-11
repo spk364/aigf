@@ -5,6 +5,7 @@ import { GenerateVideoButton as GenerateVideoButton_a89af66c0ea5f4aab86f330bd738
 import { CharacterVideos as CharacterVideos_599f4ffe111e301229e3a849f2681cec } from '@/payload/admin-components/CharacterVideos'
 import { VoicePicker as VoicePicker_1a000000000000000000000000000001 } from '@/payload/admin-components/VoicePicker'
 import { GenerateGreetingButton as GenerateGreetingButton_1a000000000000000000000000000002 } from '@/payload/admin-components/GenerateGreetingButton'
+import { MediaAssetThumbnailCell as MediaAssetThumbnailCell_1a000000000000000000000000000003 } from '@/payload/admin-components/MediaAssetThumbnailCell'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
 /** @type import('payload').ImportMap */
@@ -16,5 +17,6 @@ export const importMap = {
   "@/payload/admin-components/CharacterVideos#CharacterVideos": CharacterVideos_599f4ffe111e301229e3a849f2681cec,
   "@/payload/admin-components/VoicePicker#VoicePicker": VoicePicker_1a000000000000000000000000000001,
   "@/payload/admin-components/GenerateGreetingButton#GenerateGreetingButton": GenerateGreetingButton_1a000000000000000000000000000002,
+  "@/payload/admin-components/MediaAssetThumbnailCell#MediaAssetThumbnailCell": MediaAssetThumbnailCell_1a000000000000000000000000000003,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }
