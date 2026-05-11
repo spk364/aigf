@@ -263,10 +263,11 @@
         "middle_eastern": "Oriente Medio"
       },
       "ageRange": {
-        "twenties": "20s",
-        "thirties": "30s",
-        "forties": "40s",
-        "fifties": "50s"
+        "young_adult": "18-21",
+        "twenties": "22-29",
+        "thirties": "30-39",
+        "forties": "40-49",
+        "fifties": "50+"
       },
       "bodyType": {
         "slim": "Delgada",
@@ -454,29 +455,33 @@
       "recommended": "Recomendado"
     },
     "models": {
+      "fastSdxl": {
+        "label": "Fast SDXL",
+        "description": "~$0.005/img · ~5-10 s · anime base. Puede filtrar NSFW."
+      },
       "fluxSchnell": {
         "label": "FLUX schnell",
-        "description": "Lo más rápido para realismo, 4 pasos. Sin negative prompt."
+        "description": "~$0.003/img · ~5-10 s · realismo rápido. Sin negative prompt."
       },
       "fluxDev": {
         "label": "FLUX dev",
-        "description": "FLUX de mayor calidad, más lento. Sin negative prompt."
+        "description": "~$0.025/img · ~30-60 s · FLUX de mayor calidad. Sin negative prompt."
       },
       "cyberrealisticPony": {
         "label": "CyberRealistic Pony",
-        "description": "Fotorrealismo NSFW. Primer arranque 2-3 min, luego 30-60 s."
+        "description": "~$0.05/img · fotorrealismo NSFW. ⚠ primer arranque 2-3 min, luego 30-60 s."
       },
       "ponyRealism": {
         "label": "Pony Realism",
-        "description": "Fotorrealismo NSFW alternativo. Arranque en frío."
+        "description": "~$0.05/img · fotorrealismo NSFW alternativo. ⚠ arranque en frío."
       },
       "waiIllustrious": {
         "label": "WAI Illustrious",
-        "description": "Top anime NSFW. Primer arranque 2-3 min, luego 30-60 s."
+        "description": "~$0.05/img · top anime NSFW. ⚠ primer arranque 2-3 min, luego 30-60 s."
       },
       "hassakuIllustrious": {
         "label": "Hassaku Illustrious",
-        "description": "Anime NSFW estilizado. Arranque en frío."
+        "description": "~$0.05/img · anime NSFW estilizado. ⚠ arranque en frío."
       }
     },
     "review": {
@@ -488,6 +493,7 @@
       "nameTooShort": "El nombre debe tener al menos 2 caracteres.",
       "previewLimitReached": "Has alcanzado el limite de 5 conjuntos de preview para este borrador.",
       "previewSafetyFiltered": "El generador filtro todas las previews como inseguras. Suaviza la descripcion o cambia el estilo y vuelve a intentarlo.",
+      "previewTimeout": "La generacion excedio el tiempo limite. Elige un modelo mas rapido (FLUX schnell / Fast SDXL) o reintenta — los checkpoints Pony/Illustrious se calientan tras el primer hit.",
       "finalizeFailed": "No se pudo finalizar el personaje. Intentalo de nuevo o contacta soporte si el problema persiste.",
       "validationFailed": "Por favor revisa tus datos e intentalo de nuevo."
     }

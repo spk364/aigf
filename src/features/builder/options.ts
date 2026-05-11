@@ -152,17 +152,29 @@ export type AgeRangeOption = BuilderOption & {
   defaultAge: number
 }
 
-// Joi groups ages as 18+ / 20s / 30s / 40s / 50s. Defaults sit at the
-// literal start of each decade so picking "20s" lands on 20 rather than
-// silently bumping to 22 — anime path can render the picked age as-is,
-// realistic path floors to 21 in the prompt builder.
+// Buckets are surfaced as explicit ranges (18-21, 22-29, …) rather than
+// decade slang ("20s") so the user knows the floor of each chip — the old
+// "20s" label hid the fact that you couldn't pick 18 from there. The
+// `young_adult` bucket gives anime users a one-click path to the 18+
+// minimum the safety policy actually allows. `twenties` keeps its value
+// string for back-compat with persisted drafts (just rebadged as 22-29).
 export const AGE_RANGES: AgeRangeOption[] = [
+  {
+    value: 'young_adult',
+    labelKey: 'builder.options.ageRange.young_adult',
+    minAge: 18,
+    rangeLabel: '18-21',
+    defaultAge: 18,
+    imagePath: '/builder/age/twenties.jpg',
+    emoji: '🌸',
+    gradient: ['#ff9bb8', '#3a1421'],
+  },
   {
     value: 'twenties',
     labelKey: 'builder.options.ageRange.twenties',
-    minAge: 18,
-    rangeLabel: '20s',
-    defaultAge: 20,
+    minAge: 21,
+    rangeLabel: '22-29',
+    defaultAge: 24,
     imagePath: '/builder/age/twenties.jpg',
     emoji: '🌹',
     gradient: ['#ff7da3', '#3a1421'],
@@ -171,8 +183,8 @@ export const AGE_RANGES: AgeRangeOption[] = [
     value: 'thirties',
     labelKey: 'builder.options.ageRange.thirties',
     minAge: 21,
-    rangeLabel: '30s',
-    defaultAge: 30,
+    rangeLabel: '30-39',
+    defaultAge: 33,
     imagePath: '/builder/age/thirties.jpg',
     emoji: '🍷',
     gradient: ['#b85c75', '#2c0e1a'],
@@ -181,8 +193,8 @@ export const AGE_RANGES: AgeRangeOption[] = [
     value: 'forties',
     labelKey: 'builder.options.ageRange.forties',
     minAge: 21,
-    rangeLabel: '40s',
-    defaultAge: 40,
+    rangeLabel: '40-49',
+    defaultAge: 43,
     imagePath: '/builder/age/forties.jpg',
     emoji: '🥂',
     gradient: ['#8e5a78', '#1f0f1a'],
@@ -191,8 +203,8 @@ export const AGE_RANGES: AgeRangeOption[] = [
     value: 'fifties',
     labelKey: 'builder.options.ageRange.fifties',
     minAge: 21,
-    rangeLabel: '50s',
-    defaultAge: 50,
+    rangeLabel: '50+',
+    defaultAge: 53,
     imagePath: '/builder/age/fifties.jpg',
     emoji: '🍸',
     gradient: ['#7a4f6c', '#180a14'],
