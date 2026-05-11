@@ -10,6 +10,13 @@ export const MediaAssets: CollectionConfig = {
     update: () => true,
     delete: () => true,
   },
+  // Lead the list view with a thumbnail of the asset (rendered by the
+  // custom Cell on `publicUrl` below) so admins can scan generated images
+  // / videos straight from the table without opening each row.
+  admin: {
+    defaultColumns: ['publicUrl', 'kind', 'mimeType', 'ownerCharacterId', 'createdAt'],
+    useAsTitle: 'storageKey',
+  },
   indexes: [
     { fields: ['ownerCharacterId', 'kind'] },
     { fields: ['ownerUserId', 'createdAt'] },
@@ -71,6 +78,13 @@ export const MediaAssets: CollectionConfig = {
       name: 'publicUrl',
       type: 'text',
       required: true,
+      admin: {
+        // Render the value as a thumbnail in the list-view table. Edit
+        // form still shows a normal text input.
+        components: {
+          Cell: '@/payload/admin-components/MediaAssetThumbnailCell#MediaAssetThumbnailCell',
+        },
+      },
     },
     {
       name: 'mimeType',
