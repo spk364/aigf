@@ -734,15 +734,61 @@ export async function finalizeBuilderAction(
     overrideAccess: true,
   })
 
-  await payload.update({
-    collection: 'media-assets',
-    id: referenceId,
-    data: {
-      kind: 'character_reference',
-      ownerCharacterId: character.id,
-    },
-    overrideAccess: true,
-  })
+  // Link every preview the user generated during this draft to the new
+  // character — the selected one as the canonical reference, the rest as
+  // gallery entries. Before this loop, non-selected previews ended up as
+  // orphan character_preview media-assets visible only via the global
+  // media-assets list in admin; the character's gallery view saw nothing
+  // but the single reference. Now admin lands on the new character and
+  // sees every alternate the user explored.
+  const allPreviewEntries = (Array.isArray(draft.previewGenerations)
+    ? draft.previewGenerations
+    : []) as Array<{ mediaAssetId?: string | number | null }>
+  const updatedMediaAssetIds = new Set<string>()
+  for (const entry of allPreviewEntries) {
+    const rawId = entry.mediaAssetId
+    if (rawId == null) continue
+    const assetId = coerceRelId(typeof rawId === 'number' ? rawId : String(rawId))
+    const dedupKey = String(assetId)
+    if (updatedMediaAssetIds.has(dedupKey)) continue
+    updatedMediaAssetIds.add(dedupKey)
+    const isReference = dedupKey === String(referenceId)
+    try {
+      await payload.update({
+        collection: 'media-assets',
+        id: assetId,
+        data: {
+          kind: isReference ? 'character_reference' : 'character_gallery',
+          ownerCharacterId: character.id,
+        },
+        overrideAccess: true,
+      })
+    } catch (e) {
+      // Don't fail the whole finalize if one stale entry can't be relinked.
+      // Character is still usable; missing gallery items are a soft
+      // degradation worth logging but not blocking on.
+      console.warn('[builder-finalize] failed to link preview to character', {
+        assetId,
+        characterId: character.id,
+        error: e,
+      })
+    }
+  }
+  // Safety net: if the selected reference somehow wasn't in
+  // previewGenerations (shouldn't happen — selectReferenceAction only sets
+  // it when an entry exists — but covers any future divergence), make sure
+  // it gets relinked. Idempotent if already updated above.
+  if (!updatedMediaAssetIds.has(String(referenceId))) {
+    await payload.update({
+      collection: 'media-assets',
+      id: referenceId,
+      data: {
+        kind: 'character_reference',
+        ownerCharacterId: character.id,
+      },
+      overrideAccess: true,
+    })
+  }
 
   await payload.update({
     collection: 'character-drafts',

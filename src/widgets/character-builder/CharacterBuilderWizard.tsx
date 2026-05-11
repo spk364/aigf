@@ -305,54 +305,87 @@ const PHASE_KEYS: Array<'appearance' | 'identity' | 'backstory' | 'review'> = [
 
 function PhaseIndicator({
   currentPhase,
+  steps,
+  stepIdx,
   strings,
 }: {
   currentPhase: number
+  steps: StepDef[]
+  stepIdx: number
   strings: Record<string, unknown>
 }) {
+  // Compute position within the active phase so the user can tell that
+  // they're moving forward even when they're walking through the five
+  // sub-steps of "Appearance" — previously the indicator stayed pinned on
+  // the same phase pill for the whole stretch and read as "stuck on
+  // step 1".
+  const activePhaseSteps = steps.filter((s) => s.phase === currentPhase)
+  const activePhaseFirstIdx = steps.findIndex((s) => s.phase === currentPhase)
+  const subIdx = Math.max(0, stepIdx - activePhaseFirstIdx)
+  const subTotal = activePhaseSteps.length
+  const progressPct = ((stepIdx + 1) / steps.length) * 100
+
   return (
-    <div className="flex items-center gap-2 mb-6">
-      {PHASE_KEYS.map((key, i) => {
-        const idx = i + 1
-        const isActive = idx === currentPhase
-        const isDone = idx < currentPhase
-        return (
-          <React.Fragment key={key}>
-            <div className="flex items-center gap-2">
-              <div
-                className={[
-                  'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors',
-                  isActive
-                    ? 'bg-[var(--color-accent-strong)] text-white'
-                    : isDone
-                      ? 'bg-[var(--color-accent-strong)]/40 text-[var(--color-text)]'
-                      : 'bg-[var(--color-surface-2)] text-[var(--color-text-muted)]',
-                ].join(' ')}
-              >
-                {isDone ? '✓' : idx}
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-2">
+        {PHASE_KEYS.map((key, i) => {
+          const idx = i + 1
+          const isActive = idx === currentPhase
+          const isDone = idx < currentPhase
+          return (
+            <React.Fragment key={key}>
+              <div className="flex items-center gap-2">
+                <div
+                  className={[
+                    'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors',
+                    isActive
+                      ? 'bg-[var(--color-accent-strong)] text-white'
+                      : isDone
+                        ? 'bg-[var(--color-accent-strong)]/40 text-[var(--color-text)]'
+                        : 'bg-[var(--color-surface-2)] text-[var(--color-text-muted)]',
+                  ].join(' ')}
+                >
+                  {isDone ? '✓' : idx}
+                </div>
+                <div className="hidden sm:flex flex-col leading-tight">
+                  <span
+                    className={[
+                      'text-sm',
+                      isActive
+                        ? 'text-[var(--color-text)] font-medium'
+                        : 'text-[var(--color-text-muted)]',
+                    ].join(' ')}
+                  >
+                    {t(strings, `builder.phases.${key}`)}
+                  </span>
+                  {isActive && subTotal > 1 && (
+                    <span className="text-[10px] text-[var(--color-text-muted)] tabular-nums">
+                      {subIdx + 1} / {subTotal}
+                    </span>
+                  )}
+                </div>
               </div>
-              <span
-                className={[
-                  'hidden sm:block text-sm',
-                  isActive
-                    ? 'text-[var(--color-text)] font-medium'
-                    : 'text-[var(--color-text-muted)]',
-                ].join(' ')}
-              >
-                {t(strings, `builder.phases.${key}`)}
-              </span>
-            </div>
-            {i < PHASE_KEYS.length - 1 && (
-              <div
-                className={[
-                  'flex-1 h-px',
-                  isDone ? 'bg-[var(--color-accent-strong)]/40' : 'bg-[var(--color-border)]',
-                ].join(' ')}
-              />
-            )}
-          </React.Fragment>
-        )
-      })}
+              {i < PHASE_KEYS.length - 1 && (
+                <div
+                  className={[
+                    'flex-1 h-px',
+                    isDone ? 'bg-[var(--color-accent-strong)]/40' : 'bg-[var(--color-border)]',
+                  ].join(' ')}
+                />
+              )}
+            </React.Fragment>
+          )
+        })}
+      </div>
+      {/* Continuous progress bar across all sub-steps. Gives clear forward
+          motion as the user walks through Appearance's 5 substeps — the
+          phase pills alone don't show it. */}
+      <div className="h-1 rounded-full bg-[var(--color-surface-2)] overflow-hidden">
+        <div
+          className="h-full bg-[var(--color-accent-strong)] transition-all duration-300 ease-out"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
     </div>
   )
 }
@@ -2231,7 +2264,12 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
         </span>
       </div>
 
-      <PhaseIndicator currentPhase={currentPhase} strings={strings} />
+      <PhaseIndicator
+        currentPhase={currentPhase}
+        steps={STEPS}
+        stepIdx={safeStepIdx}
+        strings={strings}
+      />
 
       <Card className="mb-6">{renderStep()}</Card>
 
