@@ -102,10 +102,19 @@ const BODY_TYPE_WEIGHT: Record<string, string> = {
   bbw: '(voluptuous figure:1.4), full curves, thick body',
 }
 
+// Anime prefix loaded with anti-photoreal natural-language tokens.
+// FLUX endpoints ignore negative_prompt entirely, so the only lever we
+// have to push them away from their photoreal prior is positive-prompt
+// disclaimers ("NOT a photo, NOT 3D render"). SDXL checkpoints
+// (Illustrious / Pony / fast-sdxl) handle the same tokens and we add
+// hard negatives via ANIME_NEGATIVE below for them.
 const ANIME_QUALITY_PREFIX =
-  'anime style, detailed anime illustration, cute character art, soft shading, clean lineart, vibrant colors'
+  '2D anime illustration, japanese anime art style, cel-shaded character drawing, ' +
+  'flat color fill, clean lineart, vibrant anime colors, detailed anime illustration, ' +
+  'drawn in classic anime style, anime cartoon art, ' +
+  'NOT a photo, NOT photorealistic, NOT 3D render, NOT realistic, NOT live action'
 const ANIME_QUALITY_TAIL =
-  'detailed face, expressive anime eyes, sharp focus, soft natural lighting, soft bokeh background'
+  'detailed anime face, expressive anime eyes, sharp focus, soft natural lighting, soft bokeh background'
 // Pose-only anchors. The previous version hard-coded "fully clothed,
 // sundress or blouse and skirt" which was a SFW guest-flow leftover —
 // post-login this product is NSFW and that outfit anchor swallowed the
@@ -125,7 +134,13 @@ const ANIME_NEGATIVE =
   '(armor:1.3), (weapon:1.3), (sword:1.2), (gun:1.2), (cape:1.2), ' +
   '(superhero costume:1.3), (combat outfit:1.3), (mecha:1.3), ' +
   '(fighting pose:1.3), (action pose:1.2), (battle scene:1.2), ' +
-  '(mature woman:1.2), (heavy makeup:1.1), (face mask:1.2)'
+  '(mature woman:1.2), (heavy makeup:1.1), (face mask:1.2), ' +
+  // Anti-photoreal — keep SDXL anime checkpoints from drifting into 3D
+  // / photo territory when the prompt has fashion-photo tokens (fitted
+  // dress, full body shot). The positive prefix carries the same intent
+  // as natural language for FLUX (which ignores negatives).
+  '(photorealistic:1.4), (3D render:1.4), (realistic photo:1.4), ' +
+  '(live action:1.3), (photograph:1.3), (CGI:1.2), (octane render:1.2)'
 
 // Default outfit when no occupation-specific outfit is in play. Tasteful
 // but suggestive: visible cleavage and exposed legs, but explicitly NOT
