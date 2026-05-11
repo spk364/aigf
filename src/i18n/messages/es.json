@@ -454,21 +454,29 @@
       "recommended": "Recomendado"
     },
     "models": {
-      "realisticVision": {
-        "label": "RealVisXL",
-        "description": "Mejor para retratos fotorrealistas. ~20-50 s."
-      },
-      "fastSdxl": {
-        "label": "Fast SDXL",
-        "description": "SDXL genérico, bueno para anime. ~5-10 s."
-      },
       "fluxSchnell": {
         "label": "FLUX schnell",
-        "description": "Muy rápido, 4 pasos. Sin negative prompt."
+        "description": "Lo más rápido para realismo, 4 pasos. Sin negative prompt."
       },
       "fluxDev": {
         "label": "FLUX dev",
-        "description": "FLUX de alta calidad. Sin negative prompt."
+        "description": "FLUX de mayor calidad, más lento. Sin negative prompt."
+      },
+      "cyberrealisticPony": {
+        "label": "CyberRealistic Pony",
+        "description": "Fotorrealismo NSFW. Primer arranque 2-3 min, luego 30-60 s."
+      },
+      "ponyRealism": {
+        "label": "Pony Realism",
+        "description": "Fotorrealismo NSFW alternativo. Arranque en frío."
+      },
+      "waiIllustrious": {
+        "label": "WAI Illustrious",
+        "description": "Top anime NSFW. Primer arranque 2-3 min, luego 30-60 s."
+      },
+      "hassakuIllustrious": {
+        "label": "Hassaku Illustrious",
+        "description": "Anime NSFW estilizado. Arranque en frío."
       }
     },
     "review": {

@@ -454,21 +454,29 @@
       "recommended": "Рекомендуется"
     },
     "models": {
-      "realisticVision": {
-        "label": "RealVisXL",
-        "description": "Лучшее для фотореализма. ~20-50 сек."
-      },
-      "fastSdxl": {
-        "label": "Fast SDXL",
-        "description": "Универсальный SDXL, хорош для аниме. ~5-10 сек."
-      },
       "fluxSchnell": {
         "label": "FLUX schnell",
-        "description": "Очень быстрый, 4 шага. Без negative prompt."
+        "description": "Самый быстрый фотореализм, 4 шага. Без negative prompt."
       },
       "fluxDev": {
         "label": "FLUX dev",
-        "description": "Качественный FLUX. Без negative prompt."
+        "description": "Качественный FLUX, медленнее. Без negative prompt."
+      },
+      "cyberrealisticPony": {
+        "label": "CyberRealistic Pony",
+        "description": "Фотореализм NSFW. Первый запуск 2-3 мин, потом 30-60 сек."
+      },
+      "ponyRealism": {
+        "label": "Pony Realism",
+        "description": "Альтернативный NSFW фотореализм. Холодный старт."
+      },
+      "waiIllustrious": {
+        "label": "WAI Illustrious",
+        "description": "Лучшая аниме-NSFW модель. Первый запуск 2-3 мин."
+      },
+      "hassakuIllustrious": {
+        "label": "Hassaku Illustrious",
+        "description": "Стилизованное аниме NSFW. Холодный старт."
       }
     },
     "review": {

@@ -14,15 +14,11 @@ import {
   EYE_COLORS,
 } from './options'
 import { getAgePolicy } from '@/shared/ai/age-safety'
-
-// Endpoint slugs duplicated as literals (rather than imported from `@/shared/ai/fal`)
-// because that adapter is `'server-only'` and this module is bundled into the
-// client through `CharacterBuilderWizard`. Keep these in sync with FAL_ENDPOINT_*
-// in `@/shared/ai/fal`.
-const FAL_ENDPOINT_REALISTIC_VISION = 'fal-ai/realistic-vision'
-const FAL_ENDPOINT_FAST_SDXL = 'fal-ai/fast-sdxl'
-const FAL_ENDPOINT_FLUX_SCHNELL = 'fal-ai/flux/schnell'
-const FAL_ENDPOINT_FLUX_DEV = 'fal-ai/flux/dev'
+import {
+  IMAGE_MODEL_OPTIONS,
+  detectImageProvider,
+  findImageModel,
+} from '@/shared/ai/image-models'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -259,73 +255,134 @@ export function buildUniquePrompt(
 }
 
 // ── Model registry ─────────────────────────────────────────────────────────
+//
+// We surface a curated subset of the admin catalogue (`@/shared/ai/image-models`)
+// in the user-facing builder picker, applying three filters:
+//   - fal-only — the builder action dispatches through `@/shared/ai/fal` only.
+//     Atlas integration in the builder is a follow-up; admin route already
+//     bridges providers.
+//   - NSFW-friendly — fast-sdxl + RealVisXL are flagged `nsfwFriendly: false`
+//     in the catalogue (fal's model-level filter returns black frames for
+//     adult prompts). Surface only models that actually render the product.
+//   - text-to-image — image-edit endpoints need a source image we don't have
+//     at preview time.
 
-// Curated NSFW-safe fal.ai endpoints exposed in the builder model picker.
-// Avoid Partner endpoints (WAN 2.5/2.6, Kling, Veo, Seedance) — they apply
-// server-side moderation and reject the adult prompts this product produces.
 export type ModelOption = {
-  endpoint: string
+  // Persisted on appearance.modelEndpoint. Matches IMAGE_MODEL_OPTIONS.id —
+  // either a fal-native endpoint slug (`fal-ai/flux/schnell`) or a HuggingFace
+  // repo id routed through fal-ai/lora (`John6666/...-sdxl`).
+  id: string
   labelKey: string
   descriptionKey: string
-  // FLUX endpoints ignore negative_prompt; we surface that to the user so
-  // they don't expect adversarial negatives to take effect.
+  // FLUX endpoints ignore negative_prompt; surface that to the user so they
+  // don't expect adversarial negatives to take effect.
   supportsNegativePrompt: boolean
-  // Used to mark which endpoint we'd auto-pick for a given art style.
+  // Marks which option to highlight as the auto-pick for a given art style.
   recommendedFor?: 'realistic' | 'anime'
 }
 
-export const IMAGE_MODELS: ModelOption[] = [
-  {
-    endpoint: FAL_ENDPOINT_REALISTIC_VISION,
-    labelKey: 'builder.models.realisticVision.label',
-    descriptionKey: 'builder.models.realisticVision.description',
-    supportsNegativePrompt: true,
-    recommendedFor: 'realistic',
-  },
-  {
-    endpoint: FAL_ENDPOINT_FAST_SDXL,
-    labelKey: 'builder.models.fastSdxl.label',
-    descriptionKey: 'builder.models.fastSdxl.description',
-    supportsNegativePrompt: true,
-    recommendedFor: 'anime',
-  },
-  {
-    endpoint: FAL_ENDPOINT_FLUX_SCHNELL,
+// i18n key map. Each entry the builder picker exposes must have a label/
+// description key here, otherwise it's filtered out.
+const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: string }> = {
+  // Fast warm fal-native endpoints — kept for low-latency previews.
+  'fal-ai/flux/schnell': {
     labelKey: 'builder.models.fluxSchnell.label',
     descriptionKey: 'builder.models.fluxSchnell.description',
-    supportsNegativePrompt: false,
   },
-  {
-    endpoint: FAL_ENDPOINT_FLUX_DEV,
+  'fal-ai/flux/dev': {
     labelKey: 'builder.models.fluxDev.label',
     descriptionKey: 'builder.models.fluxDev.description',
-    supportsNegativePrompt: false,
   },
-]
+  // Pony realism LoRAs (fal-ai/lora) — NSFW-strong realistic. Cold start
+  // 2-3 min, warm 30-60 s.
+  'John6666/cyberrealistic-pony-v110-sdxl': {
+    labelKey: 'builder.models.cyberrealisticPony.label',
+    descriptionKey: 'builder.models.cyberrealisticPony.description',
+  },
+  'John6666/pony-realism-v22-main-sdxl': {
+    labelKey: 'builder.models.ponyRealism.label',
+    descriptionKey: 'builder.models.ponyRealism.description',
+  },
+  // Illustrious anime LoRAs — NSFW-strong anime. Same cold-start profile.
+  'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl': {
+    labelKey: 'builder.models.waiIllustrious.label',
+    descriptionKey: 'builder.models.waiIllustrious.description',
+  },
+  'John6666/hassaku-xl-illustrious-v31-sdxl': {
+    labelKey: 'builder.models.hassakuIllustrious.label',
+    descriptionKey: 'builder.models.hassakuIllustrious.description',
+  },
+}
 
-const VALID_ENDPOINTS = new Set(IMAGE_MODELS.map((m) => m.endpoint))
+// Defaults: warm fal-native endpoints to keep first-hit latency under the
+// 60 s server-action budget. Users who want NSFW-strong output can pick the
+// LoRA checkpoints from the picker (with the cold-start trade-off surfaced
+// in the description).
+const DEFAULT_ANIME_ID = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
+const DEFAULT_REALISTIC_ID = 'fal-ai/flux/schnell'
 
-// Maps art style → fal endpoint when the user hasn't chosen explicitly.
-// RealVisXL handles photoreal best; fast-sdxl handles anime well when the
-// prompt is anime-tagged.
-export function pickEndpointForStyle(artStyle: string): string {
+export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
+  .filter((m) =>
+    detectImageProvider(m.id) === 'fal' &&
+    m.nsfwFriendly &&
+    !m.id.includes('image-edit') &&
+    BUILDER_MODEL_KEYS[m.id],
+  )
+  .map((m) => {
+    const isFlux = m.id.startsWith('fal-ai/flux/')
+    return {
+      id: m.id,
+      labelKey: BUILDER_MODEL_KEYS[m.id]!.labelKey,
+      descriptionKey: BUILDER_MODEL_KEYS[m.id]!.descriptionKey,
+      supportsNegativePrompt: !isFlux,
+      recommendedFor:
+        m.id === DEFAULT_ANIME_ID
+          ? 'anime'
+          : m.id === DEFAULT_REALISTIC_ID
+            ? 'realistic'
+            : undefined,
+    }
+  })
+
+const VALID_IDS = new Set(IMAGE_MODELS.map((m) => m.id))
+
+// Maps art style → model id when the user hasn't chosen explicitly.
+export function pickModelIdForStyle(artStyle: string): string {
   switch (artStyle) {
     case 'anime':
-      return FAL_ENDPOINT_FAST_SDXL
+      return DEFAULT_ANIME_ID
     case 'realistic':
     default:
-      return FAL_ENDPOINT_REALISTIC_VISION
+      return DEFAULT_REALISTIC_ID
   }
 }
 
-// Resolve the endpoint to actually call: honour the user's pick when it
-// matches a known endpoint, else fall back to the art-style default. Stops
-// a stale draft value (e.g. an endpoint we removed from the picker) from
-// blowing up the request.
+// Resolve the model id to actually dispatch: honour the user's pick when it
+// matches a known id, else fall back to the art-style default. Stops a stale
+// draft value (e.g. a model we removed from the picker) from blowing up the
+// request.
 export function resolveModelEndpoint(
   selected: string | undefined | null,
   artStyle: string,
 ): string {
-  if (selected && VALID_ENDPOINTS.has(selected)) return selected
-  return pickEndpointForStyle(artStyle)
+  if (selected && VALID_IDS.has(selected)) return selected
+  return pickModelIdForStyle(artStyle)
+}
+
+// Resolve a model id into the (endpoint, modelName) pair the fal adapter
+// expects. HuggingFace repo ids route through fal-ai/lora with the id as
+// model_name; native fal endpoints are passed through as-is.
+export function resolveFalDispatch(modelId: string): { endpoint: string; modelName?: string } {
+  const model = findImageModel(modelId)
+  // detectImageProvider falls back to prefix detection; safe even when the
+  // catalogue lookup misses (legacy persisted values).
+  const isLora = !modelId.startsWith('fal-ai/')
+  if (isLora) {
+    return { endpoint: 'fal-ai/lora', modelName: modelId }
+  }
+  // Future hook: when model.provider === 'atlas' we'll need a separate
+  // dispatcher path. The IMAGE_MODELS filter excludes Atlas options today,
+  // so this branch is fal-only by construction.
+  void model
+  return { endpoint: modelId }
 }

@@ -707,13 +707,13 @@ function ModelPicker({
       </span>
       <div className="flex flex-wrap gap-2">
         {models.map((m) => {
-          const selected = m.endpoint === selectedEndpoint
+          const selected = m.id === selectedEndpoint
           const isRecommended = m.recommendedFor === artStyle
           return (
             <button
-              key={m.endpoint}
+              key={m.id}
               type="button"
-              onClick={() => onSelect(m.endpoint)}
+              onClick={() => onSelect(m.id)}
               className={[
                 'flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors',
                 selected
@@ -722,7 +722,7 @@ function ModelPicker({
               ].join(' ')}
             >
               <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text)]">
-                {t(strings, m.labelKey, m.endpoint)}
+                {t(strings, m.labelKey, m.id)}
                 {isRecommended && (
                   <span className="rounded-md bg-[var(--color-accent-strong)]/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--color-accent-strong)]">
                     {t(strings, 'builder.modelPicker.recommended', 'Recommended')}
@@ -990,7 +990,7 @@ function PreviewScreen({
       ),
     [appearance],
   )
-  const selectedModel = IMAGE_MODELS.find((m) => m.endpoint === selectedEndpoint)
+  const selectedModel = IMAGE_MODELS.find((m) => m.id === selectedEndpoint)
   const supportsNegative = selectedModel?.supportsNegativePrompt ?? true
 
   const handleGenerate = async () => {
