@@ -5,6 +5,14 @@ import config from '@payload-config'
 import { getMessages } from 'next-intl/server'
 import { CharacterBuilderWizard } from '@/widgets/character-builder/CharacterBuilderWizard'
 
+// Pony/Illustrious LoRA checkpoints exposed in the builder picker have a
+// 2-3 min cold start; warm calls land in 30-60 s for 4 images. The 60 s
+// budget covers warm dispatches and fails fast on cold cases — the user
+// retries and the second hit is warm. Server actions in this file
+// (generatePreviewsAction in src/features/builder/actions.ts) inherit
+// this maxDuration from the route segment they're invoked from.
+export const maxDuration = 60
+
 type Props = {
   params: Promise<{ locale: string; draftId: string }>
 }

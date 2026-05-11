@@ -1,5 +1,12 @@
 'use server'
 // TODO(safety): run scorer on free-text fields (name, occupation custom, relationship custom, looks/personality desc) when pipeline lands
+//
+// Pony/Illustrious LoRA checkpoints exposed in the picker have a 2-3 min
+// cold start; warm calls land in 30-60 s for 4 images. The 60 s budget
+// for generatePreviewsAction is set on the route segment that calls into
+// us — see `src/app/(app)/[locale]/builder/[draftId]/page.tsx`. (Server
+// action files can only export async functions, so the config must live
+// on the page.)
 
 import { redirect } from 'next/navigation'
 import { getLocale } from 'next-intl/server'
@@ -23,6 +30,7 @@ import {
   buildPreviewNegativePrompt,
   buildUniquePrompt,
   resolveModelEndpoint,
+  resolveFalDispatch,
 } from './prompt-builder'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 import { checkRateLimit } from '@/shared/rate-limit/limiter'
@@ -282,27 +290,31 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
   // maps to a known endpoint).
   const selectedModel =
     typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null
-  const endpoint = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
-  // RealVisXL responds best at 35 steps; the other SDXL/FLUX variants land
-  // their cleanest output around 30. (FLUX schnell internally caps at 4 steps
-  // — passing 30 there is a no-op, not an error.)
-  const isRealVis = endpoint.endsWith('realistic-vision')
+  const modelId = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
+  const { endpoint, modelName } = resolveFalDispatch(modelId)
+  // SDXL-class checkpoints (Pony/Illustrious LoRAs, fast-sdxl, RealVisXL)
+  // produce their cleanest output around 30 steps. FLUX schnell internally
+  // caps at 4 steps so passing 30 is a no-op, not an error.
+  const numInferenceSteps = endpoint === 'fal-ai/flux/schnell' ? 4 : 30
 
   let result: Awaited<ReturnType<typeof generateImage>>
   try {
     result = await generateImage({
       prompt,
       negativePrompt,
-      // Native SDXL bucket — RealVisXL/fast-sdxl render their best at 832×1216.
+      // Native SDXL bucket — fast-sdxl, Pony, and Illustrious LoRAs all render
+      // their best at 832×1216.
       imageSize: { width: 832, height: 1216 },
       numImages: 4,
       endpoint,
+      modelName,
       // Higher guidance pulls the result closer to the prompt (vs. the model's
       // priors). 6.5 is a good ceiling before details start to over-cook.
       guidanceScale: 6.5,
-      numInferenceSteps: isRealVis ? 35 : 30,
+      numInferenceSteps,
     })
   } catch (e) {
+    console.error('[builder-preview] generateImage failed', { modelId, endpoint, modelName, error: e })
     return { ok: false, error: e instanceof Error ? e.message : 'Image generation failed' }
   }
 

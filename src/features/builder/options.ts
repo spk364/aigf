@@ -144,21 +144,25 @@ export const ETHNICITIES: BuilderOption[] = [
 // ── Age ──────────────────────────────────────────────────────────────────
 
 export type AgeRangeOption = BuilderOption & {
-  minAge: 21
+  // Cosmetic floor displayed alongside the bucket. The runtime floor that
+  // actually clamps prompt-side age comes from getAgePolicy(artStyle).minAge
+  // in src/shared/ai/age-safety.ts (18 for anime, 21 for realistic).
+  minAge: number
   rangeLabel: string
   defaultAge: number
 }
 
-// Joi groups ages as 18+ / 20s / 30s / 40s / 50s. We default each bucket
-// toward the young end of its decade so the AI persona reads as
-// young-adult unless the user explicitly nudges higher.
+// Joi groups ages as 18+ / 20s / 30s / 40s / 50s. Defaults sit at the
+// literal start of each decade so picking "20s" lands on 20 rather than
+// silently bumping to 22 — anime path can render the picked age as-is,
+// realistic path floors to 21 in the prompt builder.
 export const AGE_RANGES: AgeRangeOption[] = [
   {
     value: 'twenties',
     labelKey: 'builder.options.ageRange.twenties',
-    minAge: 21,
+    minAge: 18,
     rangeLabel: '20s',
-    defaultAge: 22,
+    defaultAge: 20,
     imagePath: '/builder/age/twenties.jpg',
     emoji: '🌹',
     gradient: ['#ff7da3', '#3a1421'],
@@ -168,7 +172,7 @@ export const AGE_RANGES: AgeRangeOption[] = [
     labelKey: 'builder.options.ageRange.thirties',
     minAge: 21,
     rangeLabel: '30s',
-    defaultAge: 31,
+    defaultAge: 30,
     imagePath: '/builder/age/thirties.jpg',
     emoji: '🍷',
     gradient: ['#b85c75', '#2c0e1a'],
@@ -178,7 +182,7 @@ export const AGE_RANGES: AgeRangeOption[] = [
     labelKey: 'builder.options.ageRange.forties',
     minAge: 21,
     rangeLabel: '40s',
-    defaultAge: 42,
+    defaultAge: 40,
     imagePath: '/builder/age/forties.jpg',
     emoji: '🥂',
     gradient: ['#8e5a78', '#1f0f1a'],
@@ -188,7 +192,7 @@ export const AGE_RANGES: AgeRangeOption[] = [
     labelKey: 'builder.options.ageRange.fifties',
     minAge: 21,
     rangeLabel: '50s',
-    defaultAge: 52,
+    defaultAge: 50,
     imagePath: '/builder/age/fifties.jpg',
     emoji: '🍸',
     gradient: ['#7a4f6c', '#180a14'],
