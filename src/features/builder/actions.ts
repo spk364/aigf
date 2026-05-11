@@ -49,6 +49,18 @@ function slugify(text: string): string {
     .slice(0, 40)
 }
 
+// Payload's Postgres adapter stores collection IDs as integers; relationship
+// fields validate the value's type and 400 with "The following field is
+// invalid" when given a numeric string instead of a number. Draft-level state
+// (selectedReferenceMediaAssetId) is persisted as a string by the client, so
+// we coerce it before passing it as a relationship value. Mirrors the helper
+// in src/app/api/admin/characters/[id]/set-primary-image/route.ts.
+function coerceRelId(v: string | number): string | number {
+  if (typeof v === 'number') return v
+  if (/^\d+$/.test(v)) return Number(v)
+  return v
+}
+
 function nanoid8(): string {
   return crypto.randomUUID().slice(0, 8)
 }
@@ -555,6 +567,9 @@ export async function finalizeBuilderAction(
 
   if (!name) return { ok: false, error: 'Name is required' }
   if (!selectedReferenceMediaAssetId) return { ok: false, error: 'Reference image is required' }
+  // Coerce once and reuse — characters.primaryImageId and the media-assets
+  // .findByID + .update calls below all need the numeric form.
+  const referenceId = coerceRelId(selectedReferenceMediaAssetId)
 
   // ── Resolve archetype + traits (unique path falls back to a neutral profile)
   const archetypeValue =
@@ -702,14 +717,14 @@ export async function finalizeBuilderAction(
       contentRating: 'sfw',
       isPublished: false,
       moderationStatus: 'approved',
-      primaryImageId: selectedReferenceMediaAssetId,
+      primaryImageId: referenceId,
     },
     overrideAccess: true,
   })
 
   await payload.update({
     collection: 'media-assets',
-    id: selectedReferenceMediaAssetId,
+    id: referenceId,
     data: {
       kind: 'character_reference',
       ownerCharacterId: character.id,
