@@ -89,13 +89,19 @@ const BODY_TYPE_WEIGHT: Record<string, string> = {
 }
 
 const ANIME_QUALITY_PREFIX =
-  'anime style, soft anime illustration, cute character art, gentle shading, clean lineart, soft color palette'
+  'anime style, detailed anime illustration, cute character art, soft shading, clean lineart, vibrant colors'
 const ANIME_QUALITY_TAIL =
-  'detailed face, expressive anime eyes, soft cheeks, gentle expression, sharp focus, soft natural lighting'
+  'detailed face, expressive anime eyes, sharp focus, soft natural lighting, soft bokeh background'
+// Pose-only anchors. The previous version hard-coded "fully clothed,
+// sundress or blouse and skirt" which was a SFW guest-flow leftover —
+// post-login this product is NSFW and that outfit anchor swallowed the
+// body/breast tokens the user picked. Outfit/scene now come from the
+// user's selections (or, when absent, the model's own priors) instead
+// of a baked-in safe default.
 const ANIME_FEMALE_ANCHOR =
-  'casual cute outfit, fully clothed, sundress or blouse and skirt, gentle smile, soft inviting pose, soft contrapposto, looking at viewer'
+  'alluring pose, soft contrapposto, gentle smile, looking at viewer'
 const ANIME_MALE_ANCHOR =
-  'casual outfit, fully clothed, gentle smile, soft relaxed pose, looking at viewer'
+  'confident pose, gentle smile, looking at viewer'
 const ANIME_NEGATIVE =
   '(armor:1.3), (weapon:1.3), (sword:1.2), (gun:1.2), (cape:1.2), ' +
   '(superhero costume:1.3), (combat outfit:1.3), (mecha:1.3), ' +
