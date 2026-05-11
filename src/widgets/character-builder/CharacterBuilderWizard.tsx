@@ -443,18 +443,25 @@ type StepDef = {
 }
 
 // Two paths through the wizard. Picked dynamically based on draftData.pathChoice.
+// Preview lives at the END of phase 3 (Story), after the user has picked
+// archetype, occupation, and relationship. The previous position (after
+// hair_eyes in phase 1) meant the prompt builder couldn't include
+// archetype mood / occupation outfit on the first generation — the data
+// was unfilled — so the user had to either generate a generic image and
+// be disappointed, or navigate back to preview after answering identity.
+// Moving preview to position 10 fixes that without splitting phases.
 const PRESETS_STEPS: StepDef[] = [
   { key: 'intro', phase: 1 },
   { key: 'age_ethnicity', phase: 1 },
   { key: 'body', phase: 1 },
   { key: 'hair_eyes', phase: 1 },
-  { key: 'preview', phase: 1 },
   { key: 'archetype', phase: 2 },
   { key: 'name_orientation', phase: 2 },
   { key: 'chat_style', phase: 2 },
   { key: 'occupation', phase: 3 },
   { key: 'relationship', phase: 3 },
   { key: 'kinks', phase: 3 },
+  { key: 'preview', phase: 3 },
   { key: 'review', phase: 4 },
 ]
 

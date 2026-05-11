@@ -403,40 +403,39 @@ export type ModelOption = {
 // IMAGE_MODEL_OPTIONS is silently dropped.
 //
 // Verified-against-fal as of 2026-05-11:
-//   - FLUX schnell: works for both realistic and anime (user-confirmed).
-//   - Fast SDXL: works but fal's model-level filter sometimes returns
-//     black frames for explicit prompts.
+//   - FLUX schnell: clears the explicit-outfit prompt (deep v-neck, mini
+//     skirt, exposed thighs, large breasts) on both realistic and anime.
+//     The only confirmed-working option in the current sync-server-action
+//     architecture.
 //
 // Removed (do NOT re-add without re-verifying / a submit+poll backend):
-//   - fal-ai/flux/dev — fal's NSFW classifier blocks every output for adult
-//     prompts even with enable_safety_checker=false.
+//   - fal-ai/fast-sdxl — model-level NSFW filter returns
+//     "has_nsfw_concepts" on the default outfit prompt, surfacing as
+//     "fal NSFW filter blocked every output. Adjust the prompt or switch
+//     model." Unusable for this product even with
+//     enable_safety_checker=false (that flag disables the platform-level
+//     classifier; fast-sdxl ships its own model filter on top).
+//   - fal-ai/flux/dev — fal's platform NSFW classifier blocks every output
+//     for adult prompts even with enable_safety_checker=false.
 //   - John6666/pony-realism-v22-main-sdxl — fal returns "Invalid URL or
 //     repository key" 422; the slug doesn't resolve on fal-ai/lora.
 //   - John6666/cyberrealistic-pony-v110-sdxl,
 //     John6666/wai-nsfw-illustrious-sdxl-v150-sdxl,
 //     John6666/hassaku-xl-illustrious-v31-sdxl —
 //     2-3 min fal cold start exceeds the 60s server-action budget on every
-//     first hit, surfacing as a Vercel FUNCTION_INVOCATION_TIMEOUT page that
-//     bypasses our client-side error handling. Bring them back when we
+//     first hit, surfacing as a Vercel FUNCTION_INVOCATION_TIMEOUT page
+//     that bypasses our client-side error handling. Bring them back when we
 //     migrate the builder to submit+poll like the admin route does (see
-//     src/app/api/admin/characters/[id]/generate-image/route.ts).
+//     src/app/api/admin/characters/[id]/generate-image/route.ts) — that
+//     architecture also unlocks Atlas WAN 2.6 t2i ($0.021/img, no platform
+//     prompt filter) which is the cheapest viable NSFW option.
 const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: string }> = {
-  // Fast warm fal-native endpoints — low-latency defaults.
-  'fal-ai/fast-sdxl': {
-    labelKey: 'builder.models.fastSdxl.label',
-    descriptionKey: 'builder.models.fastSdxl.description',
-  },
   'fal-ai/flux/schnell': {
     labelKey: 'builder.models.fluxSchnell.label',
     descriptionKey: 'builder.models.fluxSchnell.description',
   },
 }
 
-// FLUX Schnell is the only model user-validated to work for both realistic
-// and anime prompts as of 2026-05-11, so it's the warm default in both
-// modes. Anime users who want a stronger SDXL anime prior can switch to
-// fast-sdxl (faster but with the fal model-level filter risk) or one of
-// the Illustrious LoRA options (top quality, cold-start cost).
 const DEFAULT_ANIME_ID = 'fal-ai/flux/schnell'
 const DEFAULT_REALISTIC_ID = 'fal-ai/flux/schnell'
 
