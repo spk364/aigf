@@ -336,7 +336,8 @@ export async function generateGuestPreviewAction(
       numInferenceSteps: inferenceSteps,
       guidanceScale: guidance,
     })
-  } catch {
+  } catch (e) {
+    console.error('[guest-preview] generateImage failed', { endpoint, artStyle, error: e })
     return { ok: false, error: 'generation_failed' }
   }
 
@@ -366,12 +367,17 @@ export async function generateGuestPreviewAction(
         publicUrl: persisted.publicUrl,
         generatedAt: new Date().toISOString(),
       })
-    } catch {
+    } catch (e) {
+      console.warn('[guest-preview] persistGeneratedImage failed', { url: img.url, error: e })
       continue
     }
   }
 
   if (newPreviews.length === 0) {
+    console.error('[guest-preview] all previews dropped', {
+      endpoint,
+      returnedImages: result.images.length,
+    })
     return { ok: false, error: 'generation_failed' }
   }
 
