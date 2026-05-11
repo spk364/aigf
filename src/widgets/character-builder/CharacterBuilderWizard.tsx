@@ -28,7 +28,8 @@ import {
 import { validateName } from '@/features/builder/blocklist'
 import {
   saveDraftStepAction,
-  generatePreviewsAction,
+  submitPreviewJobAction,
+  fetchPreviewJobStatusAction,
   selectReferenceAction,
   finalizeBuilderAction,
   suggestNameAction,
@@ -1168,42 +1169,103 @@ function PreviewScreen({
   const selectedModel = IMAGE_MODELS.find((m) => m.id === selectedEndpoint)
   const supportsNegative = selectedModel?.supportsNegativePrompt ?? true
 
+  // Live progress message while the poll loop is running ("Queue: 3 · …").
+  // Surfaces fal's queue_position and last log line so the user sees that
+  // the wizard is actually waiting on the model, not stalled. Cleared when
+  // the loop ends (success / error / unmount).
+  const [genProgress, setGenProgress] = useState<string | null>(null)
+  // Cancel flag — flipped on component unmount so an orphaned polling
+  // loop doesn't try to setState on a dead component (or keep burning
+  // server-action invocations forever).
+  const generationCancelRef = useRef(false)
+  useEffect(() => {
+    return () => {
+      generationCancelRef.current = true
+    }
+  }, [])
+
+  // Map a server-side error code to a localised message. Falls back to the
+  // raw text when we don't recognise the code so admins still see the real
+  // cause during debugging.
+  const mapGenError = (code: string): string => {
+    switch (code) {
+      case 'preview_limit_reached':
+        return t(strings, 'builder.errors.previewLimitReached')
+      case 'safety_filtered':
+        return t(strings, 'builder.errors.previewSafetyFiltered')
+      case 'poll_timed_out':
+      case 'rate_limited':
+        return t(
+          strings,
+          'builder.errors.previewTimeout',
+          'Generation timed out. Try a faster model or wait — Pony/Illustrious checkpoints warm up after the first hit.',
+        )
+      default:
+        return code
+    }
+  }
+
   const handleGenerate = async () => {
     setGenerating(true)
     setGenError(null)
-    // try/finally so a thrown server-action error (504 timeout, network drop)
-    // never strands the button in its disabled "..." state.
+    setGenProgress(null)
+    generationCancelRef.current = false
     try {
-      const result = await generatePreviewsAction(draftId)
-      if (!result.ok) {
-        setGenError(
-          result.error === 'preview_limit_reached'
-            ? t(strings, 'builder.errors.previewLimitReached')
-            : result.error === 'safety_filtered'
-              ? t(strings, 'builder.errors.previewSafetyFiltered')
-              : result.error,
-        )
+      // Phase 1: submit to fal. Returns immediately with handles persisted
+      // server-side on draft.data.pendingPreviewJob.
+      const submit = await submitPreviewJobAction(draftId)
+      if (!submit.ok) {
+        setGenError(mapGenError(submit.error))
         return
       }
-      const newEntries: PreviewGeneration[] = result.previews.map((p) => ({
-        mediaAssetId: String(p.mediaAssetId),
-        publicUrl: p.publicUrl,
-        promptUsed: '',
-        generatedAt: new Date().toISOString(),
-        selectedAsReference: false,
-      }))
-      onPreviewsGenerated([...previewGenerations, ...newEntries])
+      // Phase 2: poll status every ~3 s until completed / failed / cancelled.
+      // Server enforces a 4-min deadline (POLL_DEADLINE_MS) so this loop can
+      // only run that long even if we forget to break out.
+      let pollDelayMs = 3000
+      while (!generationCancelRef.current) {
+        await new Promise((r) => setTimeout(r, pollDelayMs))
+        if (generationCancelRef.current) return
+        const poll = await fetchPreviewJobStatusAction(draftId)
+        if (!poll.ok) {
+          setGenError(mapGenError(poll.error))
+          return
+        }
+        if (poll.status === 'completed') {
+          const newEntry: PreviewGeneration = {
+            mediaAssetId: String(poll.preview.mediaAssetId),
+            publicUrl: poll.preview.publicUrl,
+            promptUsed: '',
+            generatedAt: new Date().toISOString(),
+            selectedAsReference: false,
+          }
+          onPreviewsGenerated([...previewGenerations, newEntry])
+          return
+        }
+        // status === 'pending' — surface what fal told us so the user sees
+        // motion. queueMsg/logMsg may both be empty during the brief window
+        // before fal returns a status payload.
+        const queueMsg =
+          typeof poll.queuePosition === 'number' && poll.queuePosition > 0
+            ? `Queue: ${poll.queuePosition}`
+            : ''
+        const logMsg = poll.lastLog ?? ''
+        setGenProgress([queueMsg, logMsg].filter(Boolean).join(' · ') || 'Waiting…')
+        // Back off slightly after the first few polls — cold-start LoRAs
+        // sit in fal's queue for minutes; hitting the status URL every 3s
+        // for that long is just noise.
+        if (pollDelayMs < 6000) pollDelayMs = Math.min(6000, pollDelayMs + 500)
+      }
     } catch (e) {
-      // Most likely Vercel 504 (FUNCTION_INVOCATION_TIMEOUT) when a cold
-      // Pony/Illustrious LoRA blows past maxDuration. Surface a clear hint
-      // instead of an opaque "Failed to fetch" toast.
+      // submit/poll action threw something the typed return shape didn't
+      // cover (network drop, etc.). Treat as timeout so the user sees a
+      // clear hint instead of "Failed to fetch".
       setGenError(
-        t(strings, 'builder.errors.previewTimeout',
-          'Generation timed out. Pick a faster model (FLUX schnell / fast-sdxl) or retry — Pony/Illustrious LoRAs warm up after the first hit.'),
+        t(strings, 'builder.errors.previewTimeout', 'Generation timed out.'),
       )
-      console.error('[builder-preview] generatePreviewsAction threw', e)
+      console.error('[builder-preview]', e)
     } finally {
       setGenerating(false)
+      setGenProgress(null)
     }
   }
 
@@ -1325,6 +1387,13 @@ function PreviewScreen({
               )}
         </Button>
       </div>
+
+      {/* Live poll progress so cold-start LoRAs (2-3 min) don't look stalled. */}
+      {generating && genProgress && (
+        <p className="text-xs text-[var(--color-text-muted)] mb-3 tabular-nums">
+          {genProgress}
+        </p>
+      )}
 
       {/* Surface the disabled-by-limit state so the button doesn't just sit
           dead with no explanation. */}

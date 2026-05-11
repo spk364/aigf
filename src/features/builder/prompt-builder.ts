@@ -403,40 +403,48 @@ export type ModelOption = {
 // IMAGE_MODEL_OPTIONS is silently dropped.
 //
 // Verified-against-fal as of 2026-05-11:
-//   - FLUX schnell: clears the explicit-outfit prompt (deep v-neck, mini
-//     skirt, exposed thighs, large breasts) on both realistic and anime.
-//     The only confirmed-working option in the current sync-server-action
-//     architecture.
+//   - FLUX schnell: warm (~5-10 s), clears explicit prompts, but
+//     photoreal-leaning — even with anime tokens FLUX renders a 3D-ish
+//     style. Good fast realistic default.
+//   - John6666/wai-nsfw-illustrious-sdxl-v150-sdxl,
+//     John6666/hassaku-xl-illustrious-v31-sdxl: true SDXL anime
+//     checkpoints, no platform-level filter. Cold start 2-3 min, warm
+//     30-60 s. Usable thanks to the submit+poll server actions
+//     (submitPreviewJobAction / fetchPreviewJobStatusAction) — the
+//     client polls fal until the job completes.
+//   - John6666/cyberrealistic-pony-v110-sdxl: same architecture, but
+//     realistic NSFW-strong instead of anime.
 //
-// Removed (do NOT re-add without re-verifying / a submit+poll backend):
+// Removed (do NOT re-add without re-verifying):
 //   - fal-ai/fast-sdxl — model-level NSFW filter returns
-//     "has_nsfw_concepts" on the default outfit prompt, surfacing as
-//     "fal NSFW filter blocked every output. Adjust the prompt or switch
-//     model." Unusable for this product even with
-//     enable_safety_checker=false (that flag disables the platform-level
-//     classifier; fast-sdxl ships its own model filter on top).
-//   - fal-ai/flux/dev — fal's platform NSFW classifier blocks every output
-//     for adult prompts even with enable_safety_checker=false.
-//   - John6666/pony-realism-v22-main-sdxl — fal returns "Invalid URL or
-//     repository key" 422; the slug doesn't resolve on fal-ai/lora.
-//   - John6666/cyberrealistic-pony-v110-sdxl,
-//     John6666/wai-nsfw-illustrious-sdxl-v150-sdxl,
-//     John6666/hassaku-xl-illustrious-v31-sdxl —
-//     2-3 min fal cold start exceeds the 60s server-action budget on every
-//     first hit, surfacing as a Vercel FUNCTION_INVOCATION_TIMEOUT page
-//     that bypasses our client-side error handling. Bring them back when we
-//     migrate the builder to submit+poll like the admin route does (see
-//     src/app/api/admin/characters/[id]/generate-image/route.ts) — that
-//     architecture also unlocks Atlas WAN 2.6 t2i ($0.021/img, no platform
-//     prompt filter) which is the cheapest viable NSFW option.
+//     "has_nsfw_concepts" on the default outfit prompt.
+//   - fal-ai/flux/dev — fal platform NSFW classifier blocks adult prompts.
+//   - John6666/pony-realism-v22-main-sdxl — fal 422 "Invalid URL or
+//     repository key"; the slug doesn't resolve on fal-ai/lora.
 const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: string }> = {
   'fal-ai/flux/schnell': {
     labelKey: 'builder.models.fluxSchnell.label',
     descriptionKey: 'builder.models.fluxSchnell.description',
   },
+  'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl': {
+    labelKey: 'builder.models.waiIllustrious.label',
+    descriptionKey: 'builder.models.waiIllustrious.description',
+  },
+  'John6666/hassaku-xl-illustrious-v31-sdxl': {
+    labelKey: 'builder.models.hassakuIllustrious.label',
+    descriptionKey: 'builder.models.hassakuIllustrious.description',
+  },
+  'John6666/cyberrealistic-pony-v110-sdxl': {
+    labelKey: 'builder.models.cyberrealisticPony.label',
+    descriptionKey: 'builder.models.cyberrealisticPony.description',
+  },
 }
 
-const DEFAULT_ANIME_ID = 'fal-ai/flux/schnell'
+// Anime defaults to WAI Illustrious now that submit+poll absorbs the
+// 2-3 min cold start. Realistic stays on FLUX Schnell as the warm/cheap
+// baseline; CyberRealistic Pony is the opt-in NSFW-strong photoreal
+// alternative the user can switch to from the picker.
+const DEFAULT_ANIME_ID = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
 const DEFAULT_REALISTIC_ID = 'fal-ai/flux/schnell'
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
