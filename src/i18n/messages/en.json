@@ -461,6 +461,10 @@
       "recommended": "Recommended"
     },
     "models": {
+      "realisticVision": {
+        "label": "RealVisXL (recommended for realistic)",
+        "description": "~$0.025/img · ~20-50 s · photorealistic portraits. Same model used in admin."
+      },
       "fastSdxl": {
         "label": "Fast SDXL",
         "description": "~$0.005/img · ~5-10 s · anime baseline. May filter explicit prompts."
@@ -491,7 +495,8 @@
       }
     },
     "review": {
-      "relationship": "Starting relationship"
+      "relationship": "Starting relationship",
+      "regenerateHint": "Changes here update the prompt. Go back to the preview step to regenerate the image."
     },
     "errors": {
       "nameChildlike": "This name is not allowed.",

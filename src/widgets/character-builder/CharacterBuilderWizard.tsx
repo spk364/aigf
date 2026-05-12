@@ -942,21 +942,29 @@ function CompactChipRow({
 function CompactParamsEditor({
   pathChoice,
   appearance,
+  identity,
   uniqueDesc,
   strings,
   onAppearanceChange,
+  onIdentityChange,
   onUniqueDescChange,
 }: {
   pathChoice: string
   appearance: Record<string, unknown>
+  // Optional — only call sites that pass `onIdentityChange` will see the
+  // occupation row. The preview screen renders this editor before the user
+  // has reached the identity step, so we keep it gated.
+  identity?: Record<string, unknown>
   uniqueDesc: Record<string, unknown>
   strings: Record<string, unknown>
   onAppearanceChange: (next: Record<string, unknown>) => void
+  onIdentityChange?: (next: Record<string, unknown>) => void
   onUniqueDescChange: (next: Record<string, unknown>) => void
 }) {
   const isMale = appearance.gender === 'male'
   const hair = (appearance.hair ?? {}) as Record<string, string>
   const eyes = (appearance.eyes ?? {}) as Record<string, string>
+  const id = identity ?? {}
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3">
@@ -1059,6 +1067,19 @@ function CompactParamsEditor({
             }
             strings={strings}
           />
+
+          {/* Occupation drives outfit AND scene/background — surfacing it
+              in the compact editor lets the user retarget both with a
+              single click without going back to the occupation step. */}
+          {onIdentityChange && (
+            <CompactChipRow
+              label={t(strings, 'builder.questions.occupation', 'Occupation')}
+              options={OCCUPATIONS.filter((o) => o.value !== 'custom')}
+              value={String(id.occupation ?? '')}
+              onChange={(v) => onIdentityChange({ ...id, occupation: v })}
+              strings={strings}
+            />
+          )}
         </>
       )}
 
@@ -1109,6 +1130,7 @@ function PreviewScreen({
   previewGenerations,
   selectedReferenceId,
   onAppearanceChange,
+  onIdentityChange,
   onUniqueDescChange,
   onPreviewsGenerated,
   onReferenceSelected,
@@ -1123,6 +1145,7 @@ function PreviewScreen({
   previewGenerations: PreviewGeneration[]
   selectedReferenceId: string | null
   onAppearanceChange: (next: Record<string, unknown>) => void
+  onIdentityChange: (next: Record<string, unknown>) => void
   onUniqueDescChange: (next: Record<string, unknown>) => void
   onPreviewsGenerated: (gens: PreviewGeneration[]) => void
   onReferenceSelected: (id: string) => void
@@ -1301,9 +1324,11 @@ function PreviewScreen({
             <CompactParamsEditor
               pathChoice={pathChoice}
               appearance={appearance}
+              identity={identity}
               uniqueDesc={uniqueDesc}
               strings={strings}
               onAppearanceChange={onAppearanceChange}
+              onIdentityChange={onIdentityChange}
               onUniqueDescChange={onUniqueDescChange}
             />
           </div>
@@ -1935,6 +1960,9 @@ function ReviewScreen({
   draftData,
   previewGenerations,
   strings,
+  onAppearanceChange,
+  onIdentityChange,
+  onUniqueDescChange,
   onFinalize,
   finalizing,
   finalizeError,
@@ -1942,14 +1970,36 @@ function ReviewScreen({
   draftData: DraftData
   previewGenerations: PreviewGeneration[]
   strings: Record<string, unknown>
+  // Live edit handlers — same callbacks the wizard uses on the dedicated
+  // appearance/identity/backstory steps. Letting the user tweak from here
+  // means they don't have to walk back through 7 steps to fix a wrong
+  // breast/butt size after seeing the final preview.
+  onAppearanceChange: (next: Record<string, unknown>) => void
+  onIdentityChange: (next: Record<string, unknown>) => void
+  onUniqueDescChange: (next: Record<string, unknown>) => void
   onFinalize: () => Promise<void>
   finalizing: boolean
   finalizeError: string | null
 }) {
-  const appearance = (draftData.appearance ?? {}) as Record<string, unknown>
-  const identity = (draftData.identity ?? {}) as Record<string, unknown>
-  const backstory = (draftData.backstory ?? {}) as Record<string, unknown>
-  const uniqueDesc = (draftData.uniqueDesc ?? {}) as Record<string, unknown>
+  // Memoize the per-section slices so the live-prompt useMemos below have
+  // stable dependencies (each `?? {}` fallback otherwise creates a fresh
+  // object every render and re-runs the prompt builders unnecessarily).
+  const appearance = useMemo(
+    () => (draftData.appearance ?? {}) as Record<string, unknown>,
+    [draftData.appearance],
+  )
+  const identity = useMemo(
+    () => (draftData.identity ?? {}) as Record<string, unknown>,
+    [draftData.identity],
+  )
+  const backstory = useMemo(
+    () => (draftData.backstory ?? {}) as Record<string, unknown>,
+    [draftData.backstory],
+  )
+  const uniqueDesc = useMemo(
+    () => (draftData.uniqueDesc ?? {}) as Record<string, unknown>,
+    [draftData.uniqueDesc],
+  )
   const pathChoice = String(draftData.pathChoice ?? 'presets')
   const selectedId = draftData.selectedReferenceMediaAssetId
   const selectedPreview = previewGenerations.find((g) => String(g.mediaAssetId) === selectedId)
@@ -1971,6 +2021,38 @@ function ReviewScreen({
   const looks = String(uniqueDesc.looks ?? '')
 
   const ctaLabel = t(strings, 'builder.actions.create').replace('{name}', name || 'her')
+
+  // Live prompt mirror — same builder helpers the server uses, so the user
+  // sees exactly what would go to the model if they re-ran the preview from
+  // here. Re-generation itself still happens on the preview step (which has
+  // the rate-limited submit/poll loop); we only surface the prompt + edit
+  // controls here so the user can adjust before going back.
+  const livePrompt = useMemo(
+    () =>
+      pathChoice === 'unique'
+        ? buildUniquePrompt(uniqueDesc, appearance)
+        : buildPreviewPrompt(appearance, identity, backstory),
+    [pathChoice, uniqueDesc, appearance, identity, backstory],
+  )
+  const liveNegative = useMemo(
+    () => buildPreviewNegativePrompt(appearance),
+    [appearance],
+  )
+  const selectedEndpoint = useMemo(
+    () =>
+      resolveModelEndpoint(
+        typeof appearance.modelEndpoint === 'string'
+          ? (appearance.modelEndpoint as string)
+          : null,
+        String(appearance.artStyle ?? 'realistic'),
+      ),
+    [appearance],
+  )
+  const selectedModel = IMAGE_MODELS.find((m) => m.id === selectedEndpoint)
+  const supportsNegative = selectedModel?.supportsNegativePrompt ?? true
+
+  const [paramsOpen, setParamsOpen] = useState(false)
+  const [promptOpen, setPromptOpen] = useState(false)
 
   return (
     <div className="flex flex-col gap-6">
@@ -2024,6 +2106,91 @@ function ReviewScreen({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Compact editor + model picker + live prompt — same trio as the
+          preview step, but here changes feed into the live prompt below
+          instead of triggering an immediate regeneration. The user can go
+          back to "Preview" to re-run the model with the new params. */}
+      <div className="flex flex-col gap-3 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/30 p-3">
+        <button
+          type="button"
+          onClick={() => setParamsOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] hover:border-[var(--color-accent-strong)]/60"
+        >
+          <span>
+            {paramsOpen
+              ? t(strings, 'builder.actions.hideParams', 'Hide parameters')
+              : t(strings, 'builder.actions.editParams', 'Edit parameters')}
+          </span>
+          <span aria-hidden>{paramsOpen ? '▴' : '▾'}</span>
+        </button>
+        {paramsOpen && (
+          <CompactParamsEditor
+            pathChoice={pathChoice}
+            appearance={appearance}
+            identity={identity}
+            uniqueDesc={uniqueDesc}
+            strings={strings}
+            onAppearanceChange={onAppearanceChange}
+            onIdentityChange={onIdentityChange}
+            onUniqueDescChange={onUniqueDescChange}
+          />
+        )}
+
+        <ModelPicker
+          models={IMAGE_MODELS}
+          selectedEndpoint={selectedEndpoint}
+          artStyle={String(appearance.artStyle ?? 'realistic')}
+          strings={strings}
+          onSelect={(endpoint) => onAppearanceChange({ ...appearance, modelEndpoint: endpoint })}
+        />
+
+        <button
+          type="button"
+          onClick={() => setPromptOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] hover:border-[var(--color-accent-strong)]/60"
+        >
+          <span>
+            {promptOpen
+              ? t(strings, 'builder.actions.hidePrompt', 'Hide prompt')
+              : t(strings, 'builder.actions.showPrompt', 'Show final prompt')}
+          </span>
+          <span aria-hidden>{promptOpen ? '▴' : '▾'}</span>
+        </button>
+        {promptOpen && (
+          <div className="flex flex-col gap-3">
+            <PromptDisplay
+              label={t(strings, 'builder.promptPreview.positive', 'Prompt')}
+              value={livePrompt}
+              strings={strings}
+            />
+            <div>
+              <PromptDisplay
+                label={t(strings, 'builder.promptPreview.negative', 'Negative prompt')}
+                value={liveNegative}
+                strings={strings}
+                disabled={!supportsNegative}
+              />
+              {!supportsNegative && (
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                  {t(
+                    strings,
+                    'builder.promptPreview.negativeUnsupported',
+                    'This model ignores negative prompts.',
+                  )}
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              {t(
+                strings,
+                'builder.review.regenerateHint',
+                'Changes here update the prompt. Go back to the preview step to regenerate the image.',
+              )}
+            </p>
+          </div>
+        )}
       </div>
 
       {finalizeError && <p className="text-sm text-[var(--color-danger)]">{finalizeError}</p>}
@@ -2329,6 +2496,7 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
             previewGenerations={previewGenerations}
             selectedReferenceId={draftData.selectedReferenceMediaAssetId ?? null}
             onAppearanceChange={updateAppearance}
+            onIdentityChange={updateIdentity}
             onUniqueDescChange={updateUniqueDesc}
             onPreviewsGenerated={setPreviewGenerations}
             onReferenceSelected={handleReferenceSelected}
@@ -2362,6 +2530,9 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
             draftData={draftData}
             previewGenerations={previewGenerations}
             strings={strings}
+            onAppearanceChange={updateAppearance}
+            onIdentityChange={updateIdentity}
+            onUniqueDescChange={updateUniqueDesc}
             onFinalize={handleFinalize}
             finalizing={finalizing}
             finalizeError={finalizeError}
