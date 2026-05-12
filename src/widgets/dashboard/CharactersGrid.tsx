@@ -5,8 +5,9 @@
 // featured characters — for the full catalog, the "View all" link points at
 // /explore where we already have proper server-side filters.
 import Link from 'next/link'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FeaturedCharacter } from '@/widgets/landing/featured-data'
+import { useAutoplayInView } from '@/widgets/landing/use-autoplay-in-view'
 
 type Props = {
   locale: string
@@ -145,12 +146,10 @@ export function CharactersGrid({ locale, characters }: Props) {
   )
 }
 
-// Per-card subcomponent so each card owns its own video ref. Mirrors the
-// hover-to-play pattern used by PersonaCard and LiveActionCard: the still
-// photo is the default frame, the video fades in on hover/focus, and we
-// rewind on leave so the next hover starts from frame zero (matching the
-// still). Cards without a videoUrl render only the photo and behave as
-// before.
+// Per-card subcomponent so each card owns its own video ref. Video starts
+// auto-playing when the card scrolls into view (IntersectionObserver in
+// useAutoplayInView). Cards without a videoUrl render only the photo
+// and behave as before.
 function CharacterTileCard({
   character,
   locale,
@@ -159,46 +158,33 @@ function CharacterTileCard({
   locale: string
 }) {
   const c = character
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const handleEnter = () => {
-    const v = videoRef.current
-    if (!v) return
-    v.currentTime = 0
-    void v.play().catch(() => {})
-  }
-  const handleLeave = () => {
-    const v = videoRef.current
-    if (!v) return
-    v.pause()
-    v.currentTime = 0
-  }
+  const videoRef = useAutoplayInView()
 
   return (
     <Link
       href={`/${locale}/pick/${c.slug}`}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-      onFocus={handleEnter}
-      onBlur={handleLeave}
       className="group relative block aspect-[3/4] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_40px_-12px_rgba(192,116,255,0.4)]"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={c.photoUrl}
-        alt={c.name}
-        loading="lazy"
-        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-      />
-      {c.videoUrl && (
+      {c.videoUrl ? (
         <video
           ref={videoRef}
           src={c.videoUrl}
+          poster={c.photoUrl}
+          autoPlay
           muted
           loop
           playsInline
-          preload="none"
-          aria-hidden
-          className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+          preload="metadata"
+          aria-label={c.name}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={c.photoUrl}
+          alt={c.name}
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
         />
       )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
@@ -206,14 +192,6 @@ function CharacterTileCard({
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
         Online
       </span>
-      {c.videoUrl && (
-        <span className="pointer-events-none absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm opacity-100 transition-opacity group-hover:opacity-0">
-          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-3 w-3">
-            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-          </svg>
-          Video
-        </span>
-      )}
       <div className="absolute inset-x-0 bottom-0 p-3">
         <p className="truncate text-sm font-bold text-white drop-shadow">
           {c.name}
