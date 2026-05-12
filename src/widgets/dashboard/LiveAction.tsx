@@ -49,11 +49,11 @@ function LivePulse() {
   )
 }
 
-// Per-card subcomponent so each video gets its own ref. Inlined rather than
-// shared with PersonaCard / CharactersGrid because the surrounding card
-// chrome (teaser line, scrollable row sizing, "Play with me" CTA) is
-// LiveAction-specific. Video starts on intersection — the still photo
-// only shows until the first frame buffers.
+// Per-card subcomponent so each tile gets a stable Link + isolated
+// CharacterCardMedia (which handles its own observer + ping-pong).
+// Inlined rather than shared with PersonaCard / CharacterTileCard
+// because the surrounding card chrome (teaser line, scrollable row
+// sizing, "Play with me" CTA) is LiveAction-specific.
 function LiveActionCard({
   character,
   locale,

@@ -146,10 +146,10 @@ export function CharactersGrid({ locale, characters }: Props) {
   )
 }
 
-// Per-card subcomponent so each card owns its own video ref. Video starts
-// auto-playing when the card scrolls into view (IntersectionObserver in
-// useAutoplayInView). Cards without a videoUrl render only the photo
-// and behave as before.
+// Thin wrapper around the shared CharacterCardMedia. Kept as its own
+// subcomponent so each tile inside the .map() gets a stable Link with
+// its own href and the media element below isolates its observer +
+// playback state.
 function CharacterTileCard({
   character,
   locale,
