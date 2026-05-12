@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
-import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Button, Card, Input } from '@/shared/ui'
 import {
   GENDERS,
@@ -30,11 +30,20 @@ import {
 import { validateName } from '@/features/builder/blocklist'
 import {
   saveDraftStepAction,
-  generatePreviewsAction,
+  submitPreviewJobAction,
+  fetchPreviewJobStatusAction,
   selectReferenceAction,
   finalizeBuilderAction,
   suggestNameAction,
 } from '@/features/builder/actions'
+import {
+  buildPreviewPrompt,
+  buildPreviewNegativePrompt,
+  buildUniquePrompt,
+  resolveModelEndpoint,
+  IMAGE_MODELS,
+  type ModelOption,
+} from '@/features/builder/prompt-builder'
 import {
   parseUrlState,
   serializeUrlState,
@@ -299,54 +308,117 @@ const PHASE_KEYS: Array<'appearance' | 'identity' | 'backstory' | 'review'> = [
 
 function PhaseIndicator({
   currentPhase,
+  steps,
+  stepIdx,
   strings,
+  onJumpToPhase,
 }: {
   currentPhase: number
+  steps: StepDef[]
+  stepIdx: number
   strings: Record<string, unknown>
+  // Click-to-navigate. Receives the phase number (1-4) and is expected to
+  // move stepIdx to the first step of that phase. Forward jumps are
+  // allowed — the canAdvance gating still keeps the user from finalising
+  // a draft with unfilled required fields, so all this does is short-cut
+  // navigation. Backwards jumps are always safe.
+  onJumpToPhase?: (phase: number) => void
 }) {
+  // Compute position within the active phase so the user can tell that
+  // they're moving forward even when they're walking through the five
+  // sub-steps of "Appearance" — previously the indicator stayed pinned on
+  // the same phase pill for the whole stretch and read as "stuck on
+  // step 1".
+  const activePhaseSteps = steps.filter((s) => s.phase === currentPhase)
+  const activePhaseFirstIdx = steps.findIndex((s) => s.phase === currentPhase)
+  const subIdx = Math.max(0, stepIdx - activePhaseFirstIdx)
+  const subTotal = activePhaseSteps.length
+  const progressPct = ((stepIdx + 1) / steps.length) * 100
+
+  // The unique path skips identity (phase 2 maps to unique_desc) and
+  // backstory (phase 3) — only show pills for phases that have at least
+  // one step in the current path so we don't render dead "Personality" /
+  // "Story" pills that go nowhere.
+  const pathHasPhase = (phase: number) => steps.some((s) => s.phase === phase)
+
   return (
-    <div className="flex items-center gap-2 mb-6">
-      {PHASE_KEYS.map((key, i) => {
-        const idx = i + 1
-        const isActive = idx === currentPhase
-        const isDone = idx < currentPhase
-        return (
-          <React.Fragment key={key}>
-            <div className="flex items-center gap-2">
-              <div
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-2">
+        {PHASE_KEYS.map((key, i) => {
+          const idx = i + 1
+          const isActive = idx === currentPhase
+          const isDone = idx < currentPhase
+          const isReachable = pathHasPhase(idx)
+          const clickable = isReachable && !isActive && !!onJumpToPhase
+          const PillTag = clickable ? 'button' : 'div'
+          return (
+            <React.Fragment key={key}>
+              <PillTag
+                type={clickable ? 'button' : undefined}
+                onClick={clickable ? () => onJumpToPhase!(idx) : undefined}
+                aria-label={clickable ? `Jump to ${t(strings, `builder.phases.${key}`)}` : undefined}
                 className={[
-                  'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors',
-                  isActive
-                    ? 'bg-[var(--color-accent-strong)] text-white'
-                    : isDone
-                      ? 'bg-[var(--color-accent-strong)]/40 text-[var(--color-text)]'
-                      : 'bg-[var(--color-surface-2)] text-[var(--color-text-muted)]',
-                ].join(' ')}
+                  'flex items-center gap-2 rounded-lg p-0.5 -m-0.5',
+                  clickable
+                    ? 'cursor-pointer hover:bg-[var(--color-surface-2)] transition-colors'
+                    : 'cursor-default',
+                  !isReachable && 'opacity-40',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                disabled={clickable ? undefined : true}
               >
-                {isDone ? '✓' : idx}
-              </div>
-              <span
-                className={[
-                  'hidden sm:block text-sm',
-                  isActive
-                    ? 'text-[var(--color-text)] font-medium'
-                    : 'text-[var(--color-text-muted)]',
-                ].join(' ')}
-              >
-                {t(strings, `builder.phases.${key}`)}
-              </span>
-            </div>
-            {i < PHASE_KEYS.length - 1 && (
-              <div
-                className={[
-                  'flex-1 h-px',
-                  isDone ? 'bg-[var(--color-accent-strong)]/40' : 'bg-[var(--color-border)]',
-                ].join(' ')}
-              />
-            )}
-          </React.Fragment>
-        )
-      })}
+                <div
+                  className={[
+                    'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors',
+                    isActive
+                      ? 'bg-[var(--color-accent-strong)] text-white'
+                      : isDone
+                        ? 'bg-[var(--color-accent-strong)]/40 text-[var(--color-text)]'
+                        : 'bg-[var(--color-surface-2)] text-[var(--color-text-muted)]',
+                  ].join(' ')}
+                >
+                  {isDone ? '✓' : idx}
+                </div>
+                <div className="hidden sm:flex flex-col leading-tight text-left">
+                  <span
+                    className={[
+                      'text-sm',
+                      isActive
+                        ? 'text-[var(--color-text)] font-medium'
+                        : 'text-[var(--color-text-muted)]',
+                    ].join(' ')}
+                  >
+                    {t(strings, `builder.phases.${key}`)}
+                  </span>
+                  {isActive && subTotal > 1 && (
+                    <span className="text-[10px] text-[var(--color-text-muted)] tabular-nums">
+                      {subIdx + 1} / {subTotal}
+                    </span>
+                  )}
+                </div>
+              </PillTag>
+              {i < PHASE_KEYS.length - 1 && (
+                <div
+                  className={[
+                    'flex-1 h-px',
+                    isDone ? 'bg-[var(--color-accent-strong)]/40' : 'bg-[var(--color-border)]',
+                  ].join(' ')}
+                />
+              )}
+            </React.Fragment>
+          )
+        })}
+      </div>
+      {/* Continuous progress bar across all sub-steps. Gives clear forward
+          motion as the user walks through Appearance's 5 substeps — the
+          phase pills alone don't show it. */}
+      <div className="h-1 rounded-full bg-[var(--color-surface-2)] overflow-hidden">
+        <div
+          className="h-full bg-[var(--color-accent-strong)] transition-all duration-300 ease-out"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
     </div>
   )
 }
@@ -374,18 +446,25 @@ type StepDef = {
 }
 
 // Two paths through the wizard. Picked dynamically based on draftData.pathChoice.
+// Preview lives at the END of phase 3 (Story), after the user has picked
+// archetype, occupation, and relationship. The previous position (after
+// hair_eyes in phase 1) meant the prompt builder couldn't include
+// archetype mood / occupation outfit on the first generation — the data
+// was unfilled — so the user had to either generate a generic image and
+// be disappointed, or navigate back to preview after answering identity.
+// Moving preview to position 10 fixes that without splitting phases.
 const PRESETS_STEPS: StepDef[] = [
   { key: 'intro', phase: 1 },
   { key: 'age_ethnicity', phase: 1 },
   { key: 'body', phase: 1 },
   { key: 'hair_eyes', phase: 1 },
-  { key: 'preview', phase: 1 },
   { key: 'archetype', phase: 2 },
   { key: 'name_orientation', phase: 2 },
   { key: 'chat_style', phase: 2 },
   { key: 'occupation', phase: 3 },
   { key: 'relationship', phase: 3 },
   { key: 'kinks', phase: 3 },
+  { key: 'preview', phase: 3 },
   { key: 'review', phase: 4 },
 ]
 
@@ -395,6 +474,95 @@ const UNIQUE_STEPS: StepDef[] = [
   { key: 'preview', phase: 2 },
   { key: 'review', phase: 4 },
 ]
+
+// Same gating semantics as the runtime canAdvance() inside the component, but
+// exposed as a pure function so the initial-step inference (initialSubIdx)
+// can replay it across the persisted draft. Update in lockstep with
+// canAdvance() — both encode the same per-step data prerequisite.
+function isStepDataSatisfied(
+  stepKey: StepKey,
+  draft: {
+    pathChoice?: 'presets' | 'unique'
+    appearance?: Record<string, unknown>
+    identity?: Record<string, unknown>
+    backstory?: Record<string, unknown>
+    uniqueDesc?: Record<string, unknown>
+    selectedReferenceMediaAssetId?: string | null
+  },
+): boolean {
+  const a = (draft.appearance ?? {}) as Record<string, unknown>
+  const i = (draft.identity ?? {}) as Record<string, unknown>
+  const b = (draft.backstory ?? {}) as Record<string, unknown>
+  const u = (draft.uniqueDesc ?? {}) as Record<string, unknown>
+  const hair = (a.hair ?? {}) as Record<string, string>
+  const eyes = (a.eyes ?? {}) as Record<string, string>
+
+  switch (stepKey) {
+    case 'intro':
+      return !!a.gender && !!a.artStyle && !!draft.pathChoice
+    case 'unique_desc': {
+      const name = String(u.name ?? '')
+      return name.length >= 2 && validateName(name).ok && !!String(u.personality ?? '').trim()
+    }
+    case 'age_ethnicity':
+      return !!a.ageRange && !!a.ethnicity
+    case 'body':
+      return !!a.bodyType && (a.gender === 'male' || !!a.breastSize) && !!a.buttSize
+    case 'hair_eyes':
+      return !!hair.style && !!hair.color && !!hair.length && !!eyes.color
+    case 'preview':
+      return !!draft.selectedReferenceMediaAssetId
+    case 'archetype':
+      return !!i.archetype
+    case 'name_orientation': {
+      const name = String(i.name ?? '')
+      return name.length >= 2 && validateName(name).ok && !!i.sexualOrientation
+    }
+    case 'chat_style':
+      return !!b.chatStyle
+    case 'occupation':
+      return (
+        !!i.occupation &&
+        (i.occupation !== 'custom' || !!String(i.occupationCustom ?? '').trim())
+      )
+    case 'relationship':
+      return (
+        !!b.startingRelationship &&
+        (b.startingRelationship !== 'custom' ||
+          !!String(b.startingRelationshipCustom ?? '').trim())
+      )
+    case 'kinks':
+      return Array.isArray(b.kinks) // user reached this step (kinks are optional but the field gets initialised on entry)
+    case 'review':
+      return false // review has no "data" of its own — never claim it as the furthest step
+  }
+}
+
+// Walk steps backwards and return the index of the highest step whose data
+// prerequisite is satisfied. A returning user with a populated draft lands
+// at their last position instead of getting bounced to the intro by a stale
+// `step=0` URL or a phase-only currentStep fallback.
+//
+// Important: we start the walk at i=1, not i=0. The intro step's data
+// (gender, artStyle, pathChoice) is pre-seeded by createDraftAction so a
+// brand-new draft would otherwise satisfy intro's check and skip straight
+// to age_ethnicity — the user would never see the realistic/anime picker.
+// Only treat the draft as "past intro" when something further along has
+// real user data.
+function inferFurthestStepIdx(
+  steps: StepDef[],
+  draft: Parameters<typeof isStepDataSatisfied>[1],
+): number {
+  for (let i = steps.length - 1; i >= 1; i--) {
+    if (isStepDataSatisfied(steps[i]!.key, draft)) {
+      // If the user satisfied step N's data, they were at N+1 next (or review
+      // if N is the last data step). Clamp to the last index so we never
+      // overrun.
+      return Math.min(i + 1, steps.length - 1)
+    }
+  }
+  return 0
+}
 
 // ── Intro screen (gender + art style + path choice) ─────────────────────
 
@@ -519,7 +687,7 @@ function AgeEthnicityScreen({
           <Chip
             key={o.value}
             emoji={o.emoji}
-            label={`${t(strings, o.labelKey)} · ${o.rangeLabel}`}
+            label={t(strings, o.labelKey)}
             selected={ageRange === o.value}
             onClick={() =>
               onChange({ ...appearance, ageRange: o.value, ageDisplay: o.defaultAge })
@@ -662,47 +830,482 @@ function HairEyesScreen({
 
 // ── Preview generation step ───────────────────────────────────────────────
 
+// Read-only prompt display with copy-to-clipboard. Surfaces the exact text
+// the server is about to send to fal so the user can sanity-check / iterate
+// before they spend a generation slot.
+function PromptDisplay({
+  label,
+  value,
+  strings,
+  disabled,
+}: {
+  label: string
+  value: string
+  strings: Record<string, unknown>
+  disabled?: boolean
+}) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // navigator.clipboard isn't available over plain http or in some
+      // sandboxed iframes — silently no-op rather than blowing up the UI.
+    }
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          disabled={disabled || !value}
+          className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-40"
+        >
+          {copied
+            ? t(strings, 'builder.actions.copiedPrompt', 'Copied')
+            : t(strings, 'builder.actions.copyPrompt', 'Copy')}
+        </button>
+      </div>
+      <textarea
+        readOnly
+        value={value}
+        rows={Math.min(8, Math.max(3, Math.ceil(value.length / 80)))}
+        disabled={disabled}
+        className="w-full resize-y rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-xs font-mono text-[var(--color-text)] disabled:opacity-50"
+      />
+    </div>
+  )
+}
+
+// Pill row for picking the fal endpoint. We don't gate FLUX behind a
+// premium flag here — the picker is just a transparent override of the
+// art-style default; the rate limiter protects spend.
+function ModelPicker({
+  models,
+  selectedEndpoint,
+  artStyle,
+  strings,
+  onSelect,
+}: {
+  models: ModelOption[]
+  selectedEndpoint: string
+  artStyle: string
+  strings: Record<string, unknown>
+  onSelect: (endpoint: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+        {t(strings, 'builder.modelPicker.heading', 'Image model')}
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {models.map((m) => {
+          const selected = m.id === selectedEndpoint
+          const isRecommended = m.recommendedFor.includes(artStyle as 'realistic' | 'anime')
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onSelect(m.id)}
+              className={[
+                'flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors',
+                selected
+                  ? 'border-[var(--color-accent-strong)] bg-[var(--color-accent-strong)]/15'
+                  : 'border-[var(--color-border)] bg-[var(--color-surface-2)] hover:border-[var(--color-accent-strong)]/60',
+              ].join(' ')}
+            >
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text)]">
+                {t(strings, m.labelKey, m.id)}
+                {isRecommended && (
+                  <span className="rounded-md bg-[var(--color-accent-strong)]/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--color-accent-strong)]">
+                    {t(strings, 'builder.modelPicker.recommended', 'Recommended')}
+                  </span>
+                )}
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)]">
+                {t(strings, m.descriptionKey, '')}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// One labelled row of chip choices. Dense layout that fits multiple param
+// rows on a single screen — meant to live inside CompactParamsEditor below.
+function CompactChipRow({
+  label,
+  options,
+  value,
+  onChange,
+  strings,
+}: {
+  label: string
+  options: BuilderOption[]
+  value: string | undefined
+  onChange: (v: string) => void
+  strings: Record<string, unknown>
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => (
+          <Chip
+            key={o.value}
+            emoji={o.emoji}
+            label={t(strings, o.labelKey)}
+            selected={value === o.value}
+            onClick={() => onChange(o.value)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Compact rewrite of the appearance/unique-desc steps so the user can
+// tweak any choice without walking back through the wizard. Only renders
+// the prompt-affecting fields; identity/backstory don't influence the
+// image so we leave them in their dedicated steps.
+function CompactParamsEditor({
+  pathChoice,
+  appearance,
+  uniqueDesc,
+  strings,
+  onAppearanceChange,
+  onUniqueDescChange,
+}: {
+  pathChoice: string
+  appearance: Record<string, unknown>
+  uniqueDesc: Record<string, unknown>
+  strings: Record<string, unknown>
+  onAppearanceChange: (next: Record<string, unknown>) => void
+  onUniqueDescChange: (next: Record<string, unknown>) => void
+}) {
+  const isMale = appearance.gender === 'male'
+  const hair = (appearance.hair ?? {}) as Record<string, string>
+  const eyes = (appearance.eyes ?? {}) as Record<string, string>
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-3">
+      <CompactChipRow
+        label={t(strings, 'builder.sections.gender')}
+        options={GENDERS}
+        value={String(appearance.gender ?? '')}
+        onChange={(v) => onAppearanceChange({ ...appearance, gender: v })}
+        strings={strings}
+      />
+
+      <CompactChipRow
+        label={t(strings, 'builder.sections.artStyle')}
+        options={ART_STYLES}
+        value={String(appearance.artStyle ?? '')}
+        onChange={(v) => onAppearanceChange({ ...appearance, artStyle: v })}
+        strings={strings}
+      />
+
+      {pathChoice !== 'unique' && (
+        <>
+          <CompactChipRow
+            label={t(strings, 'builder.sections.age')}
+            options={AGE_RANGES}
+            value={String(appearance.ageRange ?? '')}
+            onChange={(v) => onAppearanceChange({ ...appearance, ageRange: v })}
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.ethnicity')}
+            options={ETHNICITIES}
+            value={String(appearance.ethnicity ?? '')}
+            onChange={(v) => onAppearanceChange({ ...appearance, ethnicity: v })}
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.physique')}
+            options={BODY_TYPES}
+            value={String(appearance.bodyType ?? '')}
+            onChange={(v) => onAppearanceChange({ ...appearance, bodyType: v })}
+            strings={strings}
+          />
+
+          {!isMale && (
+            <CompactChipRow
+              label={t(strings, 'builder.sections.breasts')}
+              options={BREAST_SIZES}
+              value={String(appearance.breastSize ?? '')}
+              onChange={(v) => onAppearanceChange({ ...appearance, breastSize: v })}
+              strings={strings}
+            />
+          )}
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.butt')}
+            options={BUTT_SIZES}
+            value={String(appearance.buttSize ?? '')}
+            onChange={(v) => onAppearanceChange({ ...appearance, buttSize: v })}
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.hairLength')}
+            options={HAIR_LENGTHS}
+            value={hair.length}
+            onChange={(v) =>
+              onAppearanceChange({ ...appearance, hair: { ...hair, length: v } })
+            }
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.hairStyle')}
+            options={HAIR_STYLES}
+            value={hair.style}
+            onChange={(v) =>
+              onAppearanceChange({ ...appearance, hair: { ...hair, style: v } })
+            }
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.hairColor')}
+            options={HAIR_COLORS}
+            value={hair.color}
+            onChange={(v) =>
+              onAppearanceChange({ ...appearance, hair: { ...hair, color: v } })
+            }
+            strings={strings}
+          />
+
+          <CompactChipRow
+            label={t(strings, 'builder.sections.eyeColor')}
+            options={EYE_COLORS}
+            value={eyes.color}
+            onChange={(v) =>
+              onAppearanceChange({ ...appearance, eyes: { ...eyes, color: v } })
+            }
+            strings={strings}
+          />
+        </>
+      )}
+
+      {pathChoice === 'unique' && (
+        <>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+              {t(strings, 'builder.sections.uniqueLooks')}
+            </span>
+            <textarea
+              value={String(uniqueDesc.looks ?? '')}
+              onChange={(e) => onUniqueDescChange({ ...uniqueDesc, looks: e.target.value })}
+              rows={4}
+              maxLength={2000}
+              placeholder={t(strings, 'builder.placeholders.uniqueLooks')}
+              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)]/50 outline-none focus:border-[var(--color-accent-strong)] focus:ring-1 focus:ring-[var(--color-accent-strong)] resize-y"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">
+              {t(strings, 'builder.sections.uniquePersonality')}
+            </span>
+            <textarea
+              value={String(uniqueDesc.personality ?? '')}
+              onChange={(e) =>
+                onUniqueDescChange({ ...uniqueDesc, personality: e.target.value })
+              }
+              rows={4}
+              maxLength={2000}
+              placeholder={t(strings, 'builder.placeholders.uniquePersonality')}
+              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)]/50 outline-none focus:border-[var(--color-accent-strong)] focus:ring-1 focus:ring-[var(--color-accent-strong)] resize-y"
+            />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function PreviewScreen({
   strings,
   draftId,
+  pathChoice,
+  appearance,
+  identity,
+  backstory,
+  uniqueDesc,
   previewGenerations,
   selectedReferenceId,
+  onAppearanceChange,
+  onUniqueDescChange,
   onPreviewsGenerated,
   onReferenceSelected,
 }: {
   strings: Record<string, unknown>
   draftId: string
+  pathChoice: string
+  appearance: Record<string, unknown>
+  identity: Record<string, unknown>
+  backstory: Record<string, unknown>
+  uniqueDesc: Record<string, unknown>
   previewGenerations: PreviewGeneration[]
   selectedReferenceId: string | null
+  onAppearanceChange: (next: Record<string, unknown>) => void
+  onUniqueDescChange: (next: Record<string, unknown>) => void
   onPreviewsGenerated: (gens: PreviewGeneration[]) => void
   onReferenceSelected: (id: string) => void
 }) {
   const [generating, setGenerating] = useState(false)
   const [genError, setGenError] = useState<string | null>(null)
+  const [paramsOpen, setParamsOpen] = useState(false)
+  const [promptOpen, setPromptOpen] = useState(true)
 
-  const previewCount = previewGenerations.length
+  // Each generation produces N images (numImages=4 server-side), all stamped
+  // with the same generatedAt. Count distinct timestamps so the 5-set limit
+  // means 5 user clicks, not 5 individual images. Without this the user gets
+  // the Generate button disabled after the second click (8 entries > 5),
+  // even though they only ran two generations.
+  const generationCount = useMemo(
+    () => new Set(previewGenerations.map((g) => g.generatedAt).filter(Boolean)).size,
+    [previewGenerations],
+  )
+  const PREVIEW_GEN_LIMIT = 5
+  const limitReached = generationCount >= PREVIEW_GEN_LIMIT
+
+  // Recompute the live prompt whenever the user tweaks anything in the
+  // compact editor — the textarea below mirrors what the server will send.
+  // Pass identity + backstory so archetype mood and occupation outfit show
+  // up in the preview (and in the rendered image once Generate fires).
+  const prompt = useMemo(
+    () =>
+      pathChoice === 'unique'
+        ? buildUniquePrompt(uniqueDesc, appearance)
+        : buildPreviewPrompt(appearance, identity, backstory),
+    [pathChoice, uniqueDesc, appearance, identity, backstory],
+  )
+  const negativePrompt = useMemo(() => buildPreviewNegativePrompt(appearance), [appearance])
+  const selectedEndpoint = useMemo(
+    () =>
+      resolveModelEndpoint(
+        typeof appearance.modelEndpoint === 'string'
+          ? (appearance.modelEndpoint as string)
+          : null,
+        String(appearance.artStyle ?? 'realistic'),
+      ),
+    [appearance],
+  )
+  const selectedModel = IMAGE_MODELS.find((m) => m.id === selectedEndpoint)
+  const supportsNegative = selectedModel?.supportsNegativePrompt ?? true
+
+  // Live progress message while the poll loop is running ("Queue: 3 · …").
+  // Surfaces fal's queue_position and last log line so the user sees that
+  // the wizard is actually waiting on the model, not stalled. Cleared when
+  // the loop ends (success / error / unmount).
+  const [genProgress, setGenProgress] = useState<string | null>(null)
+  // Cancel flag — flipped on component unmount so an orphaned polling
+  // loop doesn't try to setState on a dead component (or keep burning
+  // server-action invocations forever).
+  const generationCancelRef = useRef(false)
+  useEffect(() => {
+    return () => {
+      generationCancelRef.current = true
+    }
+  }, [])
+
+  // Map a server-side error code to a localised message. Falls back to the
+  // raw text when we don't recognise the code so admins still see the real
+  // cause during debugging.
+  const mapGenError = (code: string): string => {
+    switch (code) {
+      case 'preview_limit_reached':
+        return t(strings, 'builder.errors.previewLimitReached')
+      case 'safety_filtered':
+        return t(strings, 'builder.errors.previewSafetyFiltered')
+      case 'poll_timed_out':
+      case 'rate_limited':
+        return t(
+          strings,
+          'builder.errors.previewTimeout',
+          'Generation timed out. Try a faster model or wait — Pony/Illustrious checkpoints warm up after the first hit.',
+        )
+      default:
+        return code
+    }
+  }
 
   const handleGenerate = async () => {
     setGenerating(true)
     setGenError(null)
-    const result = await generatePreviewsAction(draftId)
-    setGenerating(false)
-    if (!result.ok) {
+    setGenProgress(null)
+    generationCancelRef.current = false
+    try {
+      // Phase 1: submit to fal. Returns immediately with handles persisted
+      // server-side on draft.data.pendingPreviewJob.
+      const submit = await submitPreviewJobAction(draftId)
+      if (!submit.ok) {
+        setGenError(mapGenError(submit.error))
+        return
+      }
+      // Phase 2: poll status every ~3 s until completed / failed / cancelled.
+      // Server enforces a 4-min deadline (POLL_DEADLINE_MS) so this loop can
+      // only run that long even if we forget to break out.
+      let pollDelayMs = 3000
+      while (!generationCancelRef.current) {
+        await new Promise((r) => setTimeout(r, pollDelayMs))
+        if (generationCancelRef.current) return
+        const poll = await fetchPreviewJobStatusAction(draftId)
+        if (!poll.ok) {
+          setGenError(mapGenError(poll.error))
+          return
+        }
+        if (poll.status === 'completed') {
+          const newEntry: PreviewGeneration = {
+            mediaAssetId: String(poll.preview.mediaAssetId),
+            publicUrl: poll.preview.publicUrl,
+            promptUsed: '',
+            generatedAt: new Date().toISOString(),
+            selectedAsReference: false,
+          }
+          onPreviewsGenerated([...previewGenerations, newEntry])
+          return
+        }
+        // status === 'pending' — surface what fal told us so the user sees
+        // motion. queueMsg/logMsg may both be empty during the brief window
+        // before fal returns a status payload.
+        const queueMsg =
+          typeof poll.queuePosition === 'number' && poll.queuePosition > 0
+            ? `Queue: ${poll.queuePosition}`
+            : ''
+        const logMsg = poll.lastLog ?? ''
+        setGenProgress([queueMsg, logMsg].filter(Boolean).join(' · ') || 'Waiting…')
+        // Back off slightly after the first few polls — cold-start LoRAs
+        // sit in fal's queue for minutes; hitting the status URL every 3s
+        // for that long is just noise.
+        if (pollDelayMs < 6000) pollDelayMs = Math.min(6000, pollDelayMs + 500)
+      }
+    } catch (e) {
+      // submit/poll action threw something the typed return shape didn't
+      // cover (network drop, etc.). Treat as timeout so the user sees a
+      // clear hint instead of "Failed to fetch".
       setGenError(
-        result.error === 'preview_limit_reached'
-          ? t(strings, 'builder.errors.previewLimitReached')
-          : result.error,
+        t(strings, 'builder.errors.previewTimeout', 'Generation timed out.'),
       )
-      return
+      console.error('[builder-preview]', e)
+    } finally {
+      setGenerating(false)
+      setGenProgress(null)
     }
-    const newEntries: PreviewGeneration[] = result.previews.map((p) => ({
-      mediaAssetId: String(p.mediaAssetId),
-      publicUrl: p.publicUrl,
-      promptUsed: '',
-      generatedAt: new Date().toISOString(),
-      selectedAsReference: false,
-    }))
-    onPreviewsGenerated([...previewGenerations, ...newEntries])
   }
 
   const handleSelect = async (id: string) => {
@@ -717,15 +1320,99 @@ function PreviewScreen({
         hint={t(strings, 'builder.hints.previewIntro')}
       />
 
+      {/* Compact param editor — collapsed by default to keep the screen
+          short for users who are happy with their picks. */}
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setParamsOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] hover:border-[var(--color-accent-strong)]/60"
+        >
+          <span>
+            {paramsOpen
+              ? t(strings, 'builder.actions.hideParams', 'Hide parameters')
+              : t(strings, 'builder.actions.editParams', 'Edit parameters')}
+          </span>
+          <span aria-hidden>{paramsOpen ? '▴' : '▾'}</span>
+        </button>
+        {paramsOpen && (
+          <div className="mt-3">
+            <CompactParamsEditor
+              pathChoice={pathChoice}
+              appearance={appearance}
+              uniqueDesc={uniqueDesc}
+              strings={strings}
+              onAppearanceChange={onAppearanceChange}
+              onUniqueDescChange={onUniqueDescChange}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4">
+        {/* onSelect only updates appearance.modelEndpoint and triggers a
+            debounced draft save (saveDraftStepAction). It does NOT call
+            generatePreviewsAction — image generation only fires from the
+            Generate button click below (handleGenerate). */}
+        <ModelPicker
+          models={IMAGE_MODELS}
+          selectedEndpoint={selectedEndpoint}
+          artStyle={String(appearance.artStyle ?? 'realistic')}
+          strings={strings}
+          onSelect={(endpoint) => onAppearanceChange({ ...appearance, modelEndpoint: endpoint })}
+        />
+      </div>
+
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setPromptOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-sm text-[var(--color-text)] hover:border-[var(--color-accent-strong)]/60"
+        >
+          <span>
+            {promptOpen
+              ? t(strings, 'builder.actions.hidePrompt', 'Hide prompt')
+              : t(strings, 'builder.actions.showPrompt', 'Show final prompt')}
+          </span>
+          <span aria-hidden>{promptOpen ? '▴' : '▾'}</span>
+        </button>
+        {promptOpen && (
+          <div className="mt-3 flex flex-col gap-3">
+            <PromptDisplay
+              label={t(strings, 'builder.promptPreview.positive', 'Prompt')}
+              value={prompt}
+              strings={strings}
+            />
+            <div>
+              <PromptDisplay
+                label={t(strings, 'builder.promptPreview.negative', 'Negative prompt')}
+                value={negativePrompt}
+                strings={strings}
+                disabled={!supportsNegative}
+              />
+              {!supportsNegative && (
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                  {t(
+                    strings,
+                    'builder.promptPreview.negativeUnsupported',
+                    'This model ignores negative prompts.',
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center justify-between mb-4">
         <span className="text-xs text-[var(--color-text-muted)]">
           {t(strings, 'builder.previewsRemaining')
-            .replace('{used}', String(previewCount))
-            .replace('{max}', '5')}
+            .replace('{used}', String(generationCount))
+            .replace('{max}', String(PREVIEW_GEN_LIMIT))}
         </span>
         <Button
           onClick={handleGenerate}
-          disabled={generating || previewCount >= 5}
+          disabled={generating || limitReached}
           variant="secondary"
           size="sm"
         >
@@ -733,13 +1420,27 @@ function PreviewScreen({
             ? '...'
             : t(
                 strings,
-                previewCount === 0
+                generationCount === 0
                   ? 'builder.actions.generatePreviews'
                   : 'builder.actions.regenerate',
               )}
         </Button>
       </div>
 
+      {/* Live poll progress so cold-start LoRAs (2-3 min) don't look stalled. */}
+      {generating && genProgress && (
+        <p className="text-xs text-[var(--color-text-muted)] mb-3 tabular-nums">
+          {genProgress}
+        </p>
+      )}
+
+      {/* Surface the disabled-by-limit state so the button doesn't just sit
+          dead with no explanation. */}
+      {limitReached && !genError && (
+        <p className="text-xs text-[var(--color-text-muted)] mb-3">
+          {t(strings, 'builder.errors.previewLimitReached')}
+        </p>
+      )}
       {genError && <p className="text-xs text-[var(--color-danger)] mb-3">{genError}</p>}
 
       {previewGenerations.length === 0 ? (
@@ -1376,7 +2077,6 @@ function ReviewScreen({
 // ── Main wizard ───────────────────────────────────────────────────────────
 
 export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props) {
-  const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
@@ -1414,16 +2114,27 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
     [draftData.pathChoice],
   )
 
-  // Sub-step index. URL `step` wins over DB-derived phase position because
-  // URL is the explicit user intent (shared link to "step=4" lands there).
+  // Sub-step index. URL `step > 0` wins as explicit user intent (shared link
+  // to "step=4" lands there). step=0 or no step param falls back to walking
+  // the persisted draft and resuming at the highest data-satisfied position
+  // — otherwise a returning user with a fully-filled draft gets bounced to
+  // the intro by a stale `step=0` written during a previous mount, or by the
+  // phase-only currentStep fallback (currentStep tracks phase 1-4, which
+  // resolves to the FIRST sub-step of that phase and loses position within).
   const initialSubIdx = useMemo(() => {
+    const stepsForPath = draftData.pathChoice === 'unique' ? UNIQUE_STEPS : PRESETS_STEPS
+    const totalLen = stepsForPath.length
     const urlStep = searchParams ? Number(searchParams.get('step')) : NaN
-    if (Number.isFinite(urlStep) && urlStep >= 0) {
-      const totalLen = (draftData.pathChoice === 'unique' ? UNIQUE_STEPS : PRESETS_STEPS).length
+    if (Number.isFinite(urlStep) && urlStep > 0) {
       return Math.min(Math.max(0, Math.floor(urlStep)), totalLen - 1)
     }
+    const inferred = inferFurthestStepIdx(stepsForPath, draftData)
+    if (inferred > 0) return inferred
+    // Genuinely fresh draft (no data inferred). Honour the saved phase as a
+    // last-resort hint so a draft that was created with a non-default phase
+    // still lands at that phase's first step.
     const phase = Math.max(1, Math.min(4, initialDraft.currentStep ?? 1))
-    const idx = STEPS.findIndex((s) => s.phase === phase)
+    const idx = stepsForPath.findIndex((s) => s.phase === phase)
     return idx >= 0 ? idx : 0
     // STEPS depends on pathChoice and is computed above; we deliberately
     // run this once at mount (linter wants STEPS in deps but its identity
@@ -1438,20 +2149,29 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const urlSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sync local state → URL (debounced, replace not push so back button
-  // exits the wizard rather than walking through every keystroke).
+  // Sync local state → URL (debounced). Uses window.history.replaceState
+  // directly instead of router.replace because router.replace in App Router
+  // triggers an RSC payload re-fetch on every URL change — that shows up as
+  // POST /en/builder/<id>?_rsc=… in the network tab on every keystroke and
+  // every model switch, looking like spurious work even though no server
+  // action runs. history.replaceState is a pure client-side URL update:
+  // shareable URL, browser back exits the wizard, zero extra network. The
+  // saveDraftStepAction debounce (separate, 600ms) still persists state.
   useEffect(() => {
     if (urlSyncTimeoutRef.current) clearTimeout(urlSyncTimeoutRef.current)
     urlSyncTimeoutRef.current = setTimeout(() => {
       const url = draftToUrlState(draftData, stepIdx)
       const sp = serializeUrlState(url)
       const qs = sp.toString()
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+      const next = qs ? `${pathname}?${qs}` : pathname
+      if (typeof window !== 'undefined' && window.location.href.split('#')[0] !== window.location.origin + next) {
+        window.history.replaceState(window.history.state, '', next)
+      }
     }, 350)
     return () => {
       if (urlSyncTimeoutRef.current) clearTimeout(urlSyncTimeoutRef.current)
     }
-  }, [draftData, stepIdx, pathname, router])
+  }, [draftData, stepIdx, pathname])
 
   // Clamp stepIdx if the path changes (presets → unique or vice versa).
   const safeStepIdx = Math.min(stepIdx, STEPS.length - 1)
@@ -1584,9 +2304,22 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
   const handleFinalize = async () => {
     setFinalizing(true)
     setFinalizeError(null)
-    const result = await finalizeBuilderAction(draftId)
-    if (result && !result.ok) {
-      setFinalizeError(result.error)
+    // try/catch so a server-side throw (Payload validation, redirect failure,
+    // anything) doesn't leave the Finalize button stranded in its disabled
+    // "..." state. On the success path the action calls redirect() which
+    // throws NEXT_REDIRECT — Next handles it before this catch sees anything.
+    try {
+      const result = await finalizeBuilderAction(draftId)
+      if (result && !result.ok) {
+        setFinalizeError(result.error)
+        setFinalizing(false)
+      }
+    } catch (e) {
+      console.error('[builder-finalize] finalizeBuilderAction threw', e)
+      setFinalizeError(
+        t(strings, 'builder.errors.finalizeFailed',
+          'Could not finalize the character. Try again, or contact support if the problem persists.'),
+      )
       setFinalizing(false)
     }
   }
@@ -1627,8 +2360,15 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
           <PreviewScreen
             strings={strings}
             draftId={draftId}
+            pathChoice={String(draftData.pathChoice ?? 'presets')}
+            appearance={appearance}
+            identity={identity}
+            backstory={backstory}
+            uniqueDesc={uniqueDesc}
             previewGenerations={previewGenerations}
             selectedReferenceId={draftData.selectedReferenceMediaAssetId ?? null}
+            onAppearanceChange={updateAppearance}
+            onUniqueDescChange={updateUniqueDesc}
             onPreviewsGenerated={setPreviewGenerations}
             onReferenceSelected={handleReferenceSelected}
           />
@@ -1684,7 +2424,20 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
         </span>
       </div>
 
-      <PhaseIndicator currentPhase={currentPhase} strings={strings} />
+      <PhaseIndicator
+        currentPhase={currentPhase}
+        steps={STEPS}
+        stepIdx={safeStepIdx}
+        strings={strings}
+        onJumpToPhase={(phase) => {
+          // Jump to the first step of the requested phase. Forward jumps
+          // are allowed — canAdvance() still gates the Next button per
+          // step, so an under-filled draft can't be finalised. Backward
+          // jumps are always safe (data is preserved).
+          const targetIdx = STEPS.findIndex((s) => s.phase === phase)
+          if (targetIdx >= 0) setStepIdx(targetIdx)
+        }}
+      />
 
       <Card className="mb-6">{renderStep()}</Card>
 

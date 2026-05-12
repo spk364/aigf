@@ -68,6 +68,9 @@
     "backToChats": "Все чаты",
     "backToHome": "Главная",
     "dashboard": "Кабинет",
+    "imagePending": "Создаю фото...",
+    "imageQueuePosition": "Позиция в очереди: {n}",
+    "imageFailed": "Не удалось создать фото. Попробуй ещё раз.",
     "image": {
       "upgradeRequired": "Фотографии доступны только на Premium-плане. {link}, чтобы открыть.",
       "tokensRequired": "У тебя закончились токены в этом месяце. {link}, чтобы пополнить.",
@@ -266,10 +269,11 @@
         "middle_eastern": "Ближневосточная"
       },
       "ageRange": {
-        "twenties": "20-е",
-        "thirties": "30-е",
-        "forties": "40-е",
-        "fifties": "50-е"
+        "young_adult": "18-21",
+        "twenties": "22-29",
+        "thirties": "30-39",
+        "forties": "40-49",
+        "fifties": "50+"
       },
       "bodyType": {
         "slim": "Стройное",
@@ -438,7 +442,53 @@
       "next": "Далее",
       "finalize": "Завершить",
       "create": "Создать {name}",
-      "showMore": "Показать ещё ({count})"
+      "showMore": "Показать ещё ({count})",
+      "showPrompt": "Показать итоговый промпт",
+      "hidePrompt": "Скрыть промпт",
+      "copyPrompt": "Скопировать",
+      "copiedPrompt": "Скопировано",
+      "editParams": "Изменить параметры",
+      "hideParams": "Свернуть параметры"
+    },
+    "promptPreview": {
+      "heading": "Промпт, который пойдёт в модель",
+      "positive": "Промпт",
+      "negative": "Negative prompt",
+      "negativeUnsupported": "Эта модель игнорирует negative prompt."
+    },
+    "modelPicker": {
+      "heading": "Модель генерации",
+      "recommended": "Рекомендуется"
+    },
+    "models": {
+      "fastSdxl": {
+        "label": "Fast SDXL",
+        "description": "~$0.005/изобр · ~5-10 сек · базовое аниме. Может фильтровать NSFW."
+      },
+      "fluxSchnell": {
+        "label": "FLUX schnell",
+        "description": "~$0.003/изобр · ~5-10 сек · быстрый фотореализм. Без negative prompt."
+      },
+      "fluxDev": {
+        "label": "FLUX dev",
+        "description": "~$0.025/изобр · ~30-60 сек · качественный FLUX. Без negative prompt."
+      },
+      "cyberrealisticPony": {
+        "label": "CyberRealistic Pony",
+        "description": "~$0.05/изобр · фотореализм NSFW. ⚠ первый запуск 2-3 мин, потом 30-60 сек."
+      },
+      "ponyRealism": {
+        "label": "Pony Realism",
+        "description": "~$0.05/изобр · альтернативный NSFW фотореализм. ⚠ холодный старт."
+      },
+      "waiIllustrious": {
+        "label": "WAI Illustrious",
+        "description": "~$0.05/изобр · лучшая аниме-NSFW модель. ⚠ первый запуск 2-3 мин."
+      },
+      "hassakuIllustrious": {
+        "label": "Hassaku Illustrious",
+        "description": "~$0.05/изобр · стилизованное аниме NSFW. ⚠ холодный старт."
+      }
     },
     "review": {
       "relationship": "Стартовые отношения"
@@ -448,6 +498,9 @@
       "nameCelebrity": "Имена знаменитостей не разрешены.",
       "nameTooShort": "Имя должно содержать минимум 2 символа.",
       "previewLimitReached": "Вы достигли лимита в 5 наборов превью для этого черновика.",
+      "previewSafetyFiltered": "Генератор изображений отфильтровал все превью как небезопасные. Смягчите описание или смените стиль и попробуйте снова.",
+      "previewTimeout": "Генерация превысила лимит времени. Выберите более быструю модель (FLUX schnell / Fast SDXL) или повторите — Pony/Illustrious прогреваются после первого запуска.",
+      "finalizeFailed": "Не удалось завершить создание персонажа. Попробуйте ещё раз или напишите в поддержку, если проблема повторяется.",
       "validationFailed": "Пожалуйста, проверьте введённые данные и попробуйте снова."
     }
   },

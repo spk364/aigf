@@ -33,18 +33,18 @@ export type ArchetypeOption = BuilderOption & {
 
 // ── Gender ────────────────────────────────────────────────────────────────
 
+// Rendered as Chip (not OptionImageCard) — imagePath would be ignored anyway,
+// and there is no /public/builder/gender/ asset bundle.
 export const GENDERS: BuilderOption[] = [
   {
     value: 'female',
     labelKey: 'builder.options.gender.female',
-    imagePath: '/builder/gender/female.jpg',
     emoji: '♀',
     gradient: ['#ff7fae', '#330e1f'],
   },
   {
     value: 'male',
     labelKey: 'builder.options.gender.male',
-    imagePath: '/builder/gender/male.jpg',
     emoji: '♂',
     gradient: ['#7a8bff', '#11173b'],
   },
@@ -174,21 +174,37 @@ export const ETHNICITIES: BuilderOption[] = [
 // ── Age ──────────────────────────────────────────────────────────────────
 
 export type AgeRangeOption = BuilderOption & {
-  minAge: 21
+  // Cosmetic floor displayed alongside the bucket. The runtime floor that
+  // actually clamps prompt-side age comes from getAgePolicy(artStyle).minAge
+  // in src/shared/ai/age-safety.ts (18 for anime, 21 for realistic).
+  minAge: number
   rangeLabel: string
   defaultAge: number
 }
 
-// Joi groups ages as 18+ / 20s / 30s / 40s / 50s. We default each bucket
-// toward the young end of its decade so the AI persona reads as
-// young-adult unless the user explicitly nudges higher.
+// Buckets are surfaced as explicit ranges (18-21, 22-29, …) rather than
+// decade slang ("20s") so the user knows the floor of each chip — the old
+// "20s" label hid the fact that you couldn't pick 18 from there. The
+// `young_adult` bucket gives anime users a one-click path to the 18+
+// minimum the safety policy actually allows. `twenties` keeps its value
+// string for back-compat with persisted drafts (just rebadged as 22-29).
 export const AGE_RANGES: AgeRangeOption[] = [
+  {
+    value: 'young_adult',
+    labelKey: 'builder.options.ageRange.young_adult',
+    minAge: 18,
+    rangeLabel: '18-21',
+    defaultAge: 18,
+    imagePath: '/builder/age/twenties.jpg',
+    emoji: '🌸',
+    gradient: ['#ff9bb8', '#3a1421'],
+  },
   {
     value: 'twenties',
     labelKey: 'builder.options.ageRange.twenties',
     minAge: 21,
-    rangeLabel: '20s',
-    defaultAge: 22,
+    rangeLabel: '22-29',
+    defaultAge: 24,
     imagePath: '/builder/age/twenties.jpg',
     emoji: '🌹',
     gradient: ['#ff7da3', '#3a1421'],
@@ -197,8 +213,8 @@ export const AGE_RANGES: AgeRangeOption[] = [
     value: 'thirties',
     labelKey: 'builder.options.ageRange.thirties',
     minAge: 21,
-    rangeLabel: '30s',
-    defaultAge: 31,
+    rangeLabel: '30-39',
+    defaultAge: 33,
     imagePath: '/builder/age/thirties.jpg',
     emoji: '🍷',
     gradient: ['#b85c75', '#2c0e1a'],
@@ -207,8 +223,8 @@ export const AGE_RANGES: AgeRangeOption[] = [
     value: 'forties',
     labelKey: 'builder.options.ageRange.forties',
     minAge: 21,
-    rangeLabel: '40s',
-    defaultAge: 42,
+    rangeLabel: '40-49',
+    defaultAge: 43,
     imagePath: '/builder/age/forties.jpg',
     emoji: '🥂',
     gradient: ['#8e5a78', '#1f0f1a'],
@@ -217,8 +233,8 @@ export const AGE_RANGES: AgeRangeOption[] = [
     value: 'fifties',
     labelKey: 'builder.options.ageRange.fifties',
     minAge: 21,
-    rangeLabel: '50s',
-    defaultAge: 52,
+    rangeLabel: '50+',
+    defaultAge: 53,
     imagePath: '/builder/age/fifties.jpg',
     emoji: '🍸',
     gradient: ['#7a4f6c', '#180a14'],
@@ -412,11 +428,15 @@ export type ChatStyleOption = BuilderOption & {
   systemPromptDirective: string
 }
 
+// No /public/builder/chat-style/ asset bundle — the cards intentionally
+// fall back to the gradient + emoji skin (consistent with chip-only steps).
+// Adding stale imagePaths here causes a 404 per render and the OptionImageCard
+// briefly tries to load before giving up, which read as "old/wrong image"
+// to users.
 export const CHAT_STYLES: ChatStyleOption[] = [
   {
     value: 'default',
     labelKey: 'builder.options.chatStyle.default',
-    imagePath: '/builder/chat-style/default.jpg',
     emoji: '💬',
     gradient: ['#cfb89a', '#2c2218'],
     systemPromptDirective:
@@ -425,7 +445,6 @@ export const CHAT_STYLES: ChatStyleOption[] = [
   {
     value: 'deep_roleplay',
     labelKey: 'builder.options.chatStyle.deepRoleplay',
-    imagePath: '/builder/chat-style/deep_roleplay.jpg',
     emoji: '🎭',
     gradient: ['#7a4f9c', '#160a26'],
     systemPromptDirective:
@@ -434,7 +453,6 @@ export const CHAT_STYLES: ChatStyleOption[] = [
   {
     value: 'creative',
     labelKey: 'builder.options.chatStyle.creative',
-    imagePath: '/builder/chat-style/creative.jpg',
     emoji: '🎨',
     gradient: ['#b07aff', '#1f1138'],
     systemPromptDirective:
@@ -443,7 +461,6 @@ export const CHAT_STYLES: ChatStyleOption[] = [
   {
     value: 'realistic',
     labelKey: 'builder.options.chatStyle.realistic',
-    imagePath: '/builder/chat-style/realistic.jpg',
     emoji: '📱',
     gradient: ['#a3b6cc', '#0f1a26'],
     systemPromptDirective:

@@ -8,6 +8,12 @@ type Message = {
   role: 'user' | 'assistant'
   content: string
   type?: 'text' | 'image'
+  // For type='image' only: tracks async fal generation status. The chat
+  // route now submits and returns immediately; ChatInterface polls the
+  // status endpoint until terminal — see useImageStatusPolling.
+  imageStatus?: 'pending' | 'completed' | 'failed'
+  imageProgress?: { phase: string; queuePosition?: number; lastLog?: string }
+  imageError?: string
   imageUrl?: string
   imageWidth?: number
   imageHeight?: number
@@ -32,6 +38,9 @@ export type ChatStrings = {
   backToChats: string
   backToHome: string
   dashboard: string
+  imagePending: string
+  imageQueuePosition: string
+  imageFailed: string
 }
 
 type Props = {
@@ -57,6 +66,9 @@ const defaultStrings: ChatStrings = {
   backToChats: 'All chats',
   backToHome: 'Home',
   dashboard: 'Dashboard',
+  imagePending: 'Generating image...',
+  imageQueuePosition: 'Queue position: {n}',
+  imageFailed: "Couldn't generate the image. Try again.",
 }
 
 function parseSseChunk(raw: string): Array<{ event: string; data: string }> {
@@ -144,6 +156,27 @@ function IconHome() {
         strokeLinejoin="round"
         d="M2.25 12 12 3l9.75 9M4.5 9.75v9.75A1.5 1.5 0 0 0 6 21h3v-6h6v6h3a1.5 1.5 0 0 0 1.5-1.5V9.75"
       />
+    </svg>
+  )
+}
+
+function IconCamera() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className="h-6 w-6 opacity-60"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
     </svg>
   )
 }
@@ -312,6 +345,112 @@ export function ChatInterface({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, draft])
 
+  // ── Async image generation polling ────────────────────────────────────────
+  // Once chat /api/chat returns an `image-pending` SSE event, the assistant
+  // message lives in the list with imageStatus='pending'. We poll the status
+  // route per-message until terminal. polledIdsRef prevents duplicate polling
+  // across rerenders without forcing a useState→re-render cycle.
+  const polledIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    const POLL_INTERVAL_MS = 2000
+    const MAX_ATTEMPTS = 90 // 90 × 2s = 3 min — covers cold-start + fal queue.
+
+    const pendingImageMsgs = messages.filter(
+      (m) => m.type === 'image' && m.imageStatus === 'pending' && !polledIdsRef.current.has(m.id),
+    )
+
+    if (pendingImageMsgs.length === 0) return
+
+    const cancellers: Array<() => void> = []
+
+    for (const msg of pendingImageMsgs) {
+      polledIdsRef.current.add(msg.id)
+      let cancelled = false
+      let attempts = 0
+
+      const poll = async () => {
+        while (!cancelled && attempts < MAX_ATTEMPTS) {
+          attempts += 1
+          try {
+            const res = await fetch(`/api/chat/messages/${encodeURIComponent(msg.id)}/image-status`, {
+              cache: 'no-store',
+            })
+            if (!res.ok) {
+              // 404/403 → terminal; stop polling.
+              if (res.status === 404 || res.status === 403) {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === msg.id ? { ...m, imageStatus: 'failed' as const } : m)),
+                )
+                return
+              }
+              // Transient — back off and retry.
+              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+              continue
+            }
+            const data = (await res.json()) as
+              | { phase: 'pending'; progress: { phase: string; queuePosition?: number; lastLog?: string } }
+              | { phase: 'completed'; mediaAssetId: string | number; publicUrl: string; width: number; height: number }
+              | { phase: 'failed'; error: string }
+
+            if (data.phase === 'completed') {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === msg.id
+                    ? {
+                        ...m,
+                        imageStatus: 'completed' as const,
+                        imageUrl: data.publicUrl,
+                        imageWidth: data.width,
+                        imageHeight: data.height,
+                        mediaAssetId: data.mediaAssetId,
+                        imageProgress: undefined,
+                      }
+                    : m,
+                ),
+              )
+              return
+            }
+            if (data.phase === 'failed') {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === msg.id
+                    ? { ...m, imageStatus: 'failed' as const, imageError: data.error, imageProgress: undefined }
+                    : m,
+                ),
+              )
+              return
+            }
+            // pending — surface progress, then wait and retry.
+            setMessages((prev) =>
+              prev.map((m) => (m.id === msg.id ? { ...m, imageProgress: data.progress } : m)),
+            )
+            await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+          } catch {
+            // Network blip — back off and retry.
+            await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS))
+          }
+        }
+        // Hit MAX_ATTEMPTS without resolution — flag as failed so user isn't
+        // stuck on a forever-spinner.
+        if (!cancelled) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === msg.id ? { ...m, imageStatus: 'failed' as const } : m)),
+          )
+        }
+      }
+
+      void poll()
+      cancellers.push(() => {
+        cancelled = true
+      })
+    }
+
+    return () => {
+      for (const cancel of cancellers) cancel()
+    }
+  }, [messages])
+
   const sendMessage = useCallback(
     async (text: string) => {
       if (!text.trim() || streamingState !== 'idle') return
@@ -399,29 +538,26 @@ export function ChatInterface({
               const parsed = JSON.parse(data) as { text: string }
               draftContent += parsed.text
               setDraft(draftContent)
-            } else if (event === 'image') {
-              const parsed = JSON.parse(data) as {
-                mediaAssetId: string | number
-                url: string
-                width: number
-                height: number
-              }
-              const imageMsg: Message = {
-                id: finalMsgId ?? `assistant-${Date.now()}`,
+            } else if (event === 'image-pending') {
+              // Server has submitted a fal job and saved handles. Push a
+              // placeholder message; useImageStatusPolling will resolve it.
+              const parsed = JSON.parse(data) as { messageId: string }
+              const placeholder: Message = {
+                id: parsed.messageId,
                 role: 'assistant',
                 content: '',
                 type: 'image',
-                imageUrl: parsed.url,
-                imageWidth: parsed.width,
-                imageHeight: parsed.height,
-                mediaAssetId: parsed.mediaAssetId,
+                imageStatus: 'pending',
               }
-              setMessages((prev) => [...prev, imageMsg])
+              setMessages((prev) => [...prev, placeholder])
               setDraft('')
               setCurrentMsgId(null)
             } else if (event === 'done') {
               const finishReason = (JSON.parse(data) as { finishReason?: string }).finishReason
-              if (finishReason !== 'image_generated') {
+              // image_submitted means the image-pending placeholder is already
+              // in the message list — nothing to commit from the text draft.
+              const isImagePath = finishReason === 'image_submitted' || finishReason === 'image_generated'
+              if (!isImagePath) {
                 const committedMsg: Message = {
                   id: finalMsgId ?? `assistant-${Date.now()}`,
                   role: 'assistant',
@@ -737,6 +873,26 @@ export function ChatInterface({
                       loading="eager"
                       className="h-auto w-full rounded-3xl object-cover shadow-lg ring-1 ring-white/5"
                     />
+                  </div>
+                ) : msg.type === 'image' && msg.imageStatus === 'pending' ? (
+                  <div
+                    aria-live="polite"
+                    className="relative flex aspect-[3/4] w-[240px] items-center justify-center overflow-hidden rounded-3xl border border-white/5 bg-[var(--color-surface-2)]/90 shadow-lg backdrop-blur-sm sm:w-[260px]"
+                  >
+                    <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--color-surface-2)] via-[var(--color-surface-3)] to-[var(--color-surface-2)]" />
+                    <div className="relative flex flex-col items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                      <IconCamera />
+                      <span>{s.imagePending}</span>
+                      {msg.imageProgress?.queuePosition !== undefined && msg.imageProgress.queuePosition > 0 && (
+                        <span className="text-[10px] opacity-70">
+                          {s.imageQueuePosition.replace('{n}', String(msg.imageProgress.queuePosition))}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : msg.type === 'image' && msg.imageStatus === 'failed' ? (
+                  <div className="rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-2.5 text-[15px] leading-snug text-[var(--color-text-muted)] shadow-sm backdrop-blur-sm">
+                    {s.imageFailed}
                   </div>
                 ) : (
                   <div

@@ -1,5 +1,12 @@
 'use server'
 // TODO(safety): run scorer on free-text fields (name, occupation custom, relationship custom, looks/personality desc) when pipeline lands
+//
+// Pony/Illustrious LoRA checkpoints exposed in the picker have a 2-3 min
+// cold start; warm calls land in 30-60 s for 4 images. The 60 s budget
+// for generatePreviewsAction is set on the route segment that calls into
+// us — see `src/app/(app)/[locale]/builder/[draftId]/page.tsx`. (Server
+// action files can only export async functions, so the config must live
+// on the page.)
 
 import { redirect } from 'next/navigation'
 import { getLocale } from 'next-intl/server'
@@ -7,39 +14,27 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { z } from 'zod'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
-import {
-  generateImage,
-  FAL_ENDPOINT_REALISTIC_VISION,
-  FAL_ENDPOINT_FAST_SDXL,
-} from '@/shared/ai/fal'
+import { generateImage, submitImageJob, fetchImageJobStatus } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
+import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
 import { track } from '@/shared/analytics/posthog'
 import {
   ARCHETYPES,
-  ETHNICITIES,
-  HAIR_COLORS,
-  HAIR_LENGTHS,
-  HAIR_STYLES,
-  EYE_COLORS,
   CHAT_STYLES,
   OCCUPATIONS,
   KINKS,
   DEFAULT_TRAITS,
 } from './options'
+import {
+  buildPreviewPrompt,
+  buildPreviewNegativePrompt,
+  buildUniquePrompt,
+  resolveModelEndpoint,
+  resolveFalDispatch,
+} from './prompt-builder'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
-import { getAgePolicy } from '@/shared/ai/age-safety'
-
-// Quality + safety baseline applied to every preview generation. We push
-// back against under-18 markers but intentionally do NOT include "(young)"
-// — we *want* young-adult (18-22) looks; "young" is redundant with the
-// explicit positive age anchor and would otherwise blunt it.
-const SAFETY_NEGATIVE =
-  '(child:1.5), (teen:1.5), (kid:1.5), (loli:1.5), ' +
-  '(school uniform:1.3), (underage:1.5), (minor:1.5), (childlike features:1.5)'
-
-const QUALITY_NEGATIVE =
-  'low quality, worst quality, blurry, deformed, bad anatomy, extra limbs, ' +
-  'extra fingers, watermark, text, signature, multiple people, ugly, mutated'
+import { checkRateLimit } from '@/shared/rate-limit/limiter'
+import { IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 
 const LLM_MODEL = OPENROUTER_MODEL
 // Keep aligned with src/app/api/chat/route.ts — see note there on temperature choice.
@@ -52,6 +47,18 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 40)
+}
+
+// Payload's Postgres adapter stores collection IDs as integers; relationship
+// fields validate the value's type and 400 with "The following field is
+// invalid" when given a numeric string instead of a number. Draft-level state
+// (selectedReferenceMediaAssetId) is persisted as a string by the client, so
+// we coerce it before passing it as a relationship value. Mirrors the helper
+// in src/app/api/admin/characters/[id]/set-primary-image/route.ts.
+function coerceRelId(v: string | number): string | number {
+  if (typeof v === 'number') return v
+  if (/^\d+$/.test(v)) return Number(v)
+  return v
 }
 
 function nanoid8(): string {
@@ -110,12 +117,16 @@ const appearanceSchema = z.object({
   artStyle: z.enum(['realistic', 'anime']).optional(),
   ethnicity: z.enum(['european', 'asian', 'latina', 'african', 'south_asian', 'middle_eastern']).optional(),
   ageDisplay: z.number().min(18).max(99).optional(),
-  ageRange: z.enum(['twenties', 'thirties', 'forties', 'fifties']).optional(),
+  ageRange: z.enum(['young_adult', 'twenties', 'thirties', 'forties', 'fifties']).optional(),
   bodyType: z.enum(['slim', 'athletic', 'average', 'curvy', 'bbw']).optional(),
   breastSize: z.enum(['flat', 'small', 'average', 'big', 'huge']).optional(),
   buttSize: z.enum(['slim', 'small', 'athletic', 'big', 'huge']).optional(),
   hair: z.object({ color: z.string(), length: z.string(), style: z.string() }).partial().optional(),
   eyes: z.object({ color: z.string() }).partial().optional(),
+  // Optional override picked on the preview screen — actions resolve via
+  // resolveModelEndpoint() so an unknown value falls back to the art-style
+  // default rather than blowing up the request.
+  modelEndpoint: z.string().max(120).optional(),
 })
 
 const identitySchema = z.object({
@@ -245,237 +256,9 @@ export async function saveDraftStepAction(
   return { ok: true, currentStep: newStep }
 }
 
-// ── Preview prompt builder ────────────────────────────────────────────────
-
-const BREAST_PROMPT: Record<string, { positive: string; negative: string }> = {
-  flat: {
-    positive: '(flat chest:1.4), (very small breasts:1.3)',
-    negative: '(huge breasts:1.4), (large breasts:1.3), busty',
-  },
-  small: {
-    positive: '(small breasts:1.3), (modest chest:1.2)',
-    negative: '(huge breasts:1.4), (large breasts:1.3), busty',
-  },
-  average: {
-    positive: '(medium breasts:1.2), balanced chest',
-    negative: '(huge breasts:1.3), (very small breasts:1.2)',
-  },
-  big: {
-    positive: '(large breasts:1.4), full chest, busty',
-    negative: '(small breasts:1.3), (flat chest:1.4)',
-  },
-  huge: {
-    positive: '(huge breasts:1.5), (very large breasts:1.4), busty figure',
-    negative: '(small breasts:1.4), (flat chest:1.5), (medium breasts:1.2)',
-  },
-}
-
-const BUTT_PROMPT: Record<string, { positive: string; negative: string }> = {
-  slim: {
-    positive: '(slim hips:1.2), (small butt:1.2), narrow waist',
-    negative: '(big butt:1.4), (wide hips:1.3), (thick thighs:1.3)',
-  },
-  small: {
-    positive: '(small butt:1.2), narrow hips',
-    negative: '(big butt:1.4), (wide hips:1.3)',
-  },
-  athletic: {
-    positive: '(athletic firm rear:1.3), toned glutes',
-    negative: '(huge butt:1.3), (flat butt:1.2)',
-  },
-  big: {
-    positive: '(large butt:1.4), (round hips:1.3), curvy hips',
-    negative: '(small butt:1.3), (narrow hips:1.3)',
-  },
-  huge: {
-    positive: '(huge butt:1.5), (big bubble butt:1.4), wide round hips, thick thighs',
-    negative: '(small butt:1.4), (narrow hips:1.4), (slim figure:1.2)',
-  },
-}
-
-const BODY_TYPE_WEIGHT: Record<string, string> = {
-  slim: '(slim slender build:1.3), slim figure',
-  athletic: '(athletic build:1.3), toned figure, fit body',
-  average: 'average build',
-  curvy: '(curvy figure:1.3), hourglass shape',
-  bbw: '(voluptuous figure:1.4), full curves, thick body',
-}
-
-// Decide framing based on which attributes the user picked. If they selected
-// breast/butt/body type, we want a fuller view than a head-and-shoulders
-// portrait — otherwise the model crops out the things the user just chose.
-function chooseFraming(appearance: Record<string, unknown>): string {
-  const hasBody =
-    !!appearance.bodyType ||
-    !!appearance.breastSize ||
-    !!appearance.buttSize
-  return hasBody
-    ? 'cowboy shot, head to thigh, full upper body visible, looking at camera'
-    : 'portrait, head and shoulders, looking at camera'
-}
-
-function buildPreviewPrompt(appearance: Record<string, unknown>): string {
-  const parts: string[] = []
-  const artStyle = String(appearance.artStyle ?? 'realistic')
-  const isAnime = artStyle === 'anime'
-
-  // Style first — early tokens get more attention from the U-Net. The
-  // realism quality tail ("8k uhd, professional photography") fights with
-  // the anime aesthetic when both are mixed, so we branch right at the top
-  // and use art-style-specific quality tags throughout.
-  if (isAnime) {
-    parts.push('anime style, masterpiece, best quality, detailed illustration, vibrant colors, clean lineart')
-  } else {
-    parts.push('photorealistic, high detail, soft lighting, RAW photo')
-  }
-
-  // Subject anchoring with explicit single-subject + age markers. Policy
-  // branches by art style: realistic → 21+, anime → 18+. See age-safety.ts.
-  // The specific-age anchor uses weight 1.4 so it DOMINATES the broader
-  // "21+ years old" safety token (1.2) — without that ordering RealVis
-  // averages across 21..∞ and renders mid-30s "mature" instead of 22.
-  const isMale = appearance.gender === 'male'
-  const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
-  const ageDisplay = typeof appearance.ageDisplay === 'number' ? appearance.ageDisplay : agePolicy.defaultBaselineAge
-  const safeAge = Math.max(agePolicy.minAge, ageDisplay)
-  if (isMale) {
-    parts.push(
-      `1boy, solo, handsome young man, (${safeAge} year old:1.4)`,
-      agePolicy.youthDescriptor,
-      agePolicy.positiveMarkers,
-    )
-  } else {
-    parts.push(
-      `1girl, solo, beautiful young woman, (${safeAge} year old:1.4)`,
-      agePolicy.youthDescriptor,
-      agePolicy.positiveMarkers,
-    )
-  }
-
-  // Ethnicity (single value now). Still injected with weight.
-  const ethnicity = String(appearance.ethnicity ?? '')
-  const ethOpt = ETHNICITIES.find((e) => e.value === ethnicity)
-  if (ethOpt?.promptFragment) parts.push(`(${ethOpt.promptFragment}:1.2)`)
-
-  // Body shape — weighted, in priority order.
-  const bodyType = String(appearance.bodyType ?? '')
-  if (BODY_TYPE_WEIGHT[bodyType]) parts.push(BODY_TYPE_WEIGHT[bodyType]!)
-
-  if (!isMale) {
-    const breastSize = String(appearance.breastSize ?? '')
-    if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.positive)
-  }
-
-  const buttSize = String(appearance.buttSize ?? '')
-  if (BUTT_PROMPT[buttSize]) parts.push(BUTT_PROMPT[buttSize]!.positive)
-
-  // Hair — fold style + length + color into one weighted phrase so SD doesn't
-  // treat each piece independently. "(long wavy blonde hair:1.3)" reads better
-  // than three separate clauses.
-  const hair = (appearance.hair ?? {}) as Record<string, string>
-  const hairLengthOpt = HAIR_LENGTHS.find((h) => h.value === hair.length)
-  const hairStyleOpt = HAIR_STYLES.find((h) => h.value === hair.style)
-  const hairColorOpt = HAIR_COLORS.find((h) => h.value === hair.color)
-  const hairBits = [
-    hairLengthOpt?.promptFragment,
-    hairStyleOpt?.promptFragment,
-    hairColorOpt?.promptFragment,
-  ].filter(Boolean)
-  if (hairBits.length > 0) {
-    const collapsed = hairBits.map((h) => String(h).replace(/\s*hair\b/, '').trim()).filter(Boolean)
-    parts.push(`(${collapsed.join(' ')} hair:1.3)`)
-  }
-
-  // Eyes — weighted, model often loses these without emphasis.
-  const eyes = (appearance.eyes ?? {}) as Record<string, string>
-  const eyeOpt = EYE_COLORS.find((e) => e.value === eyes.color)
-  if (eyeOpt?.promptFragment) parts.push(`(${eyeOpt.promptFragment}:1.3)`)
-
-  // Framing + style-aware quality tail.
-  parts.push(chooseFraming(appearance))
-  if (isAnime) {
-    parts.push('detailed face, expressive eyes, sharp focus, anime aesthetic, vibrant colors')
-  } else {
-    parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
-  }
-
-  return parts.join(', ')
-}
-
-// Builds an adversarial negative prompt: pushes back against the opposite of
-// whatever sizes the user picked. Stops "huge breasts" from rendering as
-// "medium" because the model averaged everything out.
-function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string {
-  const parts: string[] = [QUALITY_NEGATIVE, SAFETY_NEGATIVE]
-  const breastSize = String(appearance.breastSize ?? '')
-  if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.negative)
-  const buttSize = String(appearance.buttSize ?? '')
-  if (BUTT_PROMPT[buttSize]) parts.push(BUTT_PROMPT[buttSize]!.negative)
-  return parts.filter(Boolean).join(', ')
-}
-
-// Free-text appearance: append the user's description after the safety
-// markers so the model picks it up without losing the age guard.
-function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Record<string, unknown>): string {
-  const parts: string[] = []
-  const isAnime = String(appearance.artStyle ?? 'realistic') === 'anime'
-
-  if (isAnime) {
-    parts.push('anime style, masterpiece, best quality, detailed illustration, vibrant colors, clean lineart')
-  } else {
-    parts.push('photorealistic, high detail, soft lighting, RAW photo')
-  }
-
-  const isMale = appearance.gender === 'male'
-  const agePolicy = getAgePolicy(isAnime ? 'anime' : 'realistic')
-  const baseline = `${agePolicy.defaultBaselineAge} year old`
-  parts.push(
-    isMale
-      ? `1boy, solo, handsome young man, (${baseline}:1.4)`
-      : `1girl, solo, beautiful young woman, (${baseline}:1.4)`,
-    agePolicy.youthDescriptor,
-    agePolicy.positiveMarkers,
-  )
-
-  const looks = String(uniqueDesc.looks ?? '').slice(0, 1500).trim()
-  if (looks) parts.push(looks)
-
-  parts.push('portrait, head and shoulders, looking at camera')
-  if (isAnime) {
-    parts.push('detailed face, expressive eyes, sharp focus, anime aesthetic, vibrant colors')
-  } else {
-    parts.push('detailed face, sharp focus, 8k uhd, professional photography, soft lighting')
-  }
-  return parts.join(', ')
-}
-
-// Maps appearance choices → fal endpoint. Realistic style respects the
-// per-character model pick from REALISTIC_MODELS (defaults to RealVisXL).
-// Anime style always uses fast-sdxl with anime-tagged prompts. FLUX is
-// excluded everywhere here because it ignores negative_prompt — we rely
-// on adversarial negatives for safety.
-function pickEndpointForAppearance(appearance: Record<string, unknown>): string {
-  const artStyle = String(appearance.artStyle ?? 'realistic')
-  if (artStyle === 'anime') return FAL_ENDPOINT_FAST_SDXL
-  const realisticModel = String(appearance.realisticModel ?? '').trim()
-  // Whitelist by `REALISTIC_MODELS` membership lives in options.ts; we
-  // re-check at request time to keep the surface tight even if the draft
-  // JSON carries something stale.
-  if (realisticModel && ALLOWED_REALISTIC_MODELS.has(realisticModel)) {
-    return realisticModel
-  }
-  return FAL_ENDPOINT_REALISTIC_VISION
-}
-
-// Mirrors REALISTIC_MODELS in options.ts. Kept inline to avoid pulling the
-// client-safe options module into a server action with full Payload imports.
-const ALLOWED_REALISTIC_MODELS = new Set<string>([
-  'fal-ai/realistic-vision',
-  'John6666/pony-realism-v22-main-sdxl',
-  'John6666/cyberrealistic-pony-v110-sdxl',
-])
-
 // ── Preview generation ────────────────────────────────────────────────────
+// Prompt-construction helpers live in ./prompt-builder so the client can
+// render the same final prompt the server is about to send to fal.
 
 export type GeneratePreviewsResult =
   | { ok: true; previews: Array<{ mediaAssetId: string | number; publicUrl: string }>; used: number }
@@ -483,6 +266,12 @@ export type GeneratePreviewsResult =
 
 export async function generatePreviewsAction(draftId: string): Promise<GeneratePreviewsResult> {
   const user = await requireCompleteProfile()
+
+  const rl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+  if (!rl.allowed) {
+    return { ok: false, error: 'rate_limited' }
+  }
+
   const payload = await getPayload({ config })
 
   let draft: Awaited<ReturnType<typeof loadDraftOwned>>
@@ -494,43 +283,85 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
 
   const previewGenerations = (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>
 
-  if (previewGenerations.length >= 5) {
+  // Each generation appends N entries (numImages=1 below — was 4, dropped
+  // to match user expectation of one click → one preview). Count distinct
+  // generatedAt timestamps so the cap matches user-perceived clicks (5
+  // generations) regardless of any future numImages change. Mirrors the
+  // client check in CharacterBuilderWizard.tsx — keep them in sync.
+  const generationCount = new Set(
+    previewGenerations.map((g) => String(g.generatedAt ?? '')).filter(Boolean),
+  ).size
+  if (generationCount >= 5) {
     return { ok: false, error: 'preview_limit_reached' }
   }
 
   const draftData = (draft.data ?? {}) as Record<string, unknown>
   const appearance = (draftData.appearance ?? {}) as Record<string, unknown>
+  const identity = (draftData.identity ?? {}) as Record<string, unknown>
+  const backstory = (draftData.backstory ?? {}) as Record<string, unknown>
   const uniqueDesc = (draftData.uniqueDesc ?? {}) as Record<string, unknown>
   const pathChoice = String(draftData.pathChoice ?? 'presets')
 
+  // Pass identity + backstory so the prompt can reflect archetype mood
+  // (expression / vibe) and occupation outfit when those have been picked.
+  // They're optional — the preview step can run before the user has filled
+  // them, in which case we degrade to the default sexy-but-clothed anchor.
   const prompt =
     pathChoice === 'unique'
       ? buildUniquePrompt(uniqueDesc, appearance)
-      : buildPreviewPrompt(appearance)
+      : buildPreviewPrompt(appearance, identity, backstory)
   const negativePrompt = buildPreviewNegativePrompt(appearance)
-  const endpoint = pickEndpointForAppearance(appearance)
+  // The user can pin a model from the preview screen; fall back to the
+  // art-style default when they haven't (or when the saved value no longer
+  // maps to a known endpoint).
+  const selectedModel =
+    typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null
+  const modelId = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
+  const { endpoint, modelName } = resolveFalDispatch(modelId)
+  // SDXL-class checkpoints (Pony/Illustrious LoRAs, fast-sdxl, RealVisXL)
+  // produce their cleanest output around 30 steps. FLUX schnell internally
+  // caps at 4 steps so passing 30 is a no-op, not an error.
+  const numInferenceSteps = endpoint === 'fal-ai/flux/schnell' ? 4 : 30
 
   let result: Awaited<ReturnType<typeof generateImage>>
   try {
     result = await generateImage({
       prompt,
       negativePrompt,
-      // Native SDXL bucket — RealVisXL/fast-sdxl render their best at 832×1216.
+      // Native SDXL bucket — fast-sdxl renders its best at 832×1216.
       imageSize: { width: 832, height: 1216 },
-      numImages: 4,
+      // One image per click. The previous numImages=4 produced a 4-up grid
+      // the user found confusing — they expected one click → one preview.
+      // The 5-set limit (counted by distinct generatedAt) still gives 5
+      // chances to retry; safety-filtered runs return early with
+      // 'safety_filtered' so the user can adjust the prompt and retry.
+      numImages: 1,
       endpoint,
+      modelName,
       // Higher guidance pulls the result closer to the prompt (vs. the model's
       // priors). 6.5 is a good ceiling before details start to over-cook.
       guidanceScale: 6.5,
-      numInferenceSteps: endpoint === FAL_ENDPOINT_REALISTIC_VISION ? 35 : 30,
+      numInferenceSteps,
     })
   } catch (e) {
+    console.error('[builder-preview] generateImage failed', { modelId, endpoint, modelName, error: e })
     return { ok: false, error: e instanceof Error ? e.message : 'Image generation failed' }
   }
 
   const previews: Array<{ mediaAssetId: string | number; publicUrl: string }> = []
 
   for (const img of result.images) {
+    // fast-sdxl ignores `enable_safety_checker:false` for some anime prompts
+    // and returns a uniform black PNG without setting has_nsfw_concepts. Run
+    // the luminance gate before mirroring to R2 so we never persist a black
+    // preview tile. Mirrors the admin character-image flow.
+    try {
+      const analysis = await fetchAndAnalyzeImage(img.url)
+      if (detectSafetyFilteredFrame(analysis).kind === 'filtered') continue
+    } catch {
+      // Analysis failure is non-fatal — fall through and persist anyway.
+    }
+
     let persisted: Awaited<ReturnType<typeof persistGeneratedImage>>
     try {
       persisted = await persistGeneratedImage({
@@ -549,13 +380,18 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
   }
 
   if (previews.length === 0) {
-    return { ok: false, error: 'Failed to persist any preview images' }
+    return { ok: false, error: 'safety_filtered' }
   }
 
+  // Compute the generation timestamp once so every entry from this single
+  // dispatch shares it — the limit counter (here and on the client) groups by
+  // generatedAt to count "user clicks" rather than individual images. Calling
+  // new Date() per-entry would usually give the same ms but is not guaranteed.
+  const generatedAt = new Date().toISOString()
   const newEntries = previews.map((p) => ({
     mediaAssetId: String(p.mediaAssetId),
     promptUsed: prompt,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     selectedAsReference: false,
   }))
 
@@ -569,6 +405,252 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
   })
 
   return { ok: true, previews, used: previewGenerations.length + 1 }
+}
+
+// ── Submit + poll preview generation ──────────────────────────────────────
+// Replaces the synchronous generatePreviewsAction above for the wizard's
+// preview step. The sync path can't handle 2-3 min cold starts on
+// Pony/Illustrious LoRA endpoints (Vercel kills the function at
+// maxDuration=60 and returns FUNCTION_INVOCATION_TIMEOUT, bypassing the
+// client's error handling). Splitting into submit + poll keeps each call
+// fast and gives us LoRA support back. The pending job is persisted on
+// draft.data.pendingPreviewJob so the poll action doesn't have to trust
+// client-supplied URLs (which would be a redirect/SSRF surface).
+
+export type PendingPreviewJob = {
+  // Persisted opaque handles returned by fal's submit response.
+  requestId: string
+  statusUrl: string
+  responseUrl: string
+  endpoint: string
+  modelName: string
+  // Snapshotted so the completion path can persist the prompt actually
+  // sent without re-deriving it from a draft that might have changed.
+  prompt: string
+  startedAtMs: number
+}
+
+export type SubmitPreviewResult =
+  | { ok: true; status: 'pending'; queuePosition?: number; lastLog?: string }
+  | { ok: false; error: string }
+
+const POLL_DEADLINE_MS = 4 * 60 * 1000 // 4 min — covers Pony/Illustrious cold start with margin
+
+export async function submitPreviewJobAction(draftId: string): Promise<SubmitPreviewResult> {
+  const user = await requireCompleteProfile()
+
+  const rl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+  if (!rl.allowed) {
+    return { ok: false, error: 'rate_limited' }
+  }
+
+  const payload = await getPayload({ config })
+
+  let draft: Awaited<ReturnType<typeof loadDraftOwned>>
+  try {
+    draft = await loadDraftOwned(payload, draftId, user.id)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Unknown error' }
+  }
+
+  const previewGenerations = (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>
+  const generationCount = new Set(
+    previewGenerations.map((g) => String(g.generatedAt ?? '')).filter(Boolean),
+  ).size
+  if (generationCount >= 5) {
+    return { ok: false, error: 'preview_limit_reached' }
+  }
+
+  const draftData = (draft.data ?? {}) as Record<string, unknown>
+  const appearance = (draftData.appearance ?? {}) as Record<string, unknown>
+  const identity = (draftData.identity ?? {}) as Record<string, unknown>
+  const backstory = (draftData.backstory ?? {}) as Record<string, unknown>
+  const uniqueDesc = (draftData.uniqueDesc ?? {}) as Record<string, unknown>
+  const pathChoice = String(draftData.pathChoice ?? 'presets')
+
+  const prompt =
+    pathChoice === 'unique'
+      ? buildUniquePrompt(uniqueDesc, appearance)
+      : buildPreviewPrompt(appearance, identity, backstory)
+  const negativePrompt = buildPreviewNegativePrompt(appearance)
+  const selectedModel =
+    typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null
+  const modelId = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
+  const { endpoint, modelName } = resolveFalDispatch(modelId)
+  const numInferenceSteps = endpoint === 'fal-ai/flux/schnell' ? 4 : 30
+
+  let handles: Awaited<ReturnType<typeof submitImageJob>>
+  try {
+    handles = await submitImageJob({
+      prompt,
+      negativePrompt,
+      imageSize: { width: 832, height: 1216 },
+      numImages: 1,
+      endpoint,
+      modelName,
+      guidanceScale: 6.5,
+      numInferenceSteps,
+    })
+  } catch (e) {
+    console.error('[builder-preview-submit] failed', { modelId, endpoint, modelName, error: e })
+    return { ok: false, error: e instanceof Error ? e.message : 'submit_failed' }
+  }
+
+  const pending: PendingPreviewJob = {
+    requestId: handles.requestId,
+    statusUrl: handles.statusUrl,
+    responseUrl: handles.responseUrl,
+    endpoint: handles.endpoint,
+    modelName: handles.modelName,
+    prompt,
+    startedAtMs: Date.now(),
+  }
+
+  await payload.update({
+    collection: 'character-drafts',
+    id: draftId,
+    data: {
+      data: { ...draftData, pendingPreviewJob: pending },
+    },
+    overrideAccess: true,
+  })
+
+  return { ok: true, status: 'pending' }
+}
+
+export type FetchPreviewStatusResult =
+  | { ok: true; status: 'pending'; queuePosition?: number; lastLog?: string }
+  | { ok: true; status: 'completed'; preview: { mediaAssetId: string | number; publicUrl: string }; used: number }
+  | { ok: false; error: string }
+
+export async function fetchPreviewJobStatusAction(draftId: string): Promise<FetchPreviewStatusResult> {
+  const user = await requireCompleteProfile()
+  const payload = await getPayload({ config })
+
+  let draft: Awaited<ReturnType<typeof loadDraftOwned>>
+  try {
+    draft = await loadDraftOwned(payload, draftId, user.id)
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Unknown error' }
+  }
+
+  const draftData = (draft.data ?? {}) as Record<string, unknown>
+  const pending = draftData.pendingPreviewJob as PendingPreviewJob | undefined
+  if (!pending || typeof pending !== 'object' || !pending.statusUrl) {
+    return { ok: false, error: 'no_pending_job' }
+  }
+
+  // Hard deadline so we don't poll forever on a stuck fal queue.
+  if (Date.now() - pending.startedAtMs > POLL_DEADLINE_MS) {
+    await clearPendingPreviewJob(payload, draftId, draftData)
+    return { ok: false, error: 'poll_timed_out' }
+  }
+
+  let status: Awaited<ReturnType<typeof fetchImageJobStatus>>
+  try {
+    status = await fetchImageJobStatus({
+      statusUrl: pending.statusUrl,
+      responseUrl: pending.responseUrl,
+      requestId: pending.requestId,
+      endpoint: pending.endpoint,
+      modelName: pending.modelName,
+      startedAtMs: pending.startedAtMs,
+    })
+  } catch (e) {
+    console.error('[builder-preview-poll] failed', { error: e })
+    return { ok: false, error: e instanceof Error ? e.message : 'poll_failed' }
+  }
+
+  if (status.status === 'pending') {
+    return {
+      ok: true,
+      status: 'pending',
+      queuePosition: status.queuePosition,
+      lastLog: status.lastLog,
+    }
+  }
+
+  if (status.status === 'failed') {
+    await clearPendingPreviewJob(payload, draftId, draftData)
+    return { ok: false, error: status.error }
+  }
+
+  // ── status === 'completed' — mirror to R2 + persist ──────────────────────
+  const result = status.result
+  const previewGenerations = (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>
+
+  let persisted: Awaited<ReturnType<typeof persistGeneratedImage>> | null = null
+  for (const img of result.images) {
+    try {
+      const analysis = await fetchAndAnalyzeImage(img.url)
+      if (detectSafetyFilteredFrame(analysis).kind === 'filtered') continue
+    } catch {
+      // Analysis failure is non-fatal — fall through and persist anyway.
+    }
+    try {
+      persisted = await persistGeneratedImage({
+        payload,
+        fromUrl: img.url,
+        width: img.width,
+        height: img.height,
+        contentType: img.contentType,
+        kind: 'character-preview',
+        ownerUserId: user.id,
+      })
+      break // numImages=1 above; defensively break on first success.
+    } catch (e) {
+      console.warn('[builder-preview-poll] persistGeneratedImage failed', e)
+      continue
+    }
+  }
+
+  if (!persisted) {
+    await clearPendingPreviewJob(payload, draftId, draftData)
+    return { ok: false, error: 'safety_filtered' }
+  }
+
+  const generatedAt = new Date().toISOString()
+  const newEntry = {
+    mediaAssetId: String(persisted.mediaAssetId),
+    promptUsed: pending.prompt,
+    generatedAt,
+    selectedAsReference: false,
+  }
+
+  const nextDraftData = { ...draftData }
+  delete (nextDraftData as Record<string, unknown>).pendingPreviewJob
+
+  await payload.update({
+    collection: 'character-drafts',
+    id: draftId,
+    data: {
+      data: nextDraftData,
+      previewGenerations: [...previewGenerations, newEntry],
+    },
+    overrideAccess: true,
+  })
+
+  return {
+    ok: true,
+    status: 'completed',
+    preview: { mediaAssetId: persisted.mediaAssetId, publicUrl: persisted.publicUrl },
+    used: previewGenerations.length + 1,
+  }
+}
+
+async function clearPendingPreviewJob(
+  payload: Awaited<ReturnType<typeof getPayload>>,
+  draftId: string,
+  draftData: Record<string, unknown>,
+): Promise<void> {
+  const next = { ...draftData }
+  delete (next as Record<string, unknown>).pendingPreviewJob
+  await payload.update({
+    collection: 'character-drafts',
+    id: draftId,
+    data: { data: next },
+    overrideAccess: true,
+  })
 }
 
 export async function selectReferenceAction(
@@ -754,6 +836,9 @@ export async function finalizeBuilderAction(
 
   if (!name) return { ok: false, error: 'Name is required' }
   if (!selectedReferenceMediaAssetId) return { ok: false, error: 'Reference image is required' }
+  // Coerce once and reuse — characters.primaryImageId and the media-assets
+  // .findByID + .update calls below all need the numeric form.
+  const referenceId = coerceRelId(selectedReferenceMediaAssetId)
 
   // ── Resolve archetype + traits (unique path falls back to a neutral profile)
   const archetypeValue =
@@ -911,22 +996,74 @@ export async function finalizeBuilderAction(
       moderationStatus: 'approved',
       // Pin the same endpoint used for preview generation so chat-time
       // and admin gallery generation stay visually consistent with what
-      // the user picked in the builder.
-      imageModel: { primary: pickEndpointForAppearance(appearance) },
-      primaryImageId: selectedReferenceMediaAssetId,
+      // the user picked in the builder. resolveModelEndpoint falls back to
+      // the art-style default when no explicit pick was saved on appearance.
+      imageModel: {
+        primary: resolveModelEndpoint(
+          typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null,
+          String(appearance.artStyle ?? 'realistic'),
+        ),
+      },
+      primaryImageId: referenceId,
     },
     overrideAccess: true,
   })
 
-  await payload.update({
-    collection: 'media-assets',
-    id: selectedReferenceMediaAssetId,
-    data: {
-      kind: 'character_reference',
-      ownerCharacterId: character.id,
-    },
-    overrideAccess: true,
-  })
+  // Link every preview the user generated during this draft to the new
+  // character — the selected one as the canonical reference, the rest as
+  // gallery entries. Before this loop, non-selected previews ended up as
+  // orphan character_preview media-assets visible only via the global
+  // media-assets list in admin; the character's gallery view saw nothing
+  // but the single reference. Now admin lands on the new character and
+  // sees every alternate the user explored.
+  const allPreviewEntries = (Array.isArray(draft.previewGenerations)
+    ? draft.previewGenerations
+    : []) as Array<{ mediaAssetId?: string | number | null }>
+  const updatedMediaAssetIds = new Set<string>()
+  for (const entry of allPreviewEntries) {
+    const rawId = entry.mediaAssetId
+    if (rawId == null) continue
+    const assetId = coerceRelId(typeof rawId === 'number' ? rawId : String(rawId))
+    const dedupKey = String(assetId)
+    if (updatedMediaAssetIds.has(dedupKey)) continue
+    updatedMediaAssetIds.add(dedupKey)
+    const isReference = dedupKey === String(referenceId)
+    try {
+      await payload.update({
+        collection: 'media-assets',
+        id: assetId,
+        data: {
+          kind: isReference ? 'character_reference' : 'character_gallery',
+          ownerCharacterId: character.id,
+        },
+        overrideAccess: true,
+      })
+    } catch (e) {
+      // Don't fail the whole finalize if one stale entry can't be relinked.
+      // Character is still usable; missing gallery items are a soft
+      // degradation worth logging but not blocking on.
+      console.warn('[builder-finalize] failed to link preview to character', {
+        assetId,
+        characterId: character.id,
+        error: e,
+      })
+    }
+  }
+  // Safety net: if the selected reference somehow wasn't in
+  // previewGenerations (shouldn't happen — selectReferenceAction only sets
+  // it when an entry exists — but covers any future divergence), make sure
+  // it gets relinked. Idempotent if already updated above.
+  if (!updatedMediaAssetIds.has(String(referenceId))) {
+    await payload.update({
+      collection: 'media-assets',
+      id: referenceId,
+      data: {
+        kind: 'character_reference',
+        ownerCharacterId: character.id,
+      },
+      overrideAccess: true,
+    })
+  }
 
   await payload.update({
     collection: 'character-drafts',
@@ -988,7 +1125,12 @@ export async function finalizeBuilderAction(
           relationshipStage: relationshipValue,
           keyMemories: [],
         },
-        imageModel: { primary: pickEndpointForAppearance(appearance) },
+        imageModel: {
+          primary: resolveModelEndpoint(
+            typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null,
+            String(appearance.artStyle ?? 'realistic'),
+          ),
+        },
       },
       snapshotVersion: 1,
       llmConfig: {

@@ -8,6 +8,8 @@ import config from '@payload-config'
 import { z } from 'zod'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { streamChatCompletion, OPENROUTER_MODEL } from '@/shared/ai/openrouter'
+import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
+import { CHAT_REGENERATE_LIMIT } from '@/shared/rate-limit/presets'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
 const LLM_TEMPERATURE = 0.85
@@ -26,6 +28,14 @@ export async function POST(req: NextRequest) {
   const user = await getCurrentUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const rl = await checkRateLimit(CHAT_REGENERATE_LIMIT, `u:${user.id}`)
+  if (!rl.allowed) {
+    return NextResponse.json(rateLimitResponseBody(rl), {
+      status: 429,
+      headers: rateLimitHeaders(rl),
+    })
   }
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => ({})))

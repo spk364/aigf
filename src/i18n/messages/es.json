@@ -68,6 +68,9 @@
     "backToChats": "Todos los chats",
     "backToHome": "Inicio",
     "dashboard": "Panel",
+    "imagePending": "Generando imagen...",
+    "imageQueuePosition": "Posicion en cola: {n}",
+    "imageFailed": "No se pudo generar la foto. Intentalo de nuevo.",
     "image": {
       "upgradeRequired": "Las fotos son una funcion Premium. {link} para desbloquear.",
       "tokensRequired": "Te has quedado sin tokens este mes. {link} para recargar.",
@@ -266,10 +269,11 @@
         "middle_eastern": "Oriente Medio"
       },
       "ageRange": {
-        "twenties": "20s",
-        "thirties": "30s",
-        "forties": "40s",
-        "fifties": "50s"
+        "young_adult": "18-21",
+        "twenties": "22-29",
+        "thirties": "30-39",
+        "forties": "40-49",
+        "fifties": "50+"
       },
       "bodyType": {
         "slim": "Delgada",
@@ -438,7 +442,53 @@
       "next": "Siguiente",
       "finalize": "Finalizar",
       "create": "Crear a {name}",
-      "showMore": "Mostrar más ({count})"
+      "showMore": "Mostrar más ({count})",
+      "showPrompt": "Mostrar el prompt final",
+      "hidePrompt": "Ocultar prompt",
+      "copyPrompt": "Copiar",
+      "copiedPrompt": "Copiado",
+      "editParams": "Editar parámetros",
+      "hideParams": "Ocultar parámetros"
+    },
+    "promptPreview": {
+      "heading": "Prompt enviado al modelo",
+      "positive": "Prompt",
+      "negative": "Negative prompt",
+      "negativeUnsupported": "Este modelo ignora el negative prompt."
+    },
+    "modelPicker": {
+      "heading": "Modelo de imagen",
+      "recommended": "Recomendado"
+    },
+    "models": {
+      "fastSdxl": {
+        "label": "Fast SDXL",
+        "description": "~$0.005/img · ~5-10 s · anime base. Puede filtrar NSFW."
+      },
+      "fluxSchnell": {
+        "label": "FLUX schnell",
+        "description": "~$0.003/img · ~5-10 s · realismo rápido. Sin negative prompt."
+      },
+      "fluxDev": {
+        "label": "FLUX dev",
+        "description": "~$0.025/img · ~30-60 s · FLUX de mayor calidad. Sin negative prompt."
+      },
+      "cyberrealisticPony": {
+        "label": "CyberRealistic Pony",
+        "description": "~$0.05/img · fotorrealismo NSFW. ⚠ primer arranque 2-3 min, luego 30-60 s."
+      },
+      "ponyRealism": {
+        "label": "Pony Realism",
+        "description": "~$0.05/img · fotorrealismo NSFW alternativo. ⚠ arranque en frío."
+      },
+      "waiIllustrious": {
+        "label": "WAI Illustrious",
+        "description": "~$0.05/img · top anime NSFW. ⚠ primer arranque 2-3 min, luego 30-60 s."
+      },
+      "hassakuIllustrious": {
+        "label": "Hassaku Illustrious",
+        "description": "~$0.05/img · anime NSFW estilizado. ⚠ arranque en frío."
+      }
     },
     "review": {
       "relationship": "Relación inicial"
@@ -448,6 +498,9 @@
       "nameCelebrity": "Los nombres de celebridades no estan permitidos.",
       "nameTooShort": "El nombre debe tener al menos 2 caracteres.",
       "previewLimitReached": "Has alcanzado el limite de 5 conjuntos de preview para este borrador.",
+      "previewSafetyFiltered": "El generador filtro todas las previews como inseguras. Suaviza la descripcion o cambia el estilo y vuelve a intentarlo.",
+      "previewTimeout": "La generacion excedio el tiempo limite. Elige un modelo mas rapido (FLUX schnell / Fast SDXL) o reintenta — los checkpoints Pony/Illustrious se calientan tras el primer hit.",
+      "finalizeFailed": "No se pudo finalizar el personaje. Intentalo de nuevo o contacta soporte si el problema persiste.",
       "validationFailed": "Por favor revisa tus datos e intentalo de nuevo."
     }
   },

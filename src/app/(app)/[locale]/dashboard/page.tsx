@@ -1,19 +1,15 @@
 import { getTranslations } from 'next-intl/server'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
-import { logoutAction } from '@/features/auth/actions/logout'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { getDailyMessageCap, getQuotaStatus } from '@/features/quota/message-quota'
 import { isPremiumPlan } from '@/features/billing/plans'
-import { getDashboardData } from '@/features/dashboard/queries'
-import { ContinueCard } from '@/widgets/dashboard/ContinueCard'
-import { MyCompanions } from '@/widgets/dashboard/MyCompanions'
-import { RecentConversations } from '@/widgets/dashboard/RecentConversations'
-import { DraftsStrip } from '@/widgets/dashboard/DraftsStrip'
-import { QuotaPill } from '@/widgets/dashboard/QuotaPill'
-import { SiteHeader } from '@/widgets/site-header'
+import { getFeaturedCharacters } from '@/widgets/landing/featured-data'
+import { DashboardShell } from '@/widgets/dashboard/DashboardShell'
+import { GenreTabs } from '@/widgets/dashboard/GenreTabs'
+import { HeroBanner } from '@/widgets/dashboard/HeroBanner'
+import { StoriesRow } from '@/widgets/dashboard/StoriesRow'
+import { LiveAction } from '@/widgets/dashboard/LiveAction'
+import { CharactersGrid } from '@/widgets/dashboard/CharactersGrid'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -26,115 +22,56 @@ export default async function DashboardPage({ params }: Props) {
 
   const displayName =
     (user as unknown as { displayName?: string }).displayName || user.email
-
   const emailVerified = !!(user as unknown as { _verified?: boolean })._verified
 
   const payload = await getPayload({ config })
-
-  // Sequential to avoid blowing the Supabase session-mode pool (size 15).
   const subResult = await payload.find({
     collection: 'subscriptions',
     where: {
-      and: [
-        { userId: { equals: user.id } },
-        { status: { equals: 'active' } },
-      ],
+      and: [{ userId: { equals: user.id } }, { status: { equals: 'active' } }],
     },
     limit: 1,
     overrideAccess: true,
   })
-  const cap = await getDailyMessageCap(payload, user)
-  const quota = await getQuotaStatus(user.id, cap)
-  const dashboard = await getDashboardData({
-    userId: user.id,
-    locale: locale as 'en' | 'ru' | 'es',
-  })
-
   const sub = subResult.docs[0]
   const isPremium = !!sub && isPremiumPlan(sub.plan as string | null)
 
-  const quotaCap = quota.cap === Infinity ? null : quota.cap
-
-  async function handleLogout() {
-    'use server'
-    await logoutAction()
-    redirect(`/${locale}/login`)
-  }
-
-  const hasCompanions = dashboard.companions.length > 0
+  const featured = await getFeaturedCharacters()
+  const stories = featured.slice(0, 12)
+  const live = featured.slice(0, 8)
+  const heroCover = featured[0]?.photoUrl ?? null
 
   return (
-    <>
-      <SiteHeader locale={locale} />
-      <main className="min-h-screen bg-[var(--color-bg)] px-4 pt-24 pb-10 text-[var(--color-text)]">
-        <div className="mx-auto flex max-w-5xl flex-col gap-8">
-        {!emailVerified && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-300">
-            {t('dashboard.emailNotVerified')}
-          </div>
-        )}
-
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
-              Hello
-            </p>
-            <h1 className="text-2xl font-bold text-[var(--color-text)] sm:text-3xl">
-              {displayName}
-            </h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <QuotaPill
-              locale={locale}
-              used={quota.used}
-              cap={quotaCap}
-              isPremium={isPremium}
-            />
-            <form action={handleLogout}>
-              <button
-                type="submit"
-                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)]"
-              >
-                {t('dashboard.logout')}
-              </button>
-            </form>
-          </div>
-        </header>
-
-        {dashboard.drafts.length > 0 && (
-          <DraftsStrip locale={locale} drafts={dashboard.drafts} />
-        )}
-
-        {dashboard.hero && <ContinueCard locale={locale} hero={dashboard.hero} />}
-
-        {hasCompanions ? (
-          <MyCompanions locale={locale} companions={dashboard.companions} />
-        ) : (
-          <EmptyCompanions locale={locale} />
-        )}
-
-        <RecentConversations locale={locale} rows={dashboard.recentConversations} />
+    <DashboardShell
+      locale={locale}
+      displayName={displayName}
+      email={user.email}
+      isPremium={isPremium}
+      active="home"
+    >
+      <div className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/80 backdrop-blur-sm">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-center px-4 sm:px-6 lg:px-10">
+          <GenreTabs locale={locale} active="girls" />
         </div>
-      </main>
-    </>
-  )
-}
+      </div>
 
-function EmptyCompanions({ locale }: { locale: string }) {
-  return (
-    <section className="rounded-3xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)]/50 p-10 text-center">
-      <h2 className="text-2xl font-bold text-[var(--color-text)]">
-        Design your first companion
-      </h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-[var(--color-text-muted)]">
-        Pick a look, give her a name, and start chatting in under a minute.
-      </p>
-      <Link
-        href={`/${locale}/start`}
-        className="mt-6 inline-flex items-center justify-center rounded-xl bg-[var(--color-accent-strong)] px-6 py-3 font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
-      >
-        Create my companion
-      </Link>
-    </section>
+      <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+        <div className="mx-auto flex max-w-6xl flex-col gap-8">
+          {!emailVerified && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-300">
+              {t('dashboard.emailNotVerified')}
+            </div>
+          )}
+
+          <HeroBanner locale={locale} coverImageUrl={heroCover} />
+
+          <StoriesRow locale={locale} characters={stories} />
+
+          <LiveAction locale={locale} characters={live} />
+
+          <CharactersGrid locale={locale} characters={featured} />
+        </div>
+      </div>
+    </DashboardShell>
   )
 }
