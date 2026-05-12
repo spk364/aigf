@@ -1,7 +1,10 @@
+'use client'
+
 // TODO: replace with a real "live" feed once we have presence/streaming.
 // Today this is a curated row of featured characters dressed up with a LIVE
 // pulse + an archetype-flavored teaser that opens a chat with that persona.
 import Link from 'next/link'
+import { useRef } from 'react'
 import type { FeaturedCharacter } from '@/widgets/landing/featured-data'
 
 type Props = {
@@ -46,6 +49,94 @@ function LivePulse() {
   )
 }
 
+// Per-card subcomponent so each video gets its own ref. Inlined rather than
+// shared with PersonaCard / CharactersGrid because the surrounding card
+// chrome (teaser line, scrollable row sizing, "Play with me" CTA) is
+// LiveAction-specific.
+function LiveActionCard({
+  character,
+  locale,
+  teaser,
+}: {
+  character: FeaturedCharacter
+  locale: string
+  teaser: string
+}) {
+  const c = character
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  // Imperative play/pause keeps the autoplay constraint happy (the user's
+  // pointer entering the card is a sufficient gesture for muted playback)
+  // and rewinds on leave so the next hover starts from the same first
+  // frame as the still photo. Catch swallows DOMException when the user
+  // moves the mouse off mid-load.
+  const handleEnter = () => {
+    const v = videoRef.current
+    if (!v) return
+    v.currentTime = 0
+    void v.play().catch(() => {})
+  }
+  const handleLeave = () => {
+    const v = videoRef.current
+    if (!v) return
+    v.pause()
+    v.currentTime = 0
+  }
+
+  return (
+    <Link
+      href={`/${locale}/chat/new?characterId=${c.id}`}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      onFocus={handleEnter}
+      onBlur={handleLeave}
+      className="group relative block aspect-[3/4] w-44 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_40px_-12px_rgba(192,116,255,0.45)] sm:w-52"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={c.photoUrl}
+        alt={c.name}
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+      />
+      {c.videoUrl && (
+        <video
+          ref={videoRef}
+          src={c.videoUrl}
+          muted
+          loop
+          playsInline
+          preload="none"
+          aria-hidden
+          className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+        />
+      )}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+
+      <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-sm">
+        <LivePulse />
+        Live
+      </span>
+
+      <div className="absolute inset-x-0 bottom-0 p-3">
+        <p className="line-clamp-1 text-[11px] font-medium italic text-white/85 drop-shadow">
+          “{teaser}”
+        </p>
+        <p className="mt-1 truncate text-base font-bold text-white drop-shadow">
+          {c.name}
+          {c.age != null ? <span className="ml-1 font-medium text-white/70">{c.age}</span> : null}
+        </p>
+        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent-strong)] px-3 py-1 text-[11px] font-bold text-[var(--color-bg)] shadow-[0_10px_25px_-8px_rgba(192,116,255,0.7)]">
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-3 w-3">
+            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+          </svg>
+          Play with me
+        </span>
+      </div>
+    </Link>
+  )
+}
+
 export function LiveAction({ locale, characters }: Props) {
   if (characters.length === 0) return null
 
@@ -69,46 +160,14 @@ export function LiveAction({ locale, characters }: Props) {
       </div>
 
       <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 sm:gap-4 [scrollbar-width:thin]">
-        {characters.map((c) => {
-          const teaser = pickTeaser(c.archetypeRaw, c.id)
-          return (
-            <Link
-              key={c.id}
-              href={`/${locale}/chat/new?characterId=${c.id}`}
-              className="group relative block aspect-[3/4] w-44 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_40px_-12px_rgba(192,116,255,0.45)] sm:w-52"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={c.photoUrl}
-                alt={c.name}
-                loading="lazy"
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-              />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
-
-              <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-sm">
-                <LivePulse />
-                Live
-              </span>
-
-              <div className="absolute inset-x-0 bottom-0 p-3">
-                <p className="line-clamp-1 text-[11px] font-medium italic text-white/85 drop-shadow">
-                  “{teaser}”
-                </p>
-                <p className="mt-1 truncate text-base font-bold text-white drop-shadow">
-                  {c.name}
-                  {c.age != null ? <span className="ml-1 font-medium text-white/70">{c.age}</span> : null}
-                </p>
-                <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent-strong)] px-3 py-1 text-[11px] font-bold text-[var(--color-bg)] shadow-[0_10px_25px_-8px_rgba(192,116,255,0.7)]">
-                  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-3 w-3">
-                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                  </svg>
-                  Play with me
-                </span>
-              </div>
-            </Link>
-          )
-        })}
+        {characters.map((c) => (
+          <LiveActionCard
+            key={c.id}
+            character={c}
+            locale={locale}
+            teaser={pickTeaser(c.archetypeRaw, c.id)}
+          />
+        ))}
       </div>
     </section>
   )
