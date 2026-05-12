@@ -4,8 +4,8 @@
 // Today this is a curated row of featured characters dressed up with a LIVE
 // pulse + an archetype-flavored teaser that opens a chat with that persona.
 import Link from 'next/link'
-import { useRef } from 'react'
 import type { FeaturedCharacter } from '@/widgets/landing/featured-data'
+import { useAutoplayInView } from '@/widgets/landing/use-autoplay-in-view'
 
 type Props = {
   locale: string
@@ -52,7 +52,8 @@ function LivePulse() {
 // Per-card subcomponent so each video gets its own ref. Inlined rather than
 // shared with PersonaCard / CharactersGrid because the surrounding card
 // chrome (teaser line, scrollable row sizing, "Play with me" CTA) is
-// LiveAction-specific.
+// LiveAction-specific. Video starts on intersection — the still photo
+// only shows until the first frame buffers.
 function LiveActionCard({
   character,
   locale,
@@ -63,33 +64,11 @@ function LiveActionCard({
   teaser: string
 }) {
   const c = character
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-
-  // Imperative play/pause keeps the autoplay constraint happy (the user's
-  // pointer entering the card is a sufficient gesture for muted playback)
-  // and rewinds on leave so the next hover starts from the same first
-  // frame as the still photo. Catch swallows DOMException when the user
-  // moves the mouse off mid-load.
-  const handleEnter = () => {
-    const v = videoRef.current
-    if (!v) return
-    v.currentTime = 0
-    void v.play().catch(() => {})
-  }
-  const handleLeave = () => {
-    const v = videoRef.current
-    if (!v) return
-    v.pause()
-    v.currentTime = 0
-  }
+  const { ref: videoRef, hasFirstFrame } = useAutoplayInView()
 
   return (
     <Link
       href={`/${locale}/chat/new?characterId=${c.id}`}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-      onFocus={handleEnter}
-      onBlur={handleLeave}
       className="group relative block aspect-[3/4] w-44 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_40px_-12px_rgba(192,116,255,0.45)] sm:w-52"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -97,7 +76,10 @@ function LiveActionCard({
         src={c.photoUrl}
         alt={c.name}
         loading="lazy"
-        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        className={
+          'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ' +
+          (c.videoUrl && hasFirstFrame ? 'opacity-0' : 'opacity-100')
+        }
       />
       {c.videoUrl && (
         <video
@@ -106,9 +88,15 @@ function LiveActionCard({
           muted
           loop
           playsInline
-          preload="none"
+          // metadata is enough to start playback when the observer fires;
+          // `none` would force a roundtrip on every intersection event.
+          preload="metadata"
+          poster={c.photoUrl}
           aria-hidden
-          className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+          className={
+            'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ' +
+            (hasFirstFrame ? 'opacity-100' : 'opacity-0')
+          }
         />
       )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />

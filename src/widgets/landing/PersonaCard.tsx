@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
+import { useAutoplayInView } from './use-autoplay-in-view'
 
 export type FeaturedCharacter = {
   id: string
@@ -25,7 +26,7 @@ type Props = {
 
 export function PersonaCard({ character, href }: Props) {
   const { name, age, city, archetype, tagline, tags, photoUrl, videoUrl, greetingAudioUrl, hue } = character
-  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const { ref: videoRef, hasFirstFrame } = useAutoplayInView()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const tileStyle: CSSProperties = {
@@ -40,20 +41,6 @@ export function PersonaCard({ character, href }: Props) {
       }
     }
   }, [])
-
-  const handleEnter = () => {
-    const v = videoRef.current
-    if (!v) return
-    v.currentTime = 0
-    void v.play().catch(() => {})
-  }
-
-  const handleLeave = () => {
-    const v = videoRef.current
-    if (!v) return
-    v.pause()
-    v.currentTime = 0
-  }
 
   const togglePlay = (e: MouseEvent) => {
     e.preventDefault()
@@ -78,10 +65,6 @@ export function PersonaCard({ character, href }: Props) {
   return (
     <Link
       href={href}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-      onFocus={handleEnter}
-      onBlur={handleLeave}
       className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_50px_-12px_rgba(192,116,255,0.35)]"
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden" style={tileStyle}>
@@ -90,7 +73,10 @@ export function PersonaCard({ character, href }: Props) {
           src={photoUrl}
           alt={name}
           loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover transition-opacity duration-200 group-hover:opacity-0"
+          className={
+            'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ' +
+            (videoUrl && hasFirstFrame ? 'opacity-0' : 'opacity-100')
+          }
         />
         {videoUrl && (
           <video
@@ -99,8 +85,13 @@ export function PersonaCard({ character, href }: Props) {
             muted
             loop
             playsInline
-            preload="none"
-            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+            preload="metadata"
+            poster={photoUrl}
+            aria-hidden
+            className={
+              'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ' +
+              (hasFirstFrame ? 'opacity-100' : 'opacity-0')
+            }
           />
         )}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/0 to-black/0" />
@@ -130,15 +121,6 @@ export function PersonaCard({ character, href }: Props) {
             Online
           </div>
         </div>
-
-        {videoUrl && (
-          <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-1 rounded-full bg-black/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm opacity-100 transition-opacity group-hover:opacity-0">
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className="h-3 w-3">
-              <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-            </svg>
-            Video
-          </div>
-        )}
 
         <div className="absolute inset-x-0 bottom-0 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-white/80">
