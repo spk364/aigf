@@ -5,7 +5,7 @@
 // pulse + an archetype-flavored teaser that opens a chat with that persona.
 import Link from 'next/link'
 import type { FeaturedCharacter } from '@/widgets/landing/featured-data'
-import { useAutoplayInView } from '@/widgets/landing/use-autoplay-in-view'
+import { CharacterCardMedia } from '@/widgets/landing/CharacterCardMedia'
 
 type Props = {
   locale: string
@@ -64,35 +64,18 @@ function LiveActionCard({
   teaser: string
 }) {
   const c = character
-  const videoRef = useAutoplayInView()
 
   return (
     <Link
       href={`/${locale}/chat/new?characterId=${c.id}`}
       className="group relative block aspect-[3/4] w-44 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_40px_-12px_rgba(192,116,255,0.45)] sm:w-52"
     >
-      {c.videoUrl ? (
-        <video
-          ref={videoRef}
-          src={c.videoUrl}
-          poster={c.photoUrl}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          aria-label={c.name}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={c.photoUrl}
-          alt={c.name}
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      )}
+      <CharacterCardMedia
+        photoUrl={c.photoUrl}
+        videoUrl={c.videoUrl}
+        alt={c.name}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
 
       <span className="absolute left-2 top-2 inline-flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-sm">
