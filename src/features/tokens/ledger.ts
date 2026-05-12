@@ -1,5 +1,11 @@
 // Only grant/spend/refundByAdmin should write to token_balances
 import type { BasePayload } from 'payload'
+import { isUnlimitedUserId } from '@/shared/auth/is-unlimited-user'
+
+// Synthetic balance returned to whitelisted test/admin users. Big enough to
+// never trip a pre-flight check (image cost is 2, video cost is 10+) but
+// finite so JSON serialization stays safe.
+const UNLIMITED_BALANCE = 999_999_999
 
 export type GrantType =
   | 'grant_subscription'
@@ -59,6 +65,11 @@ async function findByIdempotencyKey(
 }
 
 export async function getBalance(payload: BasePayload, userId: string | number): Promise<number> {
+  // Whitelisted users see a synthetic balance high enough to pass every
+  // spend pre-flight check. Their actual token-balances row stays
+  // untouched so toggling them off restores normal behavior.
+  if (await isUnlimitedUserId(payload, userId)) return UNLIMITED_BALANCE
+
   const result = await payload.find({
     collection: 'token-balances',
     where: { userId: { equals: userId } },
@@ -194,6 +205,13 @@ export async function spend(
   },
 ): Promise<{ ok: true; balanceAfter: number; replayed?: boolean } | { ok: false; reason: 'insufficient' }> {
   if (opts.amount <= 0) throw new Error('spend amount must be positive')
+
+  // Whitelisted users never have their balance debited. Skip the ledger
+  // write entirely so we don't leave a paper trail of "spend" rows that
+  // would mislead anyone reading the audit history.
+  if (await isUnlimitedUserId(payload, opts.userId)) {
+    return { ok: true, balanceAfter: UNLIMITED_BALANCE }
+  }
 
   // Pre-check: same idempotencyKey already debited — replay the result.
   if (opts.idempotencyKey) {

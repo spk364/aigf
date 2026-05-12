@@ -172,7 +172,9 @@ export async function createDraftAction(language: 'en' | 'ru' | 'es') {
   const locale = await getLocale()
   const payload = await getPayload({ config })
 
-  const premium = await isPremiumUser(payload, user.id)
+  const { isUnlimitedEmail } = await import('@/shared/auth/is-unlimited-user')
+  const unlimited = isUnlimitedEmail((user as { email?: string | null }).email)
+  const premium = unlimited || (await isPremiumUser(payload, user.id))
 
   if (!premium) {
     const existing = await payload.find({

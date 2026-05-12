@@ -30,7 +30,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const rl = await checkRateLimit(CHAT_REGENERATE_LIMIT, `u:${user.id}`)
+  const { isUnlimitedEmail } = await import('@/shared/auth/is-unlimited-user')
+  const isUnlimited = isUnlimitedEmail((user as { email?: string | null }).email)
+  const rl = isUnlimited
+    ? { allowed: true, remaining: Number.MAX_SAFE_INTEGER, retryAfterSeconds: 0, blockedBy: null as number | null }
+    : await checkRateLimit(CHAT_REGENERATE_LIMIT, `u:${user.id}`)
   if (!rl.allowed) {
     return NextResponse.json(rateLimitResponseBody(rl), {
       status: 429,

@@ -19,6 +19,7 @@ import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/ret
 import { extractMemories } from '@/features/memory/extract-memories'
 import { getBalance, spend } from '@/features/tokens/ledger'
 import { isPremiumPlan } from '@/features/billing/plans'
+import { isUnlimitedEmail } from '@/shared/auth/is-unlimited-user'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_LIMIT, IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 import { submitChatImageJob, IMAGE_TOKEN_COST } from '@/features/chat/image-job'
@@ -93,7 +94,10 @@ export async function POST(req: NextRequest) {
   const log = createLogger({ requestId, userId: String(user.id) })
   log.info({ msg: 'chat.request.start' })
 
-  const rl = await checkRateLimit(CHAT_LIMIT, `u:${user.id}`)
+  const isUnlimited = isUnlimitedEmail((user as { email?: string | null }).email)
+  const rl = isUnlimited
+    ? { allowed: true, remaining: Number.MAX_SAFE_INTEGER, retryAfterSeconds: 0, blockedBy: null as number | null }
+    : await checkRateLimit(CHAT_LIMIT, `u:${user.id}`)
   if (!rl.allowed) {
     log.warn({ msg: 'chat.rate_limited', blockedBy: rl.blockedBy, retryAfterSeconds: rl.retryAfterSeconds })
     track({
@@ -234,7 +238,9 @@ export async function POST(req: NextRequest) {
     // Image-gen has a tighter limit — each call costs real $$ at fal.ai and
     // burns user tokens. The chat-text limit above already passed; this is
     // an additional gate for the cost-sensitive sub-path.
-    const imageRl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+    const imageRl = isUnlimited
+      ? { allowed: true, remaining: Number.MAX_SAFE_INTEGER, retryAfterSeconds: 0, blockedBy: null as number | null }
+      : await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
     if (!imageRl.allowed) {
       log.warn({ msg: 'chat.image.rate_limited', blockedBy: imageRl.blockedBy, retryAfterSeconds: imageRl.retryAfterSeconds })
       track({
@@ -275,7 +281,9 @@ export async function POST(req: NextRequest) {
         })
 
         const activeSub = subResult.docs[0]
-        const isPremium = !!activeSub && isPremiumPlan(activeSub.plan as string | null)
+        const isPremium =
+          (!!activeSub && isPremiumPlan(activeSub.plan as string | null)) ||
+          isUnlimitedEmail((user as { email?: string | null }).email)
 
         if (!isPremium) {
           const upgradeMsg = upgradeMessageForLocale(convLanguage, upgradeUrl)

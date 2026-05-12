@@ -46,11 +46,13 @@ export default async function BuilderPage({ params }: Props) {
   })
 
   const sub = subResult.docs[0]
+  const { isUnlimitedEmail } = await import('@/shared/auth/is-unlimited-user')
   const isPremium =
-    sub &&
-    (sub.plan === 'premium_monthly' ||
-      sub.plan === 'premium_yearly' ||
-      sub.plan === 'premium_plus_monthly')
+    isUnlimitedEmail((user as { email?: string | null }).email) ||
+    (sub &&
+      (sub.plan === 'premium_monthly' ||
+        sub.plan === 'premium_yearly' ||
+        sub.plan === 'premium_plus_monthly'))
 
   const customCharsResult = await payload.find({
     collection: 'characters',

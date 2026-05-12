@@ -5,6 +5,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Next ships a `server-only` shim at compile time; vitest runs Node
+      // directly so the package's throw-on-import default file fires when a
+      // tested module pulls in a `server-only`-tagged helper. Alias it to an
+      // empty module so imports become no-ops in tests.
+      'server-only': path.resolve(__dirname, './src/shared/test/server-only-shim.ts'),
     },
   },
   test: {

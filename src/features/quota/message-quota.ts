@@ -1,8 +1,9 @@
 import type { BasePayload } from 'payload'
 import { redis } from '@/shared/redis/client'
 import { isPremiumPlan } from '@/features/billing/plans'
+import { isUnlimitedEmail } from '@/shared/auth/is-unlimited-user'
 
-type UserLike = { id: string | number }
+type UserLike = { id: string | number; email?: string | null }
 
 /**
  * Free-tier daily message ceiling. Set to 30 based on competitor benchmarks
@@ -13,6 +14,9 @@ type UserLike = { id: string | number }
 const FREE_TIER_DAILY_CAP = 30
 
 export async function getDailyMessageCap(payload: BasePayload, user: UserLike): Promise<number> {
+  // Whitelisted test/admin emails bypass the daily ceiling entirely.
+  if (isUnlimitedEmail(user.email)) return Infinity
+
   const result = await payload.find({
     collection: 'subscriptions',
     where: {
