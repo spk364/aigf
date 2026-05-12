@@ -209,6 +209,7 @@
     "sections": {
       "gender": "What gender is your character?",
       "artStyle": "Choose an art style",
+      "realisticModel": "Pick a realistic model",
       "approach": "Choose your design approach",
       "age": "Age",
       "ethnicity": "Ethnic background",
@@ -253,6 +254,11 @@
       "artStyle": {
         "realistic": "Realistic",
         "anime": "Anime"
+      },
+      "realisticModel": {
+        "realvis": "RealVisXL — clean photoreal",
+        "ponyRealism": "Pony Realism — polished skin",
+        "cyberRealistic": "CyberRealistic — moody, NSFW-strong"
       },
       "ethnicity": {
         "european": "White",

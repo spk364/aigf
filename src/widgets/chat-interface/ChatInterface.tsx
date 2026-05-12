@@ -756,39 +756,75 @@ export function ChatInterface({
   const isStreaming = streamingState !== 'idle'
   const showTyping = isStreaming && !draft
 
+  // Welcome-state chips only appear before the user has sent anything. They
+  // route to common opener intents we know the chat handles well — image
+  // requests trigger the image-intent detector in /api/chat.
+  const hasUserSent = messages.some((m) => m.role === 'user')
+  const quickChips =
+    !hasUserSent
+      ? [
+          { label: '👋 Say hi', text: 'Hey, how are you?' },
+          { label: '📷 Photo', text: 'Send me a selfie' },
+          { label: '🍷 Plans', text: 'What are you up to tonight?' },
+        ]
+      : []
+
   return (
-    <div className="flex h-full flex-col bg-[var(--color-bg)]">
+    <div className="relative flex h-full flex-col overflow-hidden bg-[var(--color-bg)]">
+      {/* Backdrop: blurred character photo bleeds through the entire chat
+          at very low opacity for an immersive, in-her-room feel. */}
+      {characterPhotoUrl && (
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={characterPhotoUrl}
+            alt=""
+            className="h-full w-full scale-110 object-cover opacity-[0.07] blur-2xl"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-bg)]/40 via-transparent to-[var(--color-bg)]" />
+        </div>
+      )}
+
       {/* Header */}
-      <header className="flex items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 sm:px-5 sm:py-4">
+      <header className="relative z-10 flex items-center gap-3 border-b border-white/5 bg-[var(--color-bg)]/70 px-3 py-3 backdrop-blur-md sm:px-5 sm:py-3.5">
         <Link
           href={`/${locale}/chat`}
           aria-label={s.backToChats}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-white/5 hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
         >
           <IconChevronLeft />
         </Link>
-        <CharacterAvatar name={characterName} photoUrl={characterPhotoUrl} size="lg" />
+        <div className="relative">
+          <CharacterAvatar name={characterName} photoUrl={characterPhotoUrl} size="md" />
+          {/* Online dot — sits on the avatar like Telegram/Instagram. */}
+          <span
+            aria-hidden
+            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[var(--color-bg)] bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+          />
+        </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-[var(--color-text)]">{characterName}</p>
-          <p className="text-xs text-[var(--color-success)]">Online</p>
+          <p className="truncate font-semibold leading-tight text-[var(--color-text)]">
+            {characterName}
+          </p>
+          <p className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
+            {showTyping ? (
+              <>
+                <span className="font-medium text-[var(--color-accent)]">{s.typing}</span>
+              </>
+            ) : (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Online
+              </>
+            )}
+          </p>
         </div>
         <nav className="flex shrink-0 items-center gap-1">
           <Link
-            href={`/${locale}/chat`}
-            className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] sm:inline-flex"
-          >
-            {s.backToChats}
-          </Link>
-          <Link
             href={`/${locale}/dashboard`}
-            className="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] sm:inline-flex"
-          >
-            {s.dashboard}
-          </Link>
-          <Link
-            href={`/${locale}`}
-            aria-label={s.backToHome}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+            aria-label={s.dashboard}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-white/5 hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+            title={s.dashboard}
           >
             <IconHome />
           </Link>
@@ -796,119 +832,130 @@ export function ChatInterface({
       </header>
 
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-6" role="log" aria-live="polite">
-        <div className="mx-auto flex max-w-3xl flex-col gap-5">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex items-end gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
-            >
-              {/* Avatar for assistant */}
-              {msg.role === 'assistant' && (
-                <div className="mb-1">
-                  <CharacterAvatar
-                    name={characterName}
-                    photoUrl={characterPhotoUrl}
-                    size="sm"
-                  />
-                </div>
-              )}
+      <div className="relative z-10 flex-1 overflow-y-auto px-3 py-5 sm:px-4" role="log" aria-live="polite">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          {messages.map((msg, idx) => {
+            const isUser = msg.role === 'user'
+            // Hide the avatar for consecutive assistant turns — only the
+            // last bubble in a run gets a face. Matches WhatsApp grouping.
+            const prevMsg = idx > 0 ? messages[idx - 1] : null
+            const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null
+            const showAvatar = !isUser && (!nextMsg || nextMsg.role !== 'assistant')
+            const isGrouped = prevMsg && prevMsg.role === msg.role
 
-              {msg.type === 'image' && msg.imageUrl ? (
-                <div className="group relative max-w-[320px]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={msg.imageUrl}
-                    alt={`Photo from ${characterName}`}
-                    width={msg.imageWidth}
-                    height={msg.imageHeight}
-                    loading="eager"
-                    className="rounded-2xl shadow-md h-auto w-full max-w-[320px] object-cover"
-                  />
-                </div>
-              ) : msg.type === 'image' && msg.imageStatus === 'pending' ? (
-                <div
-                  aria-live="polite"
-                  className="relative flex aspect-[3/4] w-[260px] items-center justify-center overflow-hidden rounded-2xl bg-[var(--color-surface-2)] shadow-md"
-                >
-                  <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--color-surface-2)] via-[var(--color-surface-3)] to-[var(--color-surface-2)]" />
-                  <div className="relative flex flex-col items-center gap-2 text-xs text-[var(--color-text-muted)]">
-                    <IconCamera />
-                    <span>{s.imagePending}</span>
-                    {msg.imageProgress?.queuePosition !== undefined && msg.imageProgress.queuePosition > 0 && (
-                      <span className="text-[10px] opacity-70">
-                        {s.imageQueuePosition.replace('{n}', String(msg.imageProgress.queuePosition))}
-                      </span>
+            return (
+              <div
+                key={msg.id}
+                className={`flex items-end gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'} ${isGrouped ? 'mt-0.5' : 'mt-1.5'}`}
+              >
+                {/* Avatar slot for assistant — empty placeholder keeps the
+                    bubble column aligned across grouped messages. */}
+                {!isUser && (
+                  <div className="w-8 shrink-0">
+                    {showAvatar && (
+                      <CharacterAvatar
+                        name={characterName}
+                        photoUrl={characterPhotoUrl}
+                        size="sm"
+                      />
                     )}
                   </div>
-                </div>
-              ) : msg.type === 'image' && msg.imageStatus === 'failed' ? (
-                <div className="rounded-2xl bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text-muted)] shadow-md">
-                  {s.imageFailed}
-                </div>
-              ) : (
-                <div
-                  className={`group relative max-w-[78%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                    msg.role === 'user'
-                      ? 'rounded-br-sm bg-[var(--color-accent-strong)] text-[var(--color-bg)]'
-                      : 'rounded-bl-sm bg-[var(--color-surface-2)] text-[var(--color-text)]'
-                  }`}
-                >
-                  <span className="whitespace-pre-wrap">{msg.content}</span>
+                )}
 
-                  {msg.role === 'assistant' && (
-                    <div className="mt-2 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                      {!msg.id.startsWith('local-') && (
-                        <button
-                          onClick={() => handleToggleTts(msg.id)}
-                          disabled={pendingTtsId !== null && pendingTtsId !== msg.id}
-                          aria-label={playingId === msg.id ? 'Stop' : 'Play voice'}
-                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {pendingTtsId === msg.id
-                            ? <IconLoader />
-                            : playingId === msg.id
-                              ? <IconStop />
-                              : <IconSpeaker />}
-                          {pendingTtsId === msg.id ? '…' : playingId === msg.id ? 'Stop' : 'Play'}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleCopy(msg.id, msg.content)}
-                        aria-label={copiedId === msg.id ? s.copied : s.copy}
-                        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)]"
-                      >
-                        <IconClipboard />
-                        {copiedId === msg.id ? s.copied : s.copy}
-                      </button>
-                      {msg.id === lastAssistantMsg?.id && !isStreaming && (
-                        <button
-                          onClick={handleRegenerate}
-                          aria-label={s.regenerate}
-                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-border)] hover:text-[var(--color-text)]"
-                        >
-                          <IconArrowPath />
-                          {s.regenerate}
-                        </button>
+                {msg.type === 'image' && msg.imageUrl ? (
+                  <div className="group relative max-w-[260px] sm:max-w-[320px]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={msg.imageUrl}
+                      alt={`Photo from ${characterName}`}
+                      width={msg.imageWidth}
+                      height={msg.imageHeight}
+                      loading="eager"
+                      className="h-auto w-full rounded-3xl object-cover shadow-lg ring-1 ring-white/5"
+                    />
+                  </div>
+                ) : msg.type === 'image' && msg.imageStatus === 'pending' ? (
+                  <div
+                    aria-live="polite"
+                    className="relative flex aspect-[3/4] w-[240px] items-center justify-center overflow-hidden rounded-3xl border border-white/5 bg-[var(--color-surface-2)]/90 shadow-lg backdrop-blur-sm sm:w-[260px]"
+                  >
+                    <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--color-surface-2)] via-[var(--color-surface-3)] to-[var(--color-surface-2)]" />
+                    <div className="relative flex flex-col items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                      <IconCamera />
+                      <span>{s.imagePending}</span>
+                      {msg.imageProgress?.queuePosition !== undefined && msg.imageProgress.queuePosition > 0 && (
+                        <span className="text-[10px] opacity-70">
+                          {s.imageQueuePosition.replace('{n}', String(msg.imageProgress.queuePosition))}
+                        </span>
                       )}
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                  </div>
+                ) : msg.type === 'image' && msg.imageStatus === 'failed' ? (
+                  <div className="rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-2.5 text-[15px] leading-snug text-[var(--color-text-muted)] shadow-sm backdrop-blur-sm">
+                    {s.imageFailed}
+                  </div>
+                ) : (
+                  <div
+                    className={`group relative max-w-[80%] px-4 py-2.5 text-[15px] leading-snug shadow-sm sm:max-w-[70%] ${
+                      isUser
+                        ? 'rounded-3xl rounded-br-md bg-[var(--color-accent-strong)] text-[var(--color-bg)]'
+                        : 'rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 text-[var(--color-text)] backdrop-blur-sm'
+                    }`}
+                  >
+                    <span className="whitespace-pre-wrap">{msg.content}</span>
+
+                    {!isUser && (
+                      <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        {!msg.id.startsWith('local-') && (
+                          <button
+                            onClick={() => handleToggleTts(msg.id)}
+                            disabled={pendingTtsId !== null && pendingTtsId !== msg.id}
+                            aria-label={playingId === msg.id ? 'Stop' : 'Play voice'}
+                            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-white/10 hover:text-[var(--color-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {pendingTtsId === msg.id
+                              ? <IconLoader />
+                              : playingId === msg.id
+                                ? <IconStop />
+                                : <IconSpeaker />}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleCopy(msg.id, msg.content)}
+                          aria-label={copiedId === msg.id ? s.copied : s.copy}
+                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-white/10 hover:text-[var(--color-text)]"
+                        >
+                          <IconClipboard />
+                          {copiedId === msg.id ? s.copied : ''}
+                        </button>
+                        {msg.id === lastAssistantMsg?.id && !isStreaming && (
+                          <button
+                            onClick={handleRegenerate}
+                            aria-label={s.regenerate}
+                            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-white/10 hover:text-[var(--color-text)]"
+                          >
+                            <IconArrowPath />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           {/* Streaming draft */}
           {draft && (
-            <div className="flex items-end gap-2.5">
-              <div className="mb-1">
+            <div className="mt-1.5 flex items-end gap-2">
+              <div className="w-8 shrink-0">
                 <CharacterAvatar
                   name={characterName}
                   photoUrl={characterPhotoUrl}
                   size="sm"
                 />
               </div>
-              <div className="max-w-[78%] rounded-2xl rounded-bl-sm bg-[var(--color-surface-2)] px-4 py-3 text-sm leading-relaxed text-[var(--color-text)]">
+              <div className="max-w-[80%] rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-2.5 text-[15px] leading-snug text-[var(--color-text)] shadow-sm backdrop-blur-sm sm:max-w-[70%]">
                 <span className="whitespace-pre-wrap">{draft}</span>
               </div>
             </div>
@@ -916,15 +963,15 @@ export function ChatInterface({
 
           {/* Typing indicator */}
           {showTyping && (
-            <div className="flex items-end gap-2.5">
-              <div className="mb-1">
+            <div className="mt-1.5 flex items-end gap-2">
+              <div className="w-8 shrink-0">
                 <CharacterAvatar
                   name={characterName}
                   photoUrl={characterPhotoUrl}
                   size="sm"
                 />
               </div>
-              <div className="rounded-2xl rounded-bl-sm bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text-muted)]">
+              <div className="rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-3 text-[var(--color-text-muted)] shadow-sm backdrop-blur-sm">
                 <TypingDots />
                 <span className="sr-only">
                   {characterName} {s.typing}
@@ -939,13 +986,13 @@ export function ChatInterface({
 
       {/* Error banner */}
       {error && (
-        <div className="mx-auto w-full max-w-3xl px-4 pb-2">
+        <div className="relative z-10 mx-auto w-full max-w-3xl px-4 pb-2">
           <div
             role="alert"
             className={
               showUpgradeCta
-                ? 'flex items-center justify-between gap-3 rounded-xl border border-[var(--color-accent-strong)]/30 bg-[var(--color-accent-soft)] px-4 py-2.5 text-sm text-[var(--color-text)]'
-                : 'rounded-xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2.5 text-sm text-[var(--color-danger)]'
+                ? 'flex items-center justify-between gap-3 rounded-2xl border border-[var(--color-accent-strong)]/30 bg-[var(--color-accent-soft)] px-4 py-2.5 text-sm text-[var(--color-text)]'
+                : 'rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/10 px-4 py-2.5 text-sm text-[var(--color-danger)]'
             }
           >
             <span>{error}</span>
@@ -961,12 +1008,31 @@ export function ChatInterface({
         </div>
       )}
 
-      {/* Input bar */}
+      {/* Quick action chips above the composer when the user hasn't spoken */}
+      {quickChips.length > 0 && (
+        <div className="relative z-10 mx-auto w-full max-w-3xl px-4 pb-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {quickChips.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                onClick={() => sendMessage(chip.text)}
+                disabled={isStreaming}
+                className="rounded-full border border-white/10 bg-[var(--color-surface-2)]/70 px-3 py-1.5 text-xs font-medium text-[var(--color-text)] backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/40 hover:bg-[var(--color-surface)] disabled:opacity-50"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Composer — pill-shaped sticky input */}
       <form
         onSubmit={handleSubmit}
-        className="border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-4"
+        className="relative z-10 px-3 pb-4 pt-2 sm:px-4"
       >
-        <div className="mx-auto flex max-w-3xl items-end gap-3">
+        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-full border border-white/10 bg-[var(--color-surface)]/95 p-1.5 shadow-lg shadow-black/20 backdrop-blur-md focus-within:border-[var(--color-accent-strong)]/40 focus-within:ring-2 focus-within:ring-[var(--color-accent-strong)]/20">
           <textarea
             ref={textareaRef}
             value={input}
@@ -975,7 +1041,7 @@ export function ChatInterface({
             disabled={isStreaming}
             rows={1}
             placeholder={isStreaming ? '' : s.inputPlaceholder}
-            className="flex-1 resize-none rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3 text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)]/50 outline-none transition-colors focus:border-[var(--color-accent-strong)] focus:ring-1 focus:ring-[var(--color-accent-strong)] disabled:opacity-50"
+            className="flex-1 resize-none bg-transparent px-4 py-2.5 text-[15px] text-[var(--color-text)] placeholder-[var(--color-text-muted)]/60 outline-none disabled:opacity-50"
             style={{ maxHeight: '160px', overflowY: 'auto' }}
             onInput={(e) => {
               const el = e.currentTarget
@@ -988,7 +1054,7 @@ export function ChatInterface({
             type="submit"
             disabled={isStreaming || !input.trim()}
             aria-label={s.send}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--color-accent-strong)] text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent-strong)] text-[var(--color-bg)] transition-all hover:scale-105 hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)] disabled:scale-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <IconArrowUp />
           </button>

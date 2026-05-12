@@ -209,6 +209,7 @@
     "sections": {
       "gender": "¿Cuál es el género de tu personaje?",
       "artStyle": "Elige un estilo de arte",
+      "realisticModel": "Elige un modelo realista",
       "approach": "Elige tu enfoque",
       "age": "Edad",
       "ethnicity": "Origen étnico",
@@ -253,6 +254,11 @@
       "artStyle": {
         "realistic": "Realista",
         "anime": "Anime"
+      },
+      "realisticModel": {
+        "realvis": "RealVisXL — fotorrealismo limpio",
+        "ponyRealism": "Pony Realism — piel pulida",
+        "cyberRealistic": "CyberRealistic — atmosférico, NSFW"
       },
       "ethnicity": {
         "european": "Blanca",

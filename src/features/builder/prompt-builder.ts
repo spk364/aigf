@@ -460,7 +460,11 @@ const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: str
 // baseline; CyberRealistic Pony is the opt-in NSFW-strong photoreal
 // alternative the user can switch to from the picker.
 const DEFAULT_ANIME_ID = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
-const DEFAULT_REALISTIC_ID = 'fal-ai/flux/schnell'
+// RealVisXL by default for realistic — produces photoreal portraits with
+// good age-accuracy. FLUX Schnell is faster but trends younger/cartoonish
+// at small step counts and ignores negative_prompt (we rely on adversarial
+// negatives for the body-size axes).
+const DEFAULT_REALISTIC_ID = 'fal-ai/realistic-vision'
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
   .filter((m) =>

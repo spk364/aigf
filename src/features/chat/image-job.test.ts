@@ -40,25 +40,33 @@ import type { BasePayload } from 'payload'
 
 type Row = Record<string, unknown> & { id: string }
 
-function makePayload(rows: { messages?: Row[]; conversations?: Row[]; 'media-assets'?: Row[] }) {
-  const store: Record<string, Row[]> = {
+// Concrete keys so noUncheckedIndexedAccess doesn't widen __store.messages
+// (etc.) to `Row[] | undefined` and force `!` assertions everywhere.
+type Store = {
+  messages: Row[]
+  conversations: Row[]
+  'media-assets': Row[]
+}
+
+function makePayload(rows: Partial<Store>) {
+  const store: Store = {
     messages: rows.messages ?? [],
     conversations: rows.conversations ?? [],
     'media-assets': rows['media-assets'] ?? [],
   }
   return {
     findByID: vi.fn(async (args: { collection: string; id: string }) => {
-      const row = store[args.collection]?.find((r) => r.id === args.id)
+      const row = store[args.collection as keyof Store]?.find((r) => r.id === args.id)
       return row ?? null
     }),
     update: vi.fn(async (args: { collection: string; id: string; data: Record<string, unknown> }) => {
-      const row = store[args.collection]?.find((r) => r.id === args.id)
+      const row = store[args.collection as keyof Store]?.find((r) => r.id === args.id)
       if (!row) throw new Error(`row missing in ${args.collection}/${args.id}`)
       Object.assign(row, args.data)
       return row
     }),
     __store: store,
-  } as unknown as BasePayload & { __store: Record<string, Row[]> }
+  } as unknown as BasePayload & { __store: Store }
 }
 
 const baseConvo: Row = {
