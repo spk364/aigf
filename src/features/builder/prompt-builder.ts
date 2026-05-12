@@ -48,49 +48,79 @@ export const NSFW_RESTRAINT_NEGATIVE =
   '(bra:1.2), (nude:1.4), (topless:1.3), (bottomless:1.3), (naked:1.4), ' +
   '(nipples:1.3), (exposed breasts:1.3)'
 
+// Per-size positives carry both an SDXL-weighted token cluster AND a plain
+// natural-language descriptor. SDXL checkpoints honour the (token:weight)
+// syntax and react to the cup-size descriptors; FLUX ignores parentheses
+// entirely and only listens to natural-language sentences. Stacking both
+// lets a single string drive both engines without picking the wrong size.
+//
+// Weights were bumped from 1.5 → 1.7/1.8 because user-reported "huge"
+// rendered close to "average" — the breast tokens were getting averaged
+// out by the body-type, hair, and outfit clauses that follow them.
 const BREAST_PROMPT: Record<string, { positive: string; negative: string }> = {
   flat: {
-    positive: '(flat chest:1.4), (very small breasts:1.3)',
-    negative: '(huge breasts:1.4), (large breasts:1.3), busty',
+    positive:
+      '(flat chest:1.6), (very small breasts:1.5), (tiny A-cup:1.4), ' +
+      'completely flat chest, no cleavage, AAA cup',
+    negative: '(huge breasts:1.6), (large breasts:1.5), (cleavage:1.3), busty, big chest',
   },
   small: {
-    positive: '(small breasts:1.3), (modest chest:1.2)',
-    negative: '(huge breasts:1.4), (large breasts:1.3), busty',
+    positive:
+      '(small breasts:1.5), (modest A-cup chest:1.4), petite bust, subtle bust line',
+    negative: '(huge breasts:1.6), (large breasts:1.5), (cleavage:1.2), busty',
   },
   average: {
-    positive: '(medium breasts:1.2), balanced chest',
-    negative: '(huge breasts:1.3), (very small breasts:1.2)',
+    positive: '(medium breasts:1.3), (B-cup chest:1.2), balanced chest, natural bust',
+    negative: '(huge breasts:1.4), (very small breasts:1.3), (flat chest:1.3)',
   },
   big: {
-    positive: '(large breasts:1.4), full chest, busty',
-    negative: '(small breasts:1.3), (flat chest:1.4)',
+    positive:
+      '(large breasts:1.6), (D-cup chest:1.5), (deep cleavage:1.4), full busty chest, ' +
+      'large heavy breasts, full bust dominating the silhouette',
+    negative: '(small breasts:1.5), (flat chest:1.6), (A-cup:1.3)',
   },
   huge: {
-    positive: '(huge breasts:1.5), (very large breasts:1.4), busty figure',
-    negative: '(small breasts:1.4), (flat chest:1.5), (medium breasts:1.2)',
+    positive:
+      '(huge breasts:1.8), (massive G-cup chest:1.7), (gigantic breasts:1.7), ' +
+      '(extreme cleavage:1.5), enormous heavy bust, oversized chest, ' +
+      'breasts dominate the entire frame, the bust is the focal point of the image',
+    negative:
+      '(small breasts:1.6), (flat chest:1.7), (medium breasts:1.4), ' +
+      '(B-cup:1.3), (modest chest:1.3)',
   },
 }
 
 const BUTT_PROMPT: Record<string, { positive: string; negative: string }> = {
   slim: {
-    positive: '(slim hips:1.2), (small butt:1.2), narrow waist',
-    negative: '(big butt:1.4), (wide hips:1.3), (thick thighs:1.3)',
+    positive:
+      '(slim hips:1.4), (small flat butt:1.4), (narrow waist:1.3), ' +
+      'small rear, minimal hip width',
+    negative: '(big butt:1.5), (wide hips:1.4), (thick thighs:1.4), bubble butt',
   },
   small: {
-    positive: '(small butt:1.2), narrow hips',
-    negative: '(big butt:1.4), (wide hips:1.3)',
+    positive:
+      '(small butt:1.4), (narrow hips:1.3), petite rear, slim waist',
+    negative: '(big butt:1.5), (wide hips:1.4), bubble butt',
   },
   athletic: {
-    positive: '(athletic firm rear:1.3), toned glutes',
-    negative: '(huge butt:1.3), (flat butt:1.2)',
+    positive:
+      '(athletic firm rear:1.4), (toned glutes:1.3), sculpted athletic butt, fit muscular hips',
+    negative: '(huge butt:1.4), (flat butt:1.3), saggy rear',
   },
   big: {
-    positive: '(large butt:1.4), (round hips:1.3), curvy hips',
-    negative: '(small butt:1.3), (narrow hips:1.3)',
+    positive:
+      '(large butt:1.6), (round bubble butt:1.5), (wide curvy hips:1.4), ' +
+      'thick thighs, voluptuous rear, full round behind',
+    negative: '(small butt:1.5), (narrow hips:1.4), flat rear',
   },
   huge: {
-    positive: '(huge butt:1.5), (big bubble butt:1.4), wide round hips, thick thighs',
-    negative: '(small butt:1.4), (narrow hips:1.4), (slim figure:1.2)',
+    positive:
+      '(huge butt:1.8), (gigantic bubble butt:1.7), (extra wide hips:1.6), ' +
+      '(very thick thighs:1.5), oversized rear, enormous round behind, ' +
+      'the butt is the focal point, exaggerated curvy hourglass figure',
+    negative:
+      '(small butt:1.6), (narrow hips:1.5), (slim figure:1.4), ' +
+      '(athletic build:1.3), flat rear',
   },
 }
 
@@ -179,6 +209,34 @@ const OCCUPATION_OUTFIT: Record<string, string> = {
   streamer: 'fitted gaming hoodie, short shorts, exposed thighs, headphones around neck',
   actress: 'glamorous low-cut evening dress, exposed back, high slit skirt, red carpet styling',
   model: 'high-fashion dress, exposed shoulders, plunging neckline, runway styling',
+}
+
+// Background / scene tokens keyed by occupation. The previous prompt only
+// added an occupation outfit, so a "nurse" rendered in a sexy nurse dress
+// against a generic studio backdrop — visually disconnected from her
+// occupation. Adding a setting fragment makes the rendered scene match the
+// persona ("nurse in a hospital corridor") instead of feeling like a
+// fashion shoot. Kept short and weighted modestly so they don't fight the
+// subject anchors above.
+const OCCUPATION_SCENE: Record<string, string> = {
+  massage_therapist: '(spa room background:1.2), candles, soft warm lighting, towels, calm interior',
+  fitness_coach: '(modern gym background:1.2), dumbbells, yoga mats, mirrored wall, gym lighting',
+  secretary: '(modern office background:1.2), desk, monitor, blinds, corporate interior',
+  flight_attendant: '(airplane cabin interior background:1.2), aisle seats, overhead bins, soft cabin lighting',
+  librarian: '(library background:1.2), tall bookshelves, warm reading lamps, wooden interior',
+  doctor: '(clinic exam room background:1.2), medical equipment, examination table, clinical lighting',
+  nurse: '(hospital corridor background:1.2), medical signage, clean tiled floor, fluorescent lighting',
+  police_officer:
+    '(police station background:1.2), interrogation room or precinct interior, neutral lighting, ' +
+    'NOT military, NOT armored vehicle',
+  teacher: '(classroom background:1.2), chalkboard, desks, bright classroom lighting',
+  student: '(university campus background:1.2), sunlit corridor or library, casual student setting',
+  artist: '(art studio background:1.2), easels, canvases, paint-splattered walls, natural skylight',
+  lawyer: '(law office background:1.2), bookshelves with leather-bound legal books, mahogany desk',
+  streamer:
+    '(streaming setup bedroom background:1.2), RGB LED lights, gaming PC, neon glow, dark cozy room',
+  actress: '(red carpet background:1.2), spotlights, paparazzi flash, glamorous event setting',
+  model: '(fashion runway background:1.2), runway lights, photographers in background, high-fashion setting',
 }
 
 // Mood / expression tokens keyed by archetype value. Subtle — they nudge
@@ -323,6 +381,13 @@ export function buildPreviewPrompt(
     parts.push(DEFAULT_MALE_OUTFIT)
   }
 
+  // Scene / background. Same key as the outfit map so a nurse appears in a
+  // hospital corridor, not a generic studio backdrop. Falls through silently
+  // when no occupation is set — the model picks its own background prior,
+  // which on the soft-bokeh anchor below is a clean neutral backdrop.
+  const occupationScene = OCCUPATION_SCENE[occupation]
+  if (occupationScene) parts.push(occupationScene)
+
   parts.push(chooseFraming(appearance))
   if (isAnime) {
     parts.push(ANIME_QUALITY_TAIL)
@@ -437,6 +502,10 @@ export type ModelOption = {
 //   - John6666/pony-realism-v22-main-sdxl — fal 422 "Invalid URL or
 //     repository key"; the slug doesn't resolve on fal-ai/lora.
 const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: string }> = {
+  'fal-ai/realistic-vision': {
+    labelKey: 'builder.models.realisticVision.label',
+    descriptionKey: 'builder.models.realisticVision.description',
+  },
   'fal-ai/flux/schnell': {
     labelKey: 'builder.models.fluxSchnell.label',
     descriptionKey: 'builder.models.fluxSchnell.description',
@@ -455,15 +524,20 @@ const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: str
   },
 }
 
-// Anime defaults to WAI Illustrious now that submit+poll absorbs the
-// 2-3 min cold start. Realistic stays on FLUX Schnell as the warm/cheap
-// baseline; CyberRealistic Pony is the opt-in NSFW-strong photoreal
-// alternative the user can switch to from the picker.
 const DEFAULT_ANIME_ID = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
-// RealVisXL by default for realistic — produces photoreal portraits with
+// RealVisXL by default for realistic — same fal endpoint admin uses for
+// realistic character previews, and produces photoreal portraits with
 // good age-accuracy. FLUX Schnell is faster but trends younger/cartoonish
-// at small step counts and ignores negative_prompt (we rely on adversarial
-// negatives for the body-size axes).
+// at small step counts, ignores negative_prompt (we rely on adversarial
+// negatives for the body-size axes), and made realistic + anime previews
+// look nearly identical in user testing. CyberRealistic Pony stays as
+// the opt-in NSFW-strong photoreal alternative.
+//
+// RealVisXL has fal's NSFW classifier on it (catalogue marks it
+// nsfwFriendly:false), but with the product's clothed-sexy default
+// outfit + occupation outfits the failure rate is acceptable;
+// safety-filtered frames already short-circuit via
+// detectSafetyFilteredFrame.
 const DEFAULT_REALISTIC_ID = 'fal-ai/realistic-vision'
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
