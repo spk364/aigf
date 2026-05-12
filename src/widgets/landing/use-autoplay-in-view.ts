@@ -1,57 +1,38 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
+import type { MutableRefObject } from 'react'
 
-// Auto-plays a <video> when it scrolls into the viewport and pauses it
-// when it scrolls out — the polite version of slapping `autoplay` on
-// every card. Landing renders 20+ character cards; naive autoplay would
-// have the browser download and decode every clip simultaneously, which
-// is hostile to mobile data plans and lower-end devices.
+// Returns a ref to attach to a <video>; pauses the clip when it scrolls
+// out of view and resumes when it comes back. The actual first-time
+// playback is triggered by the `autoPlay` attribute on the <video> —
+// browsers honour muted autoplay reliably and start playback the moment
+// they have enough data, with no programmatic gesture needed.
 //
-// Returned `hasFirstFrame` flips to true on the first `playing` event,
-// letting the parent fade the still photo out only after we have an
-// actual video frame to swap in (avoids a black flash while the clip
-// buffers).
-export function useAutoplayInView(): {
-  ref: React.MutableRefObject<HTMLVideoElement | null>
-  hasFirstFrame: boolean
-} {
+// The observer is just a perf trim so 20+ clips on /explore don't keep
+// decoding while offscreen. rootMargin pre-warms one card-height beyond
+// the viewport so a fast scroll doesn't catch a paused clip.
+export function useAutoplayInView(): MutableRefObject<HTMLVideoElement | null> {
   const ref = useRef<HTMLVideoElement | null>(null)
-  const [hasFirstFrame, setHasFirstFrame] = useState(false)
 
   useEffect(() => {
     const v = ref.current
     if (!v) return
-
-    const onPlaying = () => setHasFirstFrame(true)
-    v.addEventListener('playing', onPlaying)
-
-    // rootMargin pre-warms one card-height beyond the viewport so the
-    // user rarely lands on a still poster while scrolling. threshold
-    // 0.2 is enough that a partially-scrolled card still triggers.
     const observer = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
           if (e.isIntersecting) {
-            void v.play().catch(() => {
-              // Browsers reject muted-autoplay only in narrow cases
-              // (battery saver, prefers-reduced-motion, low-power mode).
-              // Swallow — the still photo stays as the fallback frame.
-            })
+            void v.play().catch(() => {})
           } else {
             v.pause()
           }
         }
       },
-      { threshold: 0.2, rootMargin: '120px' },
+      { threshold: 0, rootMargin: '120px' },
     )
     observer.observe(v)
-
-    return () => {
-      observer.disconnect()
-      v.removeEventListener('playing', onPlaying)
-    }
+    return () => observer.disconnect()
   }, [])
 
-  return { ref, hasFirstFrame }
+  return ref
 }

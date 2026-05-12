@@ -26,7 +26,7 @@ type Props = {
 
 export function PersonaCard({ character, href }: Props) {
   const { name, age, city, archetype, tagline, tags, photoUrl, videoUrl, greetingAudioUrl, hue } = character
-  const { ref: videoRef, hasFirstFrame } = useAutoplayInView()
+  const videoRef = useAutoplayInView()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const tileStyle: CSSProperties = {
@@ -68,30 +68,26 @@ export function PersonaCard({ character, href }: Props) {
       className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_50px_-12px_rgba(192,116,255,0.35)]"
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden" style={tileStyle}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={photoUrl}
-          alt={name}
-          loading="lazy"
-          className={
-            'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ' +
-            (videoUrl && hasFirstFrame ? 'opacity-0' : 'opacity-100')
-          }
-        />
-        {videoUrl && (
+        {videoUrl ? (
           <video
             ref={videoRef}
             src={videoUrl}
+            poster={photoUrl}
+            autoPlay
             muted
             loop
             playsInline
             preload="metadata"
-            poster={photoUrl}
-            aria-hidden
-            className={
-              'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ' +
-              (hasFirstFrame ? 'opacity-100' : 'opacity-0')
-            }
+            aria-label={name}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={photoUrl}
+            alt={name}
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover"
           />
         )}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/0 to-black/0" />

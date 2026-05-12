@@ -158,37 +158,33 @@ function CharacterTileCard({
   locale: string
 }) {
   const c = character
-  const { ref: videoRef, hasFirstFrame } = useAutoplayInView()
+  const videoRef = useAutoplayInView()
 
   return (
     <Link
       href={`/${locale}/pick/${c.slug}`}
       className="group relative block aspect-[3/4] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_40px_-12px_rgba(192,116,255,0.4)]"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={c.photoUrl}
-        alt={c.name}
-        loading="lazy"
-        className={
-          'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ' +
-          (c.videoUrl && hasFirstFrame ? 'opacity-0' : 'opacity-100')
-        }
-      />
-      {c.videoUrl && (
+      {c.videoUrl ? (
         <video
           ref={videoRef}
           src={c.videoUrl}
+          poster={c.photoUrl}
+          autoPlay
           muted
           loop
           playsInline
           preload="metadata"
-          poster={c.photoUrl}
-          aria-hidden
-          className={
-            'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ' +
-            (hasFirstFrame ? 'opacity-100' : 'opacity-0')
-          }
+          aria-label={c.name}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={c.photoUrl}
+          alt={c.name}
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
         />
       )}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
