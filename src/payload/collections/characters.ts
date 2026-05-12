@@ -56,6 +56,15 @@ export const Characters: CollectionConfig = {
       localized: true,
     },
     {
+      name: 'greetingMessage',
+      type: 'textarea',
+      localized: true,
+      admin: {
+        description:
+          'First message shown when a new conversation starts. Pre-generated once per character so every user hears the same opener. Empty → skip.',
+      },
+    },
+    {
       name: 'systemPrompt',
       type: 'textarea',
       localized: true,

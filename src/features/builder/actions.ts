@@ -935,6 +935,39 @@ export async function finalizeBuilderAction(
     overrideAccess: true,
   })
 
+  // Pre-generate the greeting message in the user's locale so the new
+  // conversation opens with the character speaking first. Failure is
+  // non-fatal — we still create the conversation; the chat page can
+  // lazy-fill greetingMessage on next visit.
+  let greetingText: string | null = null
+  try {
+    const { generateGreetingMessage } = await import('@/features/chat/generate-greeting')
+    const result = await generateGreetingMessage({
+      character: {
+        name,
+        systemPrompt,
+        shortBio,
+        archetype: archetypeValue,
+        backstory: {
+          occupation: occupationLabel,
+          startingRelationship: relationshipLabel,
+        },
+      },
+      locale: language as 'en' | 'ru' | 'es',
+    })
+    greetingText = result.text
+    await payload.update({
+      collection: 'characters',
+      id: character.id,
+      locale: language as 'en' | 'ru' | 'es',
+      data: { greetingMessage: greetingText },
+      overrideAccess: true,
+    })
+  } catch (err) {
+    // Surface the failure in logs but don't break character creation.
+    console.warn('builder.finalize: greeting generation failed', err)
+  }
+
   const conversation = await payload.create({
     collection: 'conversations',
     data: {
@@ -971,6 +1004,33 @@ export async function finalizeBuilderAction(
     },
     overrideAccess: true,
   })
+
+  // Seed the conversation with the pre-generated greeting so the user lands
+  // on a chat with the character already having spoken. Skipped silently if
+  // generation failed above — quota path stays predictable.
+  if (greetingText) {
+    try {
+      await payload.create({
+        collection: 'messages',
+        data: {
+          conversationId: conversation.id,
+          role: 'assistant',
+          type: 'text',
+          status: 'completed',
+          content: greetingText,
+        },
+        overrideAccess: true,
+      })
+      await payload.update({
+        collection: 'conversations',
+        id: conversation.id,
+        data: { messageCount: 1, lastMessagePreview: greetingText.slice(0, 120) },
+        overrideAccess: true,
+      })
+    } catch (err) {
+      console.warn('builder.finalize: seeding greeting message failed', err)
+    }
+  }
 
   track({
     userId: String(user.id),
