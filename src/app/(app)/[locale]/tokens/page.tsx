@@ -5,6 +5,7 @@ import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
 import { getBalance } from '@/features/tokens/ledger'
 import { purchaseTokenPackAction } from '@/features/billing/token-packs/actions'
 import { isTokenPackBillingMocked } from '@/features/billing/token-packs/checkout'
+import { SiteHeader } from '@/widgets/site-header'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -44,8 +45,10 @@ export default async function TokensPage({ params }: Props) {
   const isMocked = isTokenPackBillingMocked()
 
   return (
-    <main className="min-h-screen bg-[var(--color-bg)] px-4 py-16">
-      <div className="mx-auto max-w-5xl">
+    <>
+      <SiteHeader locale={locale} />
+      <main className="min-h-screen bg-[var(--color-bg)] px-4 pt-24 pb-16">
+        <div className="mx-auto max-w-5xl">
         <div className="mb-10 text-center">
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
             {t('eyebrow')}
@@ -122,7 +125,8 @@ export default async function TokensPage({ params }: Props) {
             )
           })}
         </div>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   )
 }

@@ -7,6 +7,7 @@ import { buildCheckoutUrl } from '@/features/billing/ccbill/checkout'
 import { PLANS } from '@/features/billing/plans'
 import type { PlanKey } from '@/features/billing/plans'
 import { track } from '@/shared/analytics/posthog'
+import { SiteHeader } from '@/widgets/site-header'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -48,8 +49,10 @@ export default async function UpgradePage({ params }: Props) {
   const planOrder: PlanKey[] = ['premium_monthly', 'premium_yearly', 'premium_plus_monthly']
 
   return (
-    <main className="min-h-screen bg-[var(--color-bg)] px-4 py-16">
-      <div className="mx-auto max-w-5xl">
+    <>
+      <SiteHeader locale={locale} />
+      <main className="min-h-screen bg-[var(--color-bg)] px-4 pt-24 pb-16">
+        <div className="mx-auto max-w-5xl">
         <div className="mb-12 text-center">
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
             Plans
@@ -238,7 +241,8 @@ export default async function UpgradePage({ params }: Props) {
             )
           })}
         </div>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   )
 }

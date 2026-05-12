@@ -1,20 +1,22 @@
 import { getTranslations } from 'next-intl/server'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
-import { getPayload } from 'payload'
-import config from '@payload-config'
-import { isPremiumPlan } from '@/features/billing/plans'
-import { getFeaturedCharacters } from '@/widgets/landing/featured-data'
-import { DashboardShell } from '@/widgets/dashboard/DashboardShell'
-import { GenreTabs } from '@/widgets/dashboard/GenreTabs'
-import { HeroBanner } from '@/widgets/dashboard/HeroBanner'
-import { StoriesRow } from '@/widgets/dashboard/StoriesRow'
-import { LiveAction } from '@/widgets/dashboard/LiveAction'
-import { CharactersGrid } from '@/widgets/dashboard/CharactersGrid'
+import Link from 'next/link'
+import { SiteHeader } from '@/widgets/site-header'
+import { ContinueCard } from '@/widgets/dashboard/ContinueCard'
+import { MyCompanions } from '@/widgets/dashboard/MyCompanions'
+import { RecentConversations } from '@/widgets/dashboard/RecentConversations'
+import { DraftsStrip } from '@/widgets/dashboard/DraftsStrip'
+import { getDashboardData } from '@/features/dashboard/queries'
 
 type Props = {
   params: Promise<{ locale: string }>
 }
 
+// User-centric dashboard: shows the user's own ongoing chat, drafts, custom
+// companions, and recent conversations. The candy.ai-style sidebar shell
+// (DashboardShell + GenreTabs + HeroBanner + CharactersGrid) lives on the
+// landing/explore surfaces — it duplicates discover content the user has
+// already seen on /. Dashboard is the "your stuff" page.
 export default async function DashboardPage({ params }: Props) {
   const { locale } = await params
   const user = await requireCompleteProfile()
@@ -24,38 +26,22 @@ export default async function DashboardPage({ params }: Props) {
     (user as unknown as { displayName?: string }).displayName || user.email
   const emailVerified = !!(user as unknown as { _verified?: boolean })._verified
 
-  const payload = await getPayload({ config })
-  const subResult = await payload.find({
-    collection: 'subscriptions',
-    where: {
-      and: [{ userId: { equals: user.id } }, { status: { equals: 'active' } }],
-    },
-    limit: 1,
-    overrideAccess: true,
+  const dashboard = await getDashboardData({
+    userId: user.id,
+    locale: locale as 'en' | 'ru' | 'es',
   })
-  const sub = subResult.docs[0]
-  const isPremium = !!sub && isPremiumPlan(sub.plan as string | null)
 
-  const featured = await getFeaturedCharacters()
-  const stories = featured.slice(0, 12)
-  const live = featured.slice(0, 8)
-  const heroCover = featured[0]?.photoUrl ?? null
+  const hasCompanions = dashboard.companions.length > 0
+  const hasAnything =
+    !!dashboard.hero ||
+    dashboard.drafts.length > 0 ||
+    hasCompanions ||
+    dashboard.recentConversations.length > 0
 
   return (
-    <DashboardShell
-      locale={locale}
-      displayName={displayName}
-      email={user.email}
-      isPremium={isPremium}
-      active="home"
-    >
-      <div className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/80 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-center px-4 sm:px-6 lg:px-10">
-          <GenreTabs locale={locale} active="girls" />
-        </div>
-      </div>
-
-      <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+    <>
+      <SiteHeader locale={locale} />
+      <main className="min-h-screen bg-[var(--color-bg)] px-4 pt-24 pb-12 text-[var(--color-text)] sm:px-6 lg:px-10">
         <div className="mx-auto flex max-w-6xl flex-col gap-8">
           {!emailVerified && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-300">
@@ -63,15 +49,61 @@ export default async function DashboardPage({ params }: Props) {
             </div>
           )}
 
-          <HeroBanner locale={locale} coverImageUrl={heroCover} />
+          <header>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
+              Hello
+            </p>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              {displayName}
+            </h1>
+          </header>
 
-          <StoriesRow locale={locale} characters={stories} />
+          {dashboard.drafts.length > 0 && (
+            <DraftsStrip locale={locale} drafts={dashboard.drafts} />
+          )}
 
-          <LiveAction locale={locale} characters={live} />
+          {dashboard.hero && <ContinueCard locale={locale} hero={dashboard.hero} />}
 
-          <CharactersGrid locale={locale} characters={featured} />
+          {hasCompanions ? (
+            <MyCompanions locale={locale} companions={dashboard.companions} />
+          ) : (
+            <EmptyCompanions locale={locale} />
+          )}
+
+          <RecentConversations locale={locale} rows={dashboard.recentConversations} />
+
+          {!hasAnything && (
+            <div className="text-center text-sm text-[var(--color-text-muted)]">
+              <Link
+                href={`/${locale}/explore`}
+                className="underline hover:text-[var(--color-text)]"
+              >
+                Browse the catalog
+              </Link>{' '}
+              to start your first chat.
+            </div>
+          )}
         </div>
-      </div>
-    </DashboardShell>
+      </main>
+    </>
+  )
+}
+
+function EmptyCompanions({ locale }: { locale: string }) {
+  return (
+    <section className="rounded-3xl border border-dashed border-[var(--color-border)] bg-[var(--color-surface)]/50 p-10 text-center">
+      <h2 className="text-2xl font-bold text-[var(--color-text)]">
+        Design your first companion
+      </h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-[var(--color-text-muted)]">
+        Pick a look, give her a name, and start chatting in under a minute.
+      </p>
+      <Link
+        href={`/${locale}/builder`}
+        className="mt-6 inline-flex items-center justify-center rounded-xl bg-[var(--color-accent-strong)] px-6 py-3 font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
+      >
+        Create my companion
+      </Link>
+    </section>
   )
 }

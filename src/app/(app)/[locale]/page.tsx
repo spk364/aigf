@@ -1,14 +1,17 @@
-import { getPayload } from 'payload'
-import config from '@payload-config'
-import { isPremiumPlan } from '@/features/billing/plans'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getTranslations } from 'next-intl/server'
+import Link from 'next/link'
+import { AvatarGrid, type AvatarPhoto } from '@/widgets/avatar-grid'
+import { SiteHeader } from '@/widgets/site-header'
+import { SiteFooter } from '@/widgets/site-footer'
+import {
+  FeaturedGrid,
+  HowItWorks,
+  PricingTeaser,
+  TrustStrip,
+  FaqSection,
+  FinalCta,
+} from '@/widgets/landing'
 import { getFeaturedCharacters } from '@/widgets/landing/featured-data'
-import { DashboardShell } from '@/widgets/dashboard/DashboardShell'
-import { GenreTabs } from '@/widgets/dashboard/GenreTabs'
-import { HeroBanner } from '@/widgets/dashboard/HeroBanner'
-import { StoriesRow } from '@/widgets/dashboard/StoriesRow'
-import { LiveAction } from '@/widgets/dashboard/LiveAction'
-import { CharactersGrid } from '@/widgets/dashboard/CharactersGrid'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -16,58 +19,81 @@ type Props = {
 
 export default async function HomePage({ params }: Props) {
   const { locale } = await params
-  const user = await getCurrentUser()
-
-  let displayName: string | null = null
-  let email: string | null = null
-  let isPremium = false
-
-  if (user) {
-    displayName = (user as unknown as { displayName?: string }).displayName ?? null
-    email = user.email ?? null
-    const payload = await getPayload({ config })
-    const subResult = await payload.find({
-      collection: 'subscriptions',
-      where: {
-        and: [{ userId: { equals: user.id } }, { status: { equals: 'active' } }],
-      },
-      limit: 1,
-      overrideAccess: true,
-    })
-    const sub = subResult.docs[0]
-    isPremium = !!sub && isPremiumPlan(sub.plan as string | null)
-  }
-
+  const t = await getTranslations('common')
   const featured = await getFeaturedCharacters()
-  const stories = featured.slice(0, 12)
-  const live = featured.slice(0, 8)
-  const heroCover = featured[0]?.photoUrl ?? null
+  const avatarPhotos: AvatarPhoto[] = featured.map((c) => ({
+    id: c.id,
+    name: c.name,
+    photoUrl: c.photoUrl,
+    hue: c.hue,
+  }))
 
   return (
-    <DashboardShell
-      locale={locale}
-      displayName={displayName}
-      email={email}
-      isPremium={isPremium}
-      active="home"
-    >
-      <div className="border-b border-[var(--color-border)] bg-[var(--color-bg)]/80 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-center px-4 sm:px-6 lg:px-10">
-          <GenreTabs locale={locale} active="girls" />
-        </div>
-      </div>
+    <>
+      <SiteHeader locale={locale} />
 
-      <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
-        <div className="mx-auto flex max-w-6xl flex-col gap-8">
-          <HeroBanner locale={locale} coverImageUrl={heroCover} />
+      <main className="flex flex-col bg-[var(--color-bg)] pt-16">
+        <section className="relative flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center overflow-hidden px-4 text-center">
+          <AvatarGrid photos={avatarPhotos} />
 
-          <StoriesRow locale={locale} characters={stories} />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          >
+            <div
+              style={{
+                width: '700px',
+                height: '700px',
+                background:
+                  'radial-gradient(ellipse at center, rgba(192, 116, 255, 0.22) 0%, rgba(11, 10, 16, 0) 70%)',
+                borderRadius: '50%',
+              }}
+            />
+          </div>
 
-          <LiveAction locale={locale} characters={live} />
+          <div className="relative z-10 flex max-w-2xl flex-col items-center gap-6">
+            <p className="text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
+              {t('hello')}
+            </p>
 
-          <CharactersGrid locale={locale} characters={featured} />
-        </div>
-      </div>
-    </DashboardShell>
+            <h1 className="text-5xl font-bold leading-tight tracking-tight text-[var(--color-text)] sm:text-7xl">
+              Design your{' '}
+              <span className="bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-accent-strong)] bg-clip-text text-transparent">
+                AI girlfriend
+              </span>
+            </h1>
+
+            <p className="max-w-md text-lg leading-relaxed text-[var(--color-text-muted)]">
+              Build your perfect companion in 60 seconds — choose her look, personality, and name.
+              No credit card required.
+            </p>
+
+            <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:gap-4">
+              <Link
+                href={`/${locale}/start`}
+                className="inline-flex items-center justify-center rounded-xl bg-[var(--color-accent-strong)] px-8 py-3.5 font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
+              >
+                Create my companion
+              </Link>
+              <Link
+                href={`/${locale}/explore`}
+                className="inline-flex items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/80 px-8 py-3.5 font-medium text-[var(--color-text)] backdrop-blur-sm transition-colors hover:bg-[var(--color-surface-2)]"
+              >
+                Explore companions
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        <TrustStrip />
+        <FeaturedGrid locale={locale} />
+        <HowItWorks />
+        <PricingTeaser locale={locale} />
+        <FaqSection />
+        <FinalCta locale={locale} />
+      </main>
+
+      <SiteFooter locale={locale} />
+    </>
   )
 }
