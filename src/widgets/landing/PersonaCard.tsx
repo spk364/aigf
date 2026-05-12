@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
-import { useAutoplayInView } from './use-autoplay-in-view'
+import { CharacterCardMedia } from './CharacterCardMedia'
 
 export type FeaturedCharacter = {
   id: string
@@ -26,7 +26,6 @@ type Props = {
 
 export function PersonaCard({ character, href }: Props) {
   const { name, age, city, archetype, tagline, tags, photoUrl, videoUrl, greetingAudioUrl, hue } = character
-  const videoRef = useAutoplayInView()
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const tileStyle: CSSProperties = {
@@ -68,28 +67,12 @@ export function PersonaCard({ character, href }: Props) {
       className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_50px_-12px_rgba(192,116,255,0.35)]"
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden" style={tileStyle}>
-        {videoUrl ? (
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            poster={photoUrl}
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
-            aria-label={name}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={photoUrl}
-            alt={name}
-            loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        )}
+        <CharacterCardMedia
+          photoUrl={photoUrl}
+          videoUrl={videoUrl}
+          alt={name}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/0 to-black/0" />
 
         <div className="absolute right-3 top-3 flex items-center gap-2">
