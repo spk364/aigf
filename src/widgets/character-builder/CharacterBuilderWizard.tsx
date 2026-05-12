@@ -7,8 +7,6 @@ import {
   GENDERS,
   DESIGN_APPROACHES,
   ART_STYLES,
-  REALISTIC_MODELS,
-  DEFAULT_REALISTIC_MODEL,
   ETHNICITIES,
   AGE_RANGES,
   BODY_TYPES,
@@ -605,47 +603,10 @@ function IntroScreen({
             option={o}
             label={t(strings, o.labelKey)}
             selected={artStyle === o.value}
-            onClick={() => {
-              const nextAppearance: Record<string, unknown> = { ...appearance, artStyle: o.value }
-              // Seed a sensible realistic-model default the first time the
-              // user picks "realistic"; clear it when they switch back to
-              // anime so the persisted value doesn't drift out of scope.
-              if (o.value === 'realistic') {
-                if (!appearance.realisticModel) {
-                  nextAppearance.realisticModel = DEFAULT_REALISTIC_MODEL
-                }
-              } else {
-                delete nextAppearance.realisticModel
-              }
-              onChange({ ...draftData, appearance: nextAppearance })
-            }}
+            onClick={() => onChange({ ...draftData, appearance: { ...appearance, artStyle: o.value } })}
           />
         ))}
       </div>
-
-      {artStyle === 'realistic' && (
-        <>
-          <SectionHeader title={t(strings, 'builder.sections.realisticModel')} />
-          <div className="flex flex-wrap gap-2 mb-6">
-            {REALISTIC_MODELS.map((o) => (
-              <Chip
-                key={o.value}
-                emoji={o.emoji}
-                label={t(strings, o.labelKey)}
-                selected={
-                  String(appearance.realisticModel ?? DEFAULT_REALISTIC_MODEL) === o.value
-                }
-                onClick={() =>
-                  onChange({
-                    ...draftData,
-                    appearance: { ...appearance, realisticModel: o.value },
-                  })
-                }
-              />
-            ))}
-          </div>
-        </>
-      )}
 
       <SectionHeader title={t(strings, 'builder.sections.approach')} />
       <div className="flex flex-wrap gap-3 justify-center">

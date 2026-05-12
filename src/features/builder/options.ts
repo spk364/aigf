@@ -71,36 +71,6 @@ export const ART_STYLES: BuilderOption[] = [
   },
 ]
 
-// ── Image model (only shown when artStyle === 'realistic') ───────────────
-// Curated set of fal.ai endpoints that work well for photorealistic
-// portraits. Values match `id` in src/shared/ai/image-models.ts so the
-// admin generate-image route and the chat-time generation pipeline both
-// accept the saved value verbatim. Default is RealVisXL — fashion-clean
-// photorealism that builds the cleanest first impression. The two Pony
-// options below trade some studio polish for NSFW-strong rendering.
-export const REALISTIC_MODELS: BuilderOption[] = [
-  {
-    value: 'fal-ai/realistic-vision',
-    labelKey: 'builder.options.realisticModel.realvis',
-    emoji: '✨',
-    gradient: ['#7a6a4f', '#1f1810'],
-  },
-  {
-    value: 'John6666/pony-realism-v22-main-sdxl',
-    labelKey: 'builder.options.realisticModel.ponyRealism',
-    emoji: '🎬',
-    gradient: ['#a25a5a', '#2a1010'],
-  },
-  {
-    value: 'John6666/cyberrealistic-pony-v110-sdxl',
-    labelKey: 'builder.options.realisticModel.cyberRealistic',
-    emoji: '🌃',
-    gradient: ['#6a5a8a', '#1a0e2e'],
-  },
-]
-
-export const DEFAULT_REALISTIC_MODEL = REALISTIC_MODELS[0]!.value
-
 // ── Path choice (presets vs unique description) ──────────────────────────
 
 export const DESIGN_APPROACHES: BuilderOption[] = [
