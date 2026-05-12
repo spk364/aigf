@@ -188,11 +188,14 @@ async function loadCharactersWithVideos(
   })
 }
 
+// Caps both preset and user-created characters. Custom characters appear once
+// they're published; moderationStatus guards against pending/flagged user
+// builds leaking into the public catalog.
 const baseWhere: Where = {
   and: [
     { isPublished: { equals: true } },
     { primaryImageId: { exists: true } },
-    { kind: { equals: 'preset' } },
+    { moderationStatus: { equals: 'approved' } },
     { deletedAt: { exists: false } },
   ],
 }
@@ -220,7 +223,7 @@ export async function getExploreCharacters(
   const conditions: Where[] = [
     { isPublished: { equals: true } },
     { primaryImageId: { exists: true } },
-    { kind: { equals: 'preset' } },
+    { moderationStatus: { equals: 'approved' } },
     { deletedAt: { exists: false } },
   ]
 

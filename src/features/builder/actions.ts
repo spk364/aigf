@@ -886,7 +886,10 @@ export async function finalizeBuilderAction(
       systemPrompt,
       systemPromptVersion: 3,
       contentRating: 'sfw',
-      isPublished: false,
+      // Auto-publish so the character appears in /explore and the landing
+      // catalog immediately. Builder owns moderation in MVP — no manual
+      // review queue yet, so we go straight to approved + published.
+      isPublished: true,
       moderationStatus: 'approved',
       primaryImageId: selectedReferenceMediaAssetId,
     },

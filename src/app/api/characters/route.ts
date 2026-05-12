@@ -110,9 +110,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const plan = await getUserPlan(payload, user.id)
 
+  // Includes both preset and custom characters once they're published and
+  // moderation-approved. Custom characters created via the builder are
+  // auto-approved today; the moderationStatus filter is a safety net for
+  // when manual review gets added.
   const conditions: Where[] = [
-    { kind: { equals: 'preset' } },
     { isPublished: { equals: true } },
+    { moderationStatus: { equals: 'approved' } },
     { deletedAt: { exists: false } },
   ]
 
