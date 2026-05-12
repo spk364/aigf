@@ -449,18 +449,31 @@ function buildUniquePrompt(uniqueDesc: Record<string, unknown>, appearance: Reco
   return parts.join(', ')
 }
 
-// Maps art style → fal endpoint. RealVisXL handles photoreal best; fast-sdxl
-// handles anime style well when the prompt is anime-tagged. FLUX is excluded
-// because it ignores negative_prompt — we rely on adversarial negatives.
-function pickEndpointForStyle(artStyle: string): string {
-  switch (artStyle) {
-    case 'anime':
-      return FAL_ENDPOINT_FAST_SDXL
-    case 'realistic':
-    default:
-      return FAL_ENDPOINT_REALISTIC_VISION
+// Maps appearance choices → fal endpoint. Realistic style respects the
+// per-character model pick from REALISTIC_MODELS (defaults to RealVisXL).
+// Anime style always uses fast-sdxl with anime-tagged prompts. FLUX is
+// excluded everywhere here because it ignores negative_prompt — we rely
+// on adversarial negatives for safety.
+function pickEndpointForAppearance(appearance: Record<string, unknown>): string {
+  const artStyle = String(appearance.artStyle ?? 'realistic')
+  if (artStyle === 'anime') return FAL_ENDPOINT_FAST_SDXL
+  const realisticModel = String(appearance.realisticModel ?? '').trim()
+  // Whitelist by `REALISTIC_MODELS` membership lives in options.ts; we
+  // re-check at request time to keep the surface tight even if the draft
+  // JSON carries something stale.
+  if (realisticModel && ALLOWED_REALISTIC_MODELS.has(realisticModel)) {
+    return realisticModel
   }
+  return FAL_ENDPOINT_REALISTIC_VISION
 }
+
+// Mirrors REALISTIC_MODELS in options.ts. Kept inline to avoid pulling the
+// client-safe options module into a server action with full Payload imports.
+const ALLOWED_REALISTIC_MODELS = new Set<string>([
+  'fal-ai/realistic-vision',
+  'John6666/pony-realism-v22-main-sdxl',
+  'John6666/cyberrealistic-pony-v110-sdxl',
+])
 
 // ── Preview generation ────────────────────────────────────────────────────
 
@@ -495,7 +508,7 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
       ? buildUniquePrompt(uniqueDesc, appearance)
       : buildPreviewPrompt(appearance)
   const negativePrompt = buildPreviewNegativePrompt(appearance)
-  const endpoint = pickEndpointForStyle(String(appearance.artStyle ?? 'realistic'))
+  const endpoint = pickEndpointForAppearance(appearance)
 
   let result: Awaited<ReturnType<typeof generateImage>>
   try {
@@ -882,6 +895,11 @@ export async function finalizeBuilderAction(
         buttSize: String(appearance.buttSize ?? ''),
         hair: appearance.hair ?? null,
         eyes: appearance.eyes ?? null,
+        // Surfaces the user's realistic-model pick so future re-generations
+        // (gallery / admin tweaks) can recover the original intent.
+        ...(typeof appearance.realisticModel === 'string'
+          ? { realisticModel: appearance.realisticModel }
+          : {}),
       },
       systemPrompt,
       systemPromptVersion: 3,
@@ -891,6 +909,10 @@ export async function finalizeBuilderAction(
       // review queue yet, so we go straight to approved + published.
       isPublished: true,
       moderationStatus: 'approved',
+      // Pin the same endpoint used for preview generation so chat-time
+      // and admin gallery generation stay visually consistent with what
+      // the user picked in the builder.
+      imageModel: { primary: pickEndpointForAppearance(appearance) },
       primaryImageId: selectedReferenceMediaAssetId,
     },
     overrideAccess: true,
@@ -933,7 +955,7 @@ export async function finalizeBuilderAction(
           relationshipStage: relationshipValue,
           keyMemories: [],
         },
-        imageModel: null,
+        imageModel: { primary: pickEndpointForAppearance(appearance) },
       },
       snapshotVersion: 1,
       llmConfig: {

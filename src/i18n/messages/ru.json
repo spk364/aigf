@@ -206,6 +206,7 @@
     "sections": {
       "gender": "Какого пола твой персонаж?",
       "artStyle": "Выбери стиль арта",
+      "realisticModel": "Выбери модель реализма",
       "approach": "Выбери подход",
       "age": "Возраст",
       "ethnicity": "Этническая принадлежность",
@@ -250,6 +251,11 @@
       "artStyle": {
         "realistic": "Реалистичный",
         "anime": "Аниме"
+      },
+      "realisticModel": {
+        "realvis": "RealVisXL — чистый фотореализм",
+        "ponyRealism": "Pony Realism — гладкая кожа",
+        "cyberRealistic": "CyberRealistic — атмосферный, NSFW"
       },
       "ethnicity": {
         "european": "Европейка",

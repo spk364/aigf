@@ -13,6 +13,7 @@ import { MyCompanions } from '@/widgets/dashboard/MyCompanions'
 import { RecentConversations } from '@/widgets/dashboard/RecentConversations'
 import { DraftsStrip } from '@/widgets/dashboard/DraftsStrip'
 import { QuotaPill } from '@/widgets/dashboard/QuotaPill'
+import { SiteHeader } from '@/widgets/site-header'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -63,8 +64,10 @@ export default async function DashboardPage({ params }: Props) {
   const hasCompanions = dashboard.companions.length > 0
 
   return (
-    <main className="min-h-screen bg-[var(--color-bg)] px-4 py-10 text-[var(--color-text)]">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8">
+    <>
+      <SiteHeader locale={locale} />
+      <main className="min-h-screen bg-[var(--color-bg)] px-4 pt-24 pb-10 text-[var(--color-text)]">
+        <div className="mx-auto flex max-w-5xl flex-col gap-8">
         {!emailVerified && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-300">
             {t('dashboard.emailNotVerified')}
@@ -111,8 +114,9 @@ export default async function DashboardPage({ params }: Props) {
         )}
 
         <RecentConversations locale={locale} rows={dashboard.recentConversations} />
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   )
 }
 

@@ -9,9 +9,13 @@ export async function SiteHeader({ locale }: Props) {
   const user = await getCurrentUser()
   const isAuthed = !!user
 
+  // Dashboard sits ahead of Explore in the bar for signed-in users — it's
+  // the launchpad we want them to return to. Anon users don't see it and
+  // get pushed to /start (which redirects to /builder).
   const navItems = [
+    ...(isAuthed ? [{ href: `/${locale}/dashboard`, label: 'Dashboard' }] : []),
     { href: `/${locale}/explore`, label: 'Explore' },
-    { href: `/${locale}/start`, label: 'Create' },
+    { href: `/${locale}/builder`, label: 'Create' },
     { href: `/${locale}/pricing`, label: 'Pricing' },
   ]
 

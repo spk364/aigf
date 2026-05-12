@@ -4,6 +4,7 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { getMessages } from 'next-intl/server'
 import { CharacterBuilderWizard } from '@/widgets/character-builder/CharacterBuilderWizard'
+import { SiteHeader } from '@/widgets/site-header'
 
 type Props = {
   params: Promise<{ locale: string; draftId: string }>
@@ -34,19 +35,22 @@ export default async function BuilderDraftPage({ params }: Props) {
   const messages = await getMessages()
 
   return (
-    <main className="min-h-screen bg-[var(--color-bg)]">
-      <CharacterBuilderWizard
-        draftId={String(draft.id)}
-        initialDraft={{
-          id: String(draft.id),
-          currentStep: (draft.currentStep as number) ?? 1,
-          data: (draft.data ?? {}) as Record<string, unknown>,
-          previewGenerations: (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>,
-          language: String(draft.language ?? locale) as 'en' | 'ru' | 'es',
-        }}
-        locale={locale as 'en' | 'ru' | 'es'}
-        strings={messages as Record<string, unknown>}
-      />
-    </main>
+    <>
+      <SiteHeader locale={locale} />
+      <main className="min-h-screen bg-[var(--color-bg)] pt-16">
+        <CharacterBuilderWizard
+          draftId={String(draft.id)}
+          initialDraft={{
+            id: String(draft.id),
+            currentStep: (draft.currentStep as number) ?? 1,
+            data: (draft.data ?? {}) as Record<string, unknown>,
+            previewGenerations: (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>,
+            language: String(draft.language ?? locale) as 'en' | 'ru' | 'es',
+          }}
+          locale={locale as 'en' | 'ru' | 'es'}
+          strings={messages as Record<string, unknown>}
+        />
+      </main>
+    </>
   )
 }
