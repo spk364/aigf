@@ -104,20 +104,34 @@ export default async function TokensPage({ params }: Props) {
                   {formatPrice(priceCents)}
                 </p>
 
-                <form
-                  action={async () => {
-                    'use server'
-                    await purchaseTokenPackAction(sku)
-                  }}
-                  className="mt-auto"
-                >
-                  <button
-                    type="submit"
-                    className="w-full rounded-xl bg-[var(--color-accent-strong)] py-3 text-sm font-bold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+                <div className="mt-auto flex flex-col gap-2">
+                  <form
+                    action={async () => {
+                      'use server'
+                      await purchaseTokenPackAction(sku, 'card')
+                    }}
                   >
-                    {t('buy')}
-                  </button>
-                </form>
+                    <button
+                      type="submit"
+                      className="w-full rounded-xl bg-[var(--color-accent-strong)] py-3 text-sm font-bold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+                    >
+                      {t('payCard')}
+                    </button>
+                  </form>
+                  <form
+                    action={async () => {
+                      'use server'
+                      await purchaseTokenPackAction(sku, 'crypto')
+                    }}
+                  >
+                    <button
+                      type="submit"
+                      className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] py-3 text-sm font-bold text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+                    >
+                      {t('payCrypto')}
+                    </button>
+                  </form>
+                </div>
               </div>
             )
           })}

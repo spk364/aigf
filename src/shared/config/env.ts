@@ -35,6 +35,10 @@ const envSchema = z.object({
   // Payments — NOWPayments
   NOWPAYMENTS_API_KEY: z.string().optional(),
   NOWPAYMENTS_IPN_SECRET: z.string().optional(),
+  // Defaults to 'production' so an unset variable on a real deploy can't
+  // silently route real payments to the sandbox. Opt-in to sandbox explicitly
+  // on preview environments.
+  NOWPAYMENTS_ENV: z.enum(['sandbox', 'production']).optional(),
 
   // Google OAuth
   GOOGLE_CLIENT_ID: z.string().optional(),
