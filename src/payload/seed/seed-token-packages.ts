@@ -59,7 +59,12 @@ const PACKAGES: PackageSeed[] = [
   {
     sku: 'tokens_3000',
     tokenAmount: 3000,
-    priceCents: 9999,
+    // Bumped 9999 → 12999 ($99.99 → $129.99). At the old price a whale who
+    // spent the full pack on TTS (2 tokens each) cleared $75 COGS against
+    // $99.99 revenue — negative after 8% acquiring fees. New price keeps the
+    // pack viable even on a 100% TTS spend pattern. See payments-tokenomics-
+    // plan.md §2.5.
+    priceCents: 12999,
     displayOrder: 40,
     displayName: {
       en: '3000 tokens',
@@ -67,9 +72,9 @@ const PACKAGES: PackageSeed[] = [
       es: '3000 tokens',
     },
     badgeText: {
-      en: 'Save 33%',
-      ru: 'Скидка 33%',
-      es: 'Ahorra 33%',
+      en: 'Save 28%',
+      ru: 'Скидка 28%',
+      es: 'Ahorra 28%',
     },
   },
 ]

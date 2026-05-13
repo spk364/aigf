@@ -29,7 +29,16 @@ const LLM_MODEL = OPENROUTER_MODEL
 // hallucinated biographical facts and broken character consistency. 0.85 keeps
 // personality alive without inventing.
 const LLM_TEMPERATURE = 0.85
-const LLM_MAX_TOKENS = 600
+// Output cap: most observed responses land at 200–350 tokens. 400 leaves room
+// for occasional longer replies without paying for runaway 600-token output
+// completions. See docs/payments-tokenomics-plan.md §2.3 HOLE-8.
+const LLM_MAX_TOKENS = 400
+
+// Soft cap on the recent-history block. At ~4 chars/token DeepSeek-V3 sees
+// ~3.5k input tokens of history before system prompt + memory + summary stack
+// on top. Stops a string of 2000-char user messages from ballooning context
+// to 60k chars (~$0.02/turn vs the budgeted ~$0.002).
+const HISTORY_CHAR_BUDGET = 14_000
 
 // IDs come over the wire as strings (JSON body) or numbers (Postgres int ids).
 // Accept both and coerce to number when possible — the relationship fields in
@@ -528,11 +537,23 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  for (const msg of historyResult.docs) {
-    if (msg.role === 'user' || msg.role === 'assistant') {
-      openrouterMessages.push({ role: msg.role, content: msg.content ?? '' })
-    }
+  // Walk history from newest → oldest, accumulating until the char-budget is
+  // hit; then reverse so the LLM sees chronological order. Drops the oldest
+  // messages on long convos rather than always passing the full 30. Summary +
+  // memories above cover anything older.
+  const historyDocs = historyResult.docs
+  const tailMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  let usedChars = 0
+  for (let i = historyDocs.length - 1; i >= 0; i--) {
+    const msg = historyDocs[i]!
+    if (msg.role !== 'user' && msg.role !== 'assistant') continue
+    const content = (msg.content as string | undefined) ?? ''
+    if (usedChars + content.length > HISTORY_CHAR_BUDGET) break
+    tailMessages.push({ role: msg.role, content })
+    usedChars += content.length
   }
+  tailMessages.reverse()
+  for (const m of tailMessages) openrouterMessages.push(m)
 
   const assistantMsg = await payload.create({
     collection: 'messages',
