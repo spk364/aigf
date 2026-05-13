@@ -96,6 +96,12 @@
         "name": "Premium Plus",
         "description": "Maximos tokens, IA premium y generacion de video.",
         "priceLabel": "{price} / mes"
+      },
+      "premium_plus_yearly": {
+        "name": "Premium Plus Anual",
+        "description": "Todas las funciones de Premium Plus a tarifa anual con descuento.",
+        "priceLabel": "{price} / ano",
+        "badge": "Ahorra 40%"
       }
     },
     "features": {
@@ -109,6 +115,7 @@
       "title": "Elige tu plan",
       "subtitle": "Actualiza para desbloquear mas tokens, mejor IA y funciones exclusivas.",
       "cta": "Comenzar",
+      "mostPopular": "Mas popular",
       "currentPlan": "Plan actual:",
       "manage": "Gestionar suscripcion"
     },
@@ -183,6 +190,7 @@
     "upgradeLink": "Mejorar",
     "draftsHeading": "Tus borradores",
     "upgradeRequired": "Has alcanzado el limite del plan gratuito: 1 personaje.",
+    "draftsLimitReached": "Tienes {max} borradores abiertos. Termina uno o mejora tu plan.",
     "previewsRemaining": "{used} / {max} conjuntos de preview usados",
     "stepCounter": "Paso {current} de {total}",
     "phases": {

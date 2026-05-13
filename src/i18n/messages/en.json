@@ -96,6 +96,12 @@
         "name": "Premium Plus",
         "description": "Maximum tokens, premium AI, and video generation.",
         "priceLabel": "{price} / month"
+      },
+      "premium_plus_yearly": {
+        "name": "Premium Plus Yearly",
+        "description": "All Premium Plus features at a discounted annual rate.",
+        "priceLabel": "{price} / year",
+        "badge": "Save 40%"
       }
     },
     "features": {
@@ -109,6 +115,7 @@
       "title": "Choose your plan",
       "subtitle": "Upgrade to unlock more tokens, better AI, and exclusive features.",
       "cta": "Get started",
+      "mostPopular": "Most popular",
       "currentPlan": "Current plan:",
       "manage": "Manage subscription"
     },
@@ -183,6 +190,7 @@
     "upgradeLink": "Upgrade",
     "draftsHeading": "Your drafts",
     "upgradeRequired": "You have reached the free tier limit of 1 custom character.",
+    "draftsLimitReached": "You have {max} open drafts. Finish one or upgrade to keep building.",
     "previewsRemaining": "{used} / {max} preview sets used",
     "stepCounter": "Step {current} of {total}",
     "phases": {

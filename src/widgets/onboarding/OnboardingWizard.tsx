@@ -569,6 +569,9 @@ function RevealView({
           case 'rate_limited_day':
             setErrorMessage("You've reached today's free preview limit. Sign up to keep going.")
             break
+          case 'rate_limited_global':
+            setErrorMessage('Our preview generator is taking a break. Sign up to keep building without the wait.')
+            break
           case 'preview_limit_reached':
             setErrorMessage("You've already generated previews. Pick one and continue.")
             break

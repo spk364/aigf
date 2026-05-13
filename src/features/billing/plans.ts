@@ -38,7 +38,10 @@ export const PLANS: Record<PlanKey, Plan> = {
     billingPeriod: 'monthly',
     ccbillFormName: 'PREMIUM_MONTHLY_FORM',
     features: {
-      monthlyTokenAllocation: 100,
+      // Bumped 100 → 150 to compensate for TTS now charging tokens — without
+      // this, a returning premium user sees fewer images/month after the
+      // billing rework. See docs/payments-tokenomics-plan.md §2.6.
+      monthlyTokenAllocation: 150,
       annualUpfrontBonus: 0,
       llmTier: 'standard',
       videoEnabled: false,
@@ -55,8 +58,11 @@ export const PLANS: Record<PlanKey, Plan> = {
     billingPeriod: 'yearly',
     ccbillFormName: 'PREMIUM_YEARLY_FORM',
     features: {
-      monthlyTokenAllocation: 100,
-      annualUpfrontBonus: 200,
+      monthlyTokenAllocation: 150,
+      // Cut 200 → 100. Previously the bonus pushed effective token cost on
+      // yearly below the cheapest pack, turning subs into pack-replacements
+      // and breaking pack economics (HOLE-5 in the audit doc).
+      annualUpfrontBonus: 100,
       llmTier: 'standard',
       videoEnabled: false,
       monthlyVideoQuota: 0,
@@ -72,7 +78,10 @@ export const PLANS: Record<PlanKey, Plan> = {
     billingPeriod: 'monthly',
     ccbillFormName: 'PREMIUM_PLUS_MONTHLY_FORM',
     features: {
-      monthlyTokenAllocation: 300,
+      // 300 → 500. Premium+ owns video (20-token spend each), so allocation
+      // had to grow more than monthly Premium just to keep "5 videos/month
+      // included" workable inside the headline number.
+      monthlyTokenAllocation: 500,
       annualUpfrontBonus: 0,
       llmTier: 'premium_plus',
       videoEnabled: true,
@@ -89,8 +98,10 @@ export const PLANS: Record<PlanKey, Plan> = {
     billingPeriod: 'yearly',
     ccbillFormName: 'PREMIUM_PLUS_YEARLY_FORM',
     features: {
-      monthlyTokenAllocation: 300,
-      annualUpfrontBonus: 500,
+      monthlyTokenAllocation: 500,
+      // 500 → 200, same reason as premium_yearly above. At 500 a yearly buyer
+      // got 4100 tokens / $179.88 = $0.044/token, undercutting tokens_3000.
+      annualUpfrontBonus: 200,
       llmTier: 'premium_plus',
       videoEnabled: true,
       monthlyVideoQuota: 5,

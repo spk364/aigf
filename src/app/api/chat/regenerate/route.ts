@@ -13,7 +13,8 @@ import { CHAT_REGENERATE_LIMIT } from '@/shared/rate-limit/presets'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
 const LLM_TEMPERATURE = 0.85
-const LLM_MAX_TOKENS = 600
+const LLM_MAX_TOKENS = 400
+const HISTORY_CHAR_BUDGET = 14_000
 
 const bodySchema = z.object({
   conversationId: z.string().min(1),
@@ -110,14 +111,22 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  for (const msg of historyResult.docs) {
-    if (
-      (msg.role === 'user' || msg.role === 'assistant') &&
-      String(msg.id) !== newMsgId
-    ) {
-      openrouterMessages.push({ role: msg.role, content: msg.content ?? '' })
-    }
+  // Same char-budget walk as chat/route.ts — newest backwards until budget,
+  // reverse for chronological order. Drop the just-inserted streaming placeholder.
+  const historyDocs = historyResult.docs
+  const tailMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
+  let usedChars = 0
+  for (let i = historyDocs.length - 1; i >= 0; i--) {
+    const msg = historyDocs[i]!
+    if (msg.role !== 'user' && msg.role !== 'assistant') continue
+    if (String(msg.id) === newMsgId) continue
+    const content = (msg.content as string | undefined) ?? ''
+    if (usedChars + content.length > HISTORY_CHAR_BUDGET) break
+    tailMessages.push({ role: msg.role, content })
+    usedChars += content.length
   }
+  tailMessages.reverse()
+  for (const m of tailMessages) openrouterMessages.push(m)
 
   const abortController = new AbortController()
   req.signal.addEventListener('abort', () => abortController.abort())

@@ -286,6 +286,7 @@ export type GenerateGuestPreviewResult =
       error:
         | 'rate_limited_hour'
         | 'rate_limited_day'
+        | 'rate_limited_global'
         | 'preview_limit_reached'
         | 'validation_failed'
         | 'generation_failed'
@@ -312,9 +313,14 @@ export async function generateGuestPreviewAction(
 
   const limit = await checkGuestPreviewRateLimit()
   if (!limit.ok) {
+    const errorByReason = {
+      hour: 'rate_limited_hour',
+      day: 'rate_limited_day',
+      global: 'rate_limited_global',
+    } as const
     return {
       ok: false,
-      error: limit.reason === 'hour' ? 'rate_limited_hour' : 'rate_limited_day',
+      error: errorByReason[limit.reason],
       retryAfterSeconds: limit.retryAfterSeconds,
     }
   }

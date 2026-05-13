@@ -5,7 +5,12 @@ import config from '@payload-config'
 import Link from 'next/link'
 import { Card } from '@/shared/ui'
 import { createDraftAction } from '@/features/builder/actions'
+import { isPremiumPlan } from '@/features/billing/plans'
 import { SiteHeader } from '@/widgets/site-header'
+
+// Mirror MAX_OPEN_DRAFTS_FREE in features/builder/actions.ts — keep in sync.
+// Server action enforces; page mirrors to avoid showing a button that 500s.
+const MAX_OPEN_DRAFTS_FREE = 3
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -46,11 +51,7 @@ export default async function BuilderPage({ params }: Props) {
   })
 
   const sub = subResult.docs[0]
-  const isPremium =
-    sub &&
-    (sub.plan === 'premium_monthly' ||
-      sub.plan === 'premium_yearly' ||
-      sub.plan === 'premium_plus_monthly')
+  const isPremium = !!sub && isPremiumPlan(sub.plan as string | null)
 
   const customCharsResult = await payload.find({
     collection: 'characters',
@@ -66,6 +67,9 @@ export default async function BuilderPage({ params }: Props) {
   })
 
   const atFreeLimit = !isPremium && customCharsResult.totalDocs >= 1
+  const atFreeDraftsLimit =
+    !isPremium && draftsResult.totalDocs >= MAX_OPEN_DRAFTS_FREE
+  const atAnyFreeLimit = atFreeLimit || atFreeDraftsLimit
 
   async function startDraftEn() {
     'use server'
@@ -79,9 +83,9 @@ export default async function BuilderPage({ params }: Props) {
         <div className="mx-auto max-w-2xl">
           <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">{t('title')}</h1>
 
-        {atFreeLimit ? (
+        {atAnyFreeLimit ? (
           <div className="mb-8 rounded-xl border border-[var(--color-accent-strong)]/30 bg-[var(--color-accent-strong)]/10 px-5 py-4 text-sm text-[var(--color-text)]">
-            {t('upgradeRequired')}{' '}
+            {atFreeLimit ? t('upgradeRequired') : t('draftsLimitReached', { max: MAX_OPEN_DRAFTS_FREE })}{' '}
             <Link href={`/${locale}/upgrade`} className="underline text-[var(--color-accent-strong)]">
               {t('upgradeLink')}
             </Link>

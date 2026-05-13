@@ -45,7 +45,16 @@ export default async function UpgradePage({ params }: Props) {
     return `$${(cents / 100).toFixed(2)}`
   }
 
-  const planOrder: PlanKey[] = ['premium_monthly', 'premium_yearly', 'premium_plus_monthly']
+  // All four SKUs visible. Order: monthly first (lowest commitment), yearly
+  // second (best monthly value), then the Premium+ pair. premium_plus_monthly
+  // is the "Most popular" anchor — biggest absolute LTV per converter.
+  const planOrder: PlanKey[] = [
+    'premium_monthly',
+    'premium_yearly',
+    'premium_plus_monthly',
+    'premium_plus_yearly',
+  ]
+  const emphasizedKey: PlanKey = 'premium_plus_monthly'
 
   return (
     <main className="min-h-screen bg-[var(--color-bg)] px-4 py-16">
@@ -85,11 +94,11 @@ export default async function UpgradePage({ params }: Props) {
           </div>
         )}
 
-        <div className="grid gap-6 md:grid-cols-3">
-          {planOrder.map((planKey, idx) => {
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {planOrder.map((planKey) => {
             const plan = PLANS[planKey]
             const isYearly = plan.billingPeriod === 'yearly'
-            const isEmphasized = idx === 0 // Premium Monthly — center visually emphasized
+            const isEmphasized = planKey === emphasizedKey
 
             return (
               <div
@@ -101,15 +110,11 @@ export default async function UpgradePage({ params }: Props) {
                     : 'border-[var(--color-border)] bg-[var(--color-surface)]',
                 ].join(' ')}
               >
-                {isYearly && (
-                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-[var(--color-accent-strong)] px-3 py-1 text-xs font-bold text-[var(--color-bg)]">
-                    {t('plans.premium_yearly.badge')}
-                  </span>
-                )}
-
-                {isEmphasized && (
-                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-[var(--color-accent-strong)] px-3 py-1 text-xs font-bold text-[var(--color-bg)]">
-                    Most popular
+                {(isEmphasized || isYearly) && (
+                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[var(--color-accent-strong)] px-3 py-1 text-xs font-bold text-[var(--color-bg)]">
+                    {isEmphasized
+                      ? t('upgrade.mostPopular')
+                      : t(`plans.${planKey}.badge`)}
                   </span>
                 )}
 

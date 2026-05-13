@@ -35,6 +35,7 @@ import {
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 import { checkRateLimit } from '@/shared/rate-limit/limiter'
 import { IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
+import { isPremiumPlan } from '@/features/billing/plans'
 
 const LLM_MODEL = OPENROUTER_MODEL
 // Keep aligned with src/app/api/chat/route.ts — see note there on temperature choice.
@@ -79,12 +80,16 @@ async function isPremiumUser(payload: Awaited<ReturnType<typeof getPayload>>, us
   })
   const sub = subResult.docs[0]
   if (!sub) return false
-  return (
-    sub.plan === 'premium_monthly' ||
-    sub.plan === 'premium_yearly' ||
-    sub.plan === 'premium_plus_monthly'
-  )
+  return isPremiumPlan(sub.plan as string | null)
 }
+
+// Per-user ceiling on unfinalised drafts for the free tier. Each draft can
+// burn up to 5 fal previews (~$0.25 at fast-sdxl) before the user abandons
+// it, so a free user with no draft cap could quietly leak $X/day even with
+// the global IMAGE_GEN_LIMIT in place. Premium users get the existing
+// customCharacterLimit gate on finalised characters; this caps the upstream
+// abandonment funnel.
+const MAX_OPEN_DRAFTS_FREE = 3
 
 async function loadDraftOwned(payload: Awaited<ReturnType<typeof getPayload>>, draftId: string, userId: string | number) {
   const draft = await payload.findByID({
@@ -189,6 +194,24 @@ export async function createDraftAction(language: 'en' | 'ru' | 'es') {
     })
     if (existing.totalDocs >= 1) {
       return { error: 'free_tier_limit' as const }
+    }
+
+    // Cap parallel unfinalised drafts. Each draft enables up to 5 fal
+    // previews — without this cap a free user could chain N drafts together
+    // and accumulate preview spend up to IMAGE_GEN_LIMIT (300/day).
+    const openDrafts = await payload.find({
+      collection: 'character-drafts',
+      where: {
+        and: [
+          { userId: { equals: user.id } },
+          { deletedAt: { exists: false } },
+        ],
+      },
+      limit: 0,
+      overrideAccess: true,
+    })
+    if (openDrafts.totalDocs >= MAX_OPEN_DRAFTS_FREE) {
+      return { error: 'free_tier_drafts_limit' as const }
     }
   }
 
