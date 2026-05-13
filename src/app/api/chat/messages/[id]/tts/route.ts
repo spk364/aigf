@@ -12,10 +12,28 @@ import { getCurrentUser } from '@/shared/auth/current-user'
 import { generateSpeech } from '@/shared/ai/tts'
 import { findVoiceById, DEFAULT_VOICE_ID } from '@/shared/ai/voice-catalog'
 import { persistGeneratedAudio } from '@/features/media/persist-generated-audio'
+import { isPremiumPlan, type PlanKey } from '@/features/billing/plans'
+import { TTS_TOKEN_COST, TTS_DAILY_CAP_BY_PLAN } from '@/features/billing/cost'
+import { autoRefund, getBalance, spend } from '@/features/tokens/ledger'
+import { redis } from '@/shared/redis/client'
 
 // MiniMax sync cap is 5000 chars; chat messages should never approach that,
 // but guard anyway so a runaway message can't blow up the request.
 const MAX_TTS_CHARS = 1500
+
+// Wall-clock key for daily TTS cap. UTC so the reset moment is unambiguous
+// across user timezones; pairs with secondsUntilNextMidnightUTC for Retry-After.
+function ttsDayKey(userId: string | number): string {
+  return `tts:day:${userId}:${new Date().toISOString().slice(0, 10)}`
+}
+
+function secondsUntilNextMidnightUTC(): number {
+  const now = new Date()
+  const next = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+  )
+  return Math.floor((next.getTime() - now.getTime()) / 1000) + 3600
+}
 
 type MaybeRel<T> = T | { id: string | number; [k: string]: unknown } | string | number | null | undefined
 
@@ -129,6 +147,45 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'FAL_KEY not configured' }, { status: 500 })
   }
 
+  // Premium gate. TTS is a paid-only feature: at ~$0.05 per playback an
+  // unauthenticated free user could burn $5/day before hitting any other cap.
+  const subResult = await payload.find({
+    collection: 'subscriptions',
+    where: {
+      and: [{ userId: { equals: user.id } }, { status: { equals: 'active' } }],
+    },
+    limit: 1,
+    overrideAccess: true,
+  })
+  const activeSub = subResult.docs[0]
+  const planKey = (activeSub?.plan as PlanKey | undefined) ?? null
+  if (!planKey || !isPremiumPlan(planKey)) {
+    return NextResponse.json(
+      { error: 'premium_required', message: 'Voice playback is a Premium feature.' },
+      { status: 402 },
+    )
+  }
+
+  // Daily TTS cap — Redis-bounded soft ceiling per plan tier. Checked before
+  // spend so an over-cap user gets a clean 429 rather than burning a token
+  // that we then have to refund. Counter increment happens AFTER spend
+  // commits so a failed reserve doesn't consume cap headroom.
+  const dailyCap = TTS_DAILY_CAP_BY_PLAN[planKey] ?? 0
+  const capKey = ttsDayKey(user.id)
+  const currentCount = ((await redis.get<number>(capKey)) ?? 0) as number
+  if (currentCount >= dailyCap) {
+    return NextResponse.json(
+      {
+        error: 'daily_cap_reached',
+        message: `Daily voice playback cap of ${dailyCap} reached. Resets at 00:00 UTC.`,
+      },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(secondsUntilNextMidnightUTC()) },
+      },
+    )
+  }
+
   // Resolve voice: character.voiceId → catalog default. Characters without a
   // voice still get a baseline voice so chat ▶ never fails for missing config.
   const characterRel = (conversation as { characterId?: unknown }).characterId
@@ -149,6 +206,53 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ error: 'voice_catalog_missing_default' }, { status: 500 })
   }
 
+  // Token reservation. Idempotency keyed on the message so a retried POST
+  // (network drop between fal call and JSON response) reuses the same debit
+  // rather than charging twice. The cache-hit short-circuit above prevents a
+  // separate "user already paid for this message" double-charge.
+  const reserveKey = `tts:reserve:${messageId}`
+  const refundKey = `tts:refund:tech:${messageId}`
+
+  const balance = await getBalance(payload, user.id)
+  if (balance < TTS_TOKEN_COST) {
+    return NextResponse.json(
+      {
+        error: 'insufficient_tokens',
+        message: `Voice playback costs ${TTS_TOKEN_COST} tokens.`,
+        tokensRequired: TTS_TOKEN_COST,
+        balance,
+      },
+      { status: 402 },
+    )
+  }
+
+  const spendResult = await spend(payload, {
+    userId: user.id,
+    type: 'spend_voice_message',
+    amount: TTS_TOKEN_COST,
+    relatedMessageId: messageId,
+    reason: 'tts_playback',
+    idempotencyKey: reserveKey,
+  })
+  if (!spendResult.ok) {
+    return NextResponse.json(
+      {
+        error: 'insufficient_tokens',
+        message: `Voice playback costs ${TTS_TOKEN_COST} tokens.`,
+        tokensRequired: TTS_TOKEN_COST,
+      },
+      { status: 402 },
+    )
+  }
+
+  // Increment daily cap only on a fresh debit. spendResult.replayed === true
+  // means we already charged for this messageId — the cap was already counted
+  // on the original attempt, so don't double-count on retry.
+  if (!spendResult.replayed) {
+    await redis.incr(capKey)
+    await redis.expire(capKey, secondsUntilNextMidnightUTC())
+  }
+
   let result: Awaited<ReturnType<typeof generateSpeech>>
   try {
     result = await generateSpeech({
@@ -157,6 +261,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       endpoint: voice.endpoint,
     })
   } catch (err) {
+    await autoRefund(payload, {
+      userId: user.id,
+      type: 'tech_refund',
+      amount: TTS_TOKEN_COST,
+      reason: `tts_failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 240),
+      relatedMessageId: messageId,
+      idempotencyKey: refundKey,
+    })
     return NextResponse.json(
       { error: 'tts_failed', message: err instanceof Error ? err.message : String(err) },
       { status: 500 },
@@ -183,6 +295,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       },
     })
   } catch (err) {
+    await autoRefund(payload, {
+      userId: user.id,
+      type: 'tech_refund',
+      amount: TTS_TOKEN_COST,
+      reason: `persist_failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 240),
+      relatedMessageId: messageId,
+      idempotencyKey: refundKey,
+    })
     return NextResponse.json(
       { error: 'persist_failed', message: err instanceof Error ? err.message : String(err) },
       { status: 500 },

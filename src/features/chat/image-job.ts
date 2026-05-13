@@ -3,6 +3,7 @@ import type { BasePayload } from 'payload'
 import {
   submitImageJob,
   fetchImageJobStatus,
+  FAL_ENDPOINT_FLUX_SCHNELL,
   type ImageJobStatus,
 } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
@@ -73,10 +74,17 @@ export async function submitChatImageJob(
   const log = createLogger({ userId: String(input.userId) })
 
   try {
+    // FLUX schnell is the cheapest viable endpoint (~$0.003/image vs ~$0.05
+    // for RealVisXL). Prompts are SD-style comma-tokens which FLUX accepts
+    // with mild quality loss; negative_prompt is silently dropped by FLUX,
+    // but the post-gen NSFW classifier (see classifyImageSafety below) still
+    // refunds + deletes any unsafe output. See docs/payments-tokenomics-plan.md
+    // §2.3 HOLE-2 for the cost rationale.
     const handles = await submitImageJob({
       prompt: input.prompt,
       negativePrompt: input.negativePrompt,
       imageSize: input.imageSize ?? 'portrait_4_3',
+      endpoint: FAL_ENDPOINT_FLUX_SCHNELL,
     })
 
     const meta: ChatImageGenerationMetadata = {
