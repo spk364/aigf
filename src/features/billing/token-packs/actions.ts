@@ -10,14 +10,25 @@ import {
   buildTokenPackCheckoutUrl,
   isTokenPackBillingMocked,
 } from './checkout'
+import {
+  createTokenPackInvoice,
+} from '@/features/billing/crypto/nowpayments/invoice'
+import { isNowpaymentsConfigured } from '@/features/billing/crypto/nowpayments/client'
+
+export type PurchaseMethod = 'card' | 'crypto'
 
 /**
- * Initiate a token-pack purchase. In real mode this redirects the user to a
- * CCBill FlexForm; in mock mode (no CCBILL_ACCOUNT_NUM, e.g. local dev) it
- * applies the grant immediately so the rest of the product can be tested
- * end-to-end without a real payment provider.
+ * Initiate a token-pack purchase. In real mode this redirects the user to
+ * the configured provider checkout (CCBill FlexForm for cards, NOWPayments
+ * hosted invoice for crypto). In mock mode (provider env vars unset, e.g.
+ * local dev) it stamps a synthetic completed payment + grants tokens
+ * immediately so the rest of the product can be tested without a real
+ * payment provider.
  */
-export async function purchaseTokenPackAction(sku: string): Promise<void> {
+export async function purchaseTokenPackAction(
+  sku: string,
+  method: PurchaseMethod = 'card',
+): Promise<void> {
   const user = await requireCompleteProfile()
   const payload = await getPayload({ config })
 
@@ -39,20 +50,72 @@ export async function purchaseTokenPackAction(sku: string): Promise<void> {
 
   const userLocale = (user as { locale?: string }).locale ?? 'en'
 
-  if (!isTokenPackBillingMocked()) {
+  // ────────────────────────────────────────────────────────────────────────
+  // Crypto path (NOWPayments hosted invoice)
+  // ────────────────────────────────────────────────────────────────────────
+  if (method === 'crypto' && isNowpaymentsConfigured()) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
+    if (!appUrl) {
+      throw new Error(
+        'purchaseTokenPackAction: NEXT_PUBLIC_APP_URL must be set so NOWPayments can call our IPN endpoint.',
+      )
+    }
+
     track({
       userId: String(user.id),
       event: 'token_pack.checkout_started',
-      properties: { sku, priceCents: pkg.priceCents, tokenAmount: pkg.tokenAmount },
+      properties: {
+        sku,
+        priceCents: pkg.priceCents,
+        tokenAmount: pkg.tokenAmount,
+        provider: 'nowpayments',
+      },
+    })
+
+    const { invoiceUrl } = await createTokenPackInvoice({
+      userId: user.id,
+      sku,
+      priceCents: pkg.priceCents as number,
+      locale: userLocale,
+      ipnCallbackUrl: `${appUrl}/api/webhooks/nowpayments`,
+      successUrl: `${appUrl}/${userLocale}/billing/return?type=token_pack&status=success&sku=${encodeURIComponent(sku)}`,
+      cancelUrl: `${appUrl}/${userLocale}/tokens?status=canceled`,
+    })
+
+    redirect(invoiceUrl)
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Card path (CCBill FlexForm)
+  // ────────────────────────────────────────────────────────────────────────
+  if (method === 'card' && !isTokenPackBillingMocked()) {
+    track({
+      userId: String(user.id),
+      event: 'token_pack.checkout_started',
+      properties: {
+        sku,
+        priceCents: pkg.priceCents,
+        tokenAmount: pkg.tokenAmount,
+        provider: 'ccbill',
+      },
     })
     const url = buildTokenPackCheckoutUrl({ userId: user.id, sku, locale: userLocale })
     redirect(url)
   }
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Mock path — either provider unconfigured for this method. Single grant
+  // flow covers both so local dev / CI can exercise the end-to-end path
+  // without a real merchant account.
+  // ────────────────────────────────────────────────────────────────────────
+
   // Mock mode: stamp a completed payment + idempotent grant in a single DB tx.
   // The mock idempotency anchor is the synthetic providerTransactionId so a
   // double-submitted form (e.g. user double-click) credits at most once.
-  const mockProviderTxId = `mock-pack-${user.id}-${pkg.id}-${Date.now()}`
+  // Provider field reflects which checkout button the user clicked so mock
+  // analytics still distinguish card vs crypto funnels.
+  const mockProvider = method === 'crypto' ? 'crypto_mock' : 'ccbill'
+  const mockProviderTxId = `mock-${mockProvider}-${user.id}-${pkg.id}-${Date.now()}`
 
   const txId = await payload.db.beginTransaction()
   let paymentId: string | number
@@ -65,9 +128,9 @@ export async function purchaseTokenPackAction(sku: string): Promise<void> {
         status: 'completed',
         amountCents: pkg.priceCents,
         currency: 'USD',
-        provider: 'ccbill',
+        provider: method === 'crypto' ? 'crypto_usdt' : 'ccbill',
         providerTransactionId: mockProviderTxId,
-        providerRawData: { mock: true, sku },
+        providerRawData: { mock: true, sku, method },
         tokenPackageId: pkg.id,
         completedAt: new Date().toISOString(),
       },
@@ -104,6 +167,7 @@ export async function purchaseTokenPackAction(sku: string): Promise<void> {
       sku,
       tokenAmount: pkg.tokenAmount,
       priceCents: pkg.priceCents,
+      provider: mockProvider,
       mock: true,
     },
   })

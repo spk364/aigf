@@ -142,6 +142,8 @@
       "currentBalance": "Current balance:",
       "perToken": "{price} per token",
       "buy": "Buy now",
+      "payCard": "Pay with card",
+      "payCrypto": "Pay with crypto",
       "mockMode": "Billing is not configured. Purchases will be credited as a stub for development."
     }
   },

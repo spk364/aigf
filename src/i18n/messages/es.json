@@ -142,6 +142,8 @@
       "currentBalance": "Saldo actual:",
       "perToken": "{price} por token",
       "buy": "Comprar",
+      "payCard": "Pagar con tarjeta",
+      "payCrypto": "Pagar con cripto",
       "mockMode": "El cobro no esta configurado. Las compras se acreditaran como stub para desarrollo."
     }
   },
