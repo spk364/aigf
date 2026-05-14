@@ -1,4 +1,3 @@
-// TODO: replace stubs with actual /anime and /guys catalogs once content lands.
 import Link from 'next/link'
 
 type Props = {
@@ -10,7 +9,6 @@ type Tab = {
   key: 'girls' | 'anime' | 'guys'
   label: string
   href: string
-  enabled: boolean
   icon: React.ReactNode
 }
 
@@ -45,22 +43,19 @@ export function GenreTabs({ locale, active = 'girls' }: Props) {
     {
       key: 'girls',
       label: 'Girls',
-      href: `/${locale}/dashboard`,
-      enabled: true,
+      href: `/${locale}/ai-girlfriend`,
       icon: <GirlIcon />,
     },
     {
       key: 'anime',
       label: 'Anime',
-      href: `/${locale}/dashboard?genre=anime`,
-      enabled: false,
+      href: `/${locale}/ai-anime`,
       icon: <AnimeIcon />,
     },
     {
       key: 'guys',
       label: 'Guys',
-      href: `/${locale}/dashboard?genre=guys`,
-      enabled: false,
+      href: `/${locale}/ai-boyfriend`,
       icon: <GuyIcon />,
     },
   ]
@@ -69,22 +64,6 @@ export function GenreTabs({ locale, active = 'girls' }: Props) {
     <nav className="flex items-center gap-1.5 sm:gap-2" aria-label="Genre">
       {tabs.map((tab) => {
         const isActive = active === tab.key
-        if (!tab.enabled) {
-          return (
-            <span
-              key={tab.key}
-              aria-disabled="true"
-              title="Coming soon"
-              className="inline-flex cursor-not-allowed items-center gap-1.5 border-b-2 border-transparent px-3 py-2 text-sm font-semibold text-[var(--color-text-muted)]/60"
-            >
-              {tab.icon}
-              {tab.label}
-              <span className="ml-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
-                Soon
-              </span>
-            </span>
-          )
-        }
         return (
           <Link
             key={tab.key}

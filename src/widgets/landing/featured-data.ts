@@ -205,6 +205,23 @@ export const getFeaturedCharacters = cache(
     loadCharactersWithVideos(baseWhere, ['landingOrder', 'displayOrder'], 24),
 )
 
+export type CharacterCategory = 'girls' | 'anime' | 'boys'
+
+export const getCharactersByCategory = cache(
+  async (category: CharacterCategory, locale?: string): Promise<FeaturedCharacter[]> =>
+    loadCharactersWithVideos(
+      {
+        and: [
+          ...((baseWhere as { and: Where[] }).and),
+          { category: { equals: category } },
+        ],
+      },
+      ['landingOrder', 'displayOrder'],
+      48,
+      locale,
+    ),
+)
+
 export async function getExploreCharacters(
   filters: ExploreFilters = {},
 ): Promise<FeaturedCharacter[]> {
