@@ -87,4 +87,39 @@ CREATE INDEX IF NOT EXISTS banners_pages_order_idx
 CREATE INDEX IF NOT EXISTS banners_pages_parent_idx
   ON banners_pages (parent_id);
 
+-- ── Payload polymorphic rels tables — add banners_id FK column ───────────────
+-- Without these, every find() against payload_locked_documents / preferences
+-- fails with `column ... banners_id does not exist` once Banners is registered.
+ALTER TABLE payload_locked_documents_rels
+  ADD COLUMN IF NOT EXISTS banners_id integer;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'payload_locked_documents_rels_banners_fk'
+  ) THEN
+    ALTER TABLE payload_locked_documents_rels
+      ADD CONSTRAINT payload_locked_documents_rels_banners_fk
+      FOREIGN KEY (banners_id) REFERENCES banners(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS payload_locked_documents_rels_banners_id_idx
+  ON payload_locked_documents_rels (banners_id);
+
+ALTER TABLE payload_preferences_rels
+  ADD COLUMN IF NOT EXISTS banners_id integer;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'payload_preferences_rels_banners_fk'
+  ) THEN
+    ALTER TABLE payload_preferences_rels
+      ADD CONSTRAINT payload_preferences_rels_banners_fk
+      FOREIGN KEY (banners_id) REFERENCES banners(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS payload_preferences_rels_banners_id_idx
+  ON payload_preferences_rels (banners_id);
+
 COMMIT;
