@@ -55,3 +55,8 @@ export function buildTokenPackCheckoutUrl({ userId, sku, locale }: BuildOpts): s
 export function isTokenPackBillingMocked(): boolean {
   return !process.env.CCBILL_ACCOUNT_NUM
 }
+
+/** True when NOWPayments isn't wired — crypto path will fall through to mock. */
+export function isCryptoTokenPackBillingMocked(): boolean {
+  return !process.env.NOWPAYMENTS_API_KEY
+}
