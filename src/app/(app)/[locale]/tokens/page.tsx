@@ -4,7 +4,10 @@ import { getTranslations } from 'next-intl/server'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
 import { getBalance } from '@/features/tokens/ledger'
 import { purchaseTokenPackAction } from '@/features/billing/token-packs/actions'
-import { isTokenPackBillingMocked } from '@/features/billing/token-packs/checkout'
+import {
+  isTokenPackBillingMocked,
+  isCryptoTokenPackBillingMocked,
+} from '@/features/billing/token-packs/checkout'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -41,7 +44,18 @@ export default async function TokensPage({ params }: Props) {
   ])
 
   const packs = packsResult.docs
-  const isMocked = isTokenPackBillingMocked()
+  // Per-provider mock state — a provider is "mocked" when its env vars are
+  // unset, in which case clicking that button falls through to an instant
+  // stub grant for dev convenience. We only show the warning banner when
+  // BOTH providers are mocked (nothing will charge real money). Buttons for
+  // mocked providers are hidden when at least one real provider exists, so
+  // a sandbox-test deploy with only NOWPayments configured doesn't show a
+  // misleading "Pay with card" that silently mock-grants.
+  const cardMocked = isTokenPackBillingMocked()
+  const cryptoMocked = isCryptoTokenPackBillingMocked()
+  const allMocked = cardMocked && cryptoMocked
+  const showCardButton = !cardMocked || allMocked
+  const showCryptoButton = !cryptoMocked || allMocked
 
   return (
     <main className="min-h-screen bg-[var(--color-bg)] px-4 py-16">
@@ -61,7 +75,7 @@ export default async function TokensPage({ params }: Props) {
           </div>
         </div>
 
-        {isMocked && (
+        {allMocked && (
           <div className="mb-8 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-300">
             {t('mockMode')}
           </div>
@@ -105,32 +119,41 @@ export default async function TokensPage({ params }: Props) {
                 </p>
 
                 <div className="mt-auto flex flex-col gap-2">
-                  <form
-                    action={async () => {
-                      'use server'
-                      await purchaseTokenPackAction(sku, 'card')
-                    }}
-                  >
-                    <button
-                      type="submit"
-                      className="w-full rounded-xl bg-[var(--color-accent-strong)] py-3 text-sm font-bold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+                  {showCardButton && (
+                    <form
+                      action={async () => {
+                        'use server'
+                        await purchaseTokenPackAction(sku, 'card')
+                      }}
                     >
-                      {t('payCard')}
-                    </button>
-                  </form>
-                  <form
-                    action={async () => {
-                      'use server'
-                      await purchaseTokenPackAction(sku, 'crypto')
-                    }}
-                  >
-                    <button
-                      type="submit"
-                      className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] py-3 text-sm font-bold text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+                      <button
+                        type="submit"
+                        className="w-full rounded-xl bg-[var(--color-accent-strong)] py-3 text-sm font-bold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+                      >
+                        {t('payCard')}
+                      </button>
+                    </form>
+                  )}
+                  {showCryptoButton && (
+                    <form
+                      action={async () => {
+                        'use server'
+                        await purchaseTokenPackAction(sku, 'crypto')
+                      }}
                     >
-                      {t('payCrypto')}
-                    </button>
-                  </form>
+                      <button
+                        type="submit"
+                        className={[
+                          'w-full rounded-xl py-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]',
+                          showCardButton
+                            ? 'border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+                            : 'bg-[var(--color-accent-strong)] text-[var(--color-bg)] hover:bg-[var(--color-accent)]',
+                        ].join(' ')}
+                      >
+                        {t('payCrypto')}
+                      </button>
+                    </form>
+                  )}
                 </div>
               </div>
             )
