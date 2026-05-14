@@ -1,8 +1,5 @@
-// TODO: replace static slides with a CMS-driven `promo-banners` collection
-// (image, title, subtitle, ctaHref, ctaLabel, startsAt/endsAt). Add Embla
-// carousel autoplay once we have >1 active banner. For now we render a single
-// editorial slot so the layout matches candy.ai.
 import Link from 'next/link'
+import type { ActiveBanner } from './banners-data'
 
 type Slide = {
   id: string
@@ -19,28 +16,66 @@ type Slide = {
 type Props = {
   locale: string
   /**
-   * Optional cover image (e.g. featured character photo) so the banner has
-   * something to look at while the CMS-driven banner system isn't built yet.
+   * CMS-driven banners filtered for this page. When provided and non-empty,
+   * the first banner is rendered. Otherwise the built-in editorial slot is
+   * used as a fallback so the layout still has a hero.
+   */
+  banners?: ActiveBanner[]
+  /**
+   * Optional cover image (e.g. featured character photo) so the fallback
+   * banner has something to look at when no CMS banner is configured.
    */
   coverImageUrl?: string | null
 }
 
-export function HeroBanner({ locale, coverImageUrl }: Props) {
-  const slides: Slide[] = [
-    {
-      id: 'create-companion',
-      eyebrow: 'Featured',
-      title: 'Design your dream companion',
-      subtitle: 'Pick a look, vibe, and personality in under a minute.',
-      ctaLabel: 'Create now',
-      ctaHref: `/${locale}/start`,
-      imageUrl: coverImageUrl ?? null,
-      hueA: 320,
-      hueB: 280,
-    },
-  ]
+const DEFAULT_BANNER: Omit<Slide, 'imageUrl'> = {
+  id: 'create-companion',
+  eyebrow: 'Featured',
+  title: 'Design your dream companion',
+  subtitle: 'Pick a look, vibe, and personality in under a minute.',
+  ctaLabel: 'Create now',
+  ctaHref: '/start',
+  hueA: 320,
+  hueB: 280,
+}
 
-  const slide = slides[0]!
+function localizeHref(href: string, locale: string): string {
+  if (!href) return `/${locale}`
+  if (href.startsWith('http://') || href.startsWith('https://')) return href
+  if (href.startsWith('/')) {
+    // Avoid double-prefixing if the editor already included the locale.
+    if (href === `/${locale}` || href.startsWith(`/${locale}/`)) return href
+    return `/${locale}${href}`
+  }
+  return href
+}
+
+function bannerToSlide(b: ActiveBanner, locale: string): Slide {
+  return {
+    id: b.id,
+    eyebrow: b.eyebrow || DEFAULT_BANNER.eyebrow,
+    title: b.title || DEFAULT_BANNER.title,
+    subtitle: b.subtitle || DEFAULT_BANNER.subtitle,
+    ctaLabel: b.ctaLabel || DEFAULT_BANNER.ctaLabel,
+    ctaHref: localizeHref(b.ctaHref || DEFAULT_BANNER.ctaHref, locale),
+    imageUrl: b.imageUrl,
+    hueA: b.hueA,
+    hueB: b.hueB,
+  }
+}
+
+export function HeroBanner({ locale, banners, coverImageUrl }: Props) {
+  const cms = (banners ?? []).filter((b) => b.title)
+  const slide: Slide =
+    cms.length > 0
+      ? bannerToSlide(cms[0]!, locale)
+      : {
+          ...DEFAULT_BANNER,
+          ctaHref: localizeHref(DEFAULT_BANNER.ctaHref, locale),
+          imageUrl: coverImageUrl ?? null,
+        }
+
+  const slideCount = Math.max(cms.length, 1)
 
   return (
     <section
@@ -113,9 +148,16 @@ export function HeroBanner({ locale, coverImageUrl }: Props) {
           className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5"
           aria-hidden
         >
-          <span className="h-1 w-6 rounded-full bg-white" />
-          <span className="h-1 w-1.5 rounded-full bg-white/40" />
-          <span className="h-1 w-1.5 rounded-full bg-white/40" />
+          {Array.from({ length: Math.min(slideCount, 5) }).map((_, i) => (
+            <span
+              key={i}
+              className={
+                i === 0
+                  ? 'h-1 w-6 rounded-full bg-white'
+                  : 'h-1 w-1.5 rounded-full bg-white/40'
+              }
+            />
+          ))}
         </div>
       </div>
     </section>

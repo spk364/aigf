@@ -1,6 +1,7 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { seedPresetCharacters } from './seed-preset-characters'
+import { seedPresetBoys } from './seed-preset-boys'
 import { seedDevUser } from './seed-dev-user'
 import { seedTokenPackages } from './seed-token-packages'
 
@@ -12,6 +13,10 @@ async function main() {
 
   if (all || TARGETS.has('characters')) {
     await seedPresetCharacters(payload)
+  }
+
+  if (all || TARGETS.has('boys')) {
+    await seedPresetBoys(payload)
   }
 
   if (all || TARGETS.has('token-packages')) {

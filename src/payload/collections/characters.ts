@@ -17,6 +17,7 @@ export const Characters: CollectionConfig = {
     { fields: ['landingFeatured', 'landingOrder'] },
     { fields: ['moderationStatus'] },
     { fields: ['kind', 'isPublished', 'landingFeatured'] },
+    { fields: ['category', 'isPublished', 'displayOrder'] },
   ],
   fields: [
     {
@@ -27,6 +28,21 @@ export const Characters: CollectionConfig = {
         { label: 'Preset', value: 'preset' },
         { label: 'Custom', value: 'custom' },
       ],
+    },
+    {
+      name: 'category',
+      type: 'select',
+      index: true,
+      defaultValue: 'girls',
+      options: [
+        { label: 'Girls (AI Girlfriend)', value: 'girls' },
+        { label: 'Anime', value: 'anime' },
+        { label: 'Boys (AI Boyfriend)', value: 'boys' },
+      ],
+      admin: {
+        description:
+          'Catalog category — drives which public page shows the character (/ai-girlfriend, /ai-anime, /ai-boyfriend) and the Girls/Anime/Guys tabs.',
+      },
     },
     {
       name: 'createdBy',

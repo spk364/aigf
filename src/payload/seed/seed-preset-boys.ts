@@ -1,15 +1,20 @@
 import type { Payload } from 'payload'
-import { PERSONAS, buildSystemPrompt, type Persona, type Language } from './preset-personas'
-import { buildAppearanceFromParams } from '@/shared/ai/appearance-prompt'
+import {
+  BOYS,
+  buildBoySystemPrompt,
+  buildMaleAppearance,
+  type BoyPersona,
+  type Language,
+} from './preset-boys'
 
 const LANGUAGES: Language[] = ['en', 'ru', 'es']
 
-function buildDocData(persona: Persona, language: Language) {
+function buildDocData(persona: BoyPersona, language: Language) {
   const { core } = persona
   const variant = persona.variants[language]
   return {
     kind: 'preset' as const,
-    category: (core.artStyle === 'anime' ? 'anime' : 'girls') as 'anime' | 'girls',
+    category: 'boys' as const,
     slug: core.slug,
     archetype: core.archetype,
     artStyle: core.artStyle,
@@ -18,8 +23,7 @@ function buildDocData(persona: Persona, language: Language) {
     moderationStatus: 'approved' as const,
     tags: core.tags,
     personalityTraits: core.personalityTraits,
-    appearance: buildAppearanceFromParams(core.appearance, core.artStyle),
-    ...(core.referenceImageUrl ? { referenceImageUrl: core.referenceImageUrl } : {}),
+    appearance: buildMaleAppearance(core.appearance, core.artStyle),
     imageModel: {
       primary: core.artStyle === 'anime' ? 'fal-ai/fast-sdxl' : 'fal-ai/realistic-vision',
     },
@@ -31,7 +35,7 @@ function buildDocData(persona: Persona, language: Language) {
     name: variant.name,
     tagline: variant.tagline,
     shortBio: variant.shortBio,
-    systemPrompt: buildSystemPrompt(persona, language),
+    systemPrompt: buildBoySystemPrompt(persona, language),
     communicationStyle: {
       formality: 'casual',
       messageLength: 'medium',
@@ -40,7 +44,7 @@ function buildDocData(persona: Persona, language: Language) {
       languageMixing: false,
     },
     backstory: {
-      age: core.age,
+      age: core.appearance.age,
       occupation: core.occupation[language],
       city: core.city,
       interests: core.interests[language],
@@ -49,7 +53,7 @@ function buildDocData(persona: Persona, language: Language) {
   }
 }
 
-async function upsertPersona(payload: Payload, persona: Persona): Promise<void> {
+async function upsertBoy(payload: Payload, persona: BoyPersona): Promise<void> {
   const { core } = persona
 
   const existing = await payload.find({
@@ -72,7 +76,7 @@ async function upsertPersona(payload: Payload, persona: Persona): Promise<void> 
         data: buildDocData(persona, lang),
       })
     }
-    payload.logger.info(`[seed] Created ${core.slug}`)
+    payload.logger.info(`[seed:boys] Created ${core.slug}`)
     return
   }
 
@@ -85,12 +89,12 @@ async function upsertPersona(payload: Payload, persona: Persona): Promise<void> 
       data: buildDocData(persona, lang),
     })
   }
-  payload.logger.info(`[seed] Updated ${core.slug}`)
+  payload.logger.info(`[seed:boys] Updated ${core.slug}`)
 }
 
-export async function seedPresetCharacters(payload: Payload): Promise<void> {
-  for (const persona of PERSONAS) {
-    await upsertPersona(payload, persona)
+export async function seedPresetBoys(payload: Payload): Promise<void> {
+  for (const persona of BOYS) {
+    await upsertBoy(payload, persona)
   }
-  payload.logger.info(`[seed] Done — ${PERSONAS.length} personas × 3 locales.`)
+  payload.logger.info(`[seed:boys] Done — ${BOYS.length} boy personas × 3 locales.`)
 }
