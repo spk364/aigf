@@ -93,6 +93,8 @@ export async function POST(req: NextRequest) {
         { role: { in: ['user', 'assistant'] } },
         { deletedAt: { exists: false } },
         { isRegenerated: { not_equals: true } },
+        // Layer 3: skip safety-flagged turns from the LLM context.
+        { status: { not_equals: 'flagged' } },
       ],
     },
     sort: 'createdAt',

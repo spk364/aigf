@@ -1,4 +1,6 @@
-// TODO(phase-3-safety): add input/output safety filters before/after LLM call
+// Layer 3 (input safety filter) is wired in below — runs after the user
+// message is persisted, before any LLM call. Layer 5 (output safety filter)
+// is still TODO — see `scoreAssistantOutput` follow-up.
 
 export const maxDuration = 60
 
@@ -22,6 +24,9 @@ import { isPremiumPlan } from '@/features/billing/plans'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_LIMIT, IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 import { submitChatImageJob, IMAGE_TOKEN_COST } from '@/features/chat/image-job'
+import { scoreUserInput } from '@/shared/safety/input-filter'
+import { logSafetyIncident } from '@/features/safety/log-incident'
+import { getInputRefusalMessage } from '@/features/safety/refusal-messages'
 
 const LLM_MODEL = OPENROUTER_MODEL
 // DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
@@ -196,7 +201,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await payload.create({
+  const userMessage = await payload.create({
     collection: 'messages',
     data: {
       conversationId: conversationId,
@@ -206,6 +211,7 @@ export async function POST(req: NextRequest) {
       content: message,
     },
   })
+  const userMessageId = userMessage.id
 
   // Track chat message sent (no content — only metadata)
   const conversationLengthBefore = (conversation.messageCount as number | null) ?? 0
@@ -234,6 +240,160 @@ export async function POST(req: NextRequest) {
   log.info({ msg: 'chat.message.user_saved', conversationId, isNewConversation })
 
   const convLanguage = (conversation.language as string | null | undefined) ?? 'en'
+
+  // ---------------------------------------------------------------------------
+  // Layer 3: Input safety filter (pre-LLM)
+  // ---------------------------------------------------------------------------
+  // Runs after the user message is persisted so the conversation thread shows
+  // what was attempted (status='flagged'), but before any LLM/image call so
+  // no offending content reaches a generator. Both the image path and the
+  // text path are gated by this — we short-circuit with a refusal stream.
+  const safetyVerdict = scoreUserInput(message, { locale: convLanguage })
+  if (!safetyVerdict.ok) {
+    const convCharacterIdForIncident =
+      typeof conversation.characterId === 'object' && conversation.characterId !== null
+        ? (conversation.characterId as { id: string | number }).id
+        : conversation.characterId
+
+    log.warn({
+      msg: 'chat.safety.input_blocked',
+      conversationId,
+      severity: safetyVerdict.severity,
+      category: safetyVerdict.category,
+      matchedCount: safetyVerdict.matched.length,
+    })
+
+    // Mark the user turn so the UI can render it as blocked and so future
+    // history queries can skip it before sending to the LLM.
+    await payload.update({
+      collection: 'messages',
+      id: userMessageId,
+      data: {
+        status: 'flagged',
+        safetyFlags: {
+          layer: 'input',
+          severity: safetyVerdict.severity,
+          category: safetyVerdict.category,
+          matched: safetyVerdict.matched,
+          sexualContext: safetyVerdict.sexualContext,
+          ...(safetyVerdict.adultnessScore !== undefined
+            ? { adultnessScore: safetyVerdict.adultnessScore }
+            : {}),
+        },
+      },
+    }).catch((err: unknown) => {
+      log.error({ msg: 'chat.safety.flag_user_msg_failed', err: err instanceof Error ? err.message : err })
+    })
+
+    const refusalText = getInputRefusalMessage(convLanguage, safetyVerdict.severity)
+
+    // Save the refusal with status='flagged' as well — same semantics: the
+    // history fetcher uses `status != 'flagged'` to exclude both sides of a
+    // safety-blocked exchange from the LLM context. The UI loader doesn't
+    // filter on status, so the user still sees the refusal in their thread.
+    const refusalMsg = await payload.create({
+      collection: 'messages',
+      data: {
+        conversationId: conversationId,
+        role: 'assistant',
+        type: 'text',
+        status: 'flagged',
+        content: refusalText,
+        safetyFlags: {
+          layer: 'input',
+          refusal: true,
+          severity: safetyVerdict.severity,
+          category: safetyVerdict.category,
+        },
+        completedAt: new Date().toISOString(),
+      },
+    })
+    const refusalMsgId = String(refusalMsg.id)
+
+    // Best-effort incident log. Same shape that Layers 5/6/7 will reuse.
+    await logSafetyIncident({
+      payload,
+      userId: user.id,
+      conversationId,
+      messageId: userMessageId,
+      ...(convCharacterIdForIncident !== undefined && convCharacterIdForIncident !== null
+        ? { characterId: convCharacterIdForIncident as string | number }
+        : {}),
+      layer: 'input',
+      severity: safetyVerdict.severity,
+      category: safetyVerdict.category,
+      matched: safetyVerdict.matched,
+      inputSnippet: message,
+      locale: convLanguage,
+      ...(req.headers.get('x-forwarded-for')
+        ? { ipAddress: req.headers.get('x-forwarded-for')!.split(',')[0]!.trim() }
+        : {}),
+      ...(req.headers.get('user-agent')
+        ? { userAgent: req.headers.get('user-agent')! }
+        : {}),
+      metadata: {
+        sexualContext: safetyVerdict.sexualContext,
+        ...(safetyVerdict.adultnessScore !== undefined
+          ? { adultnessScore: safetyVerdict.adultnessScore }
+          : {}),
+      },
+    })
+
+    // Update conversation aggregates so the timeline reflects the exchange,
+    // matching the entitlement-denied / insufficient-tokens refusal flows.
+    {
+      const cnt = (conversation.messageCount as number | null) ?? 0
+      const days = (conversation.daysActiveCount as number | null) ?? 0
+      const newDays = days + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
+      const newCnt = cnt + 2
+      const ts = new Date().toISOString()
+      await payload.update({
+        collection: 'conversations',
+        id: conversationId,
+        data: {
+          messageCount: newCnt,
+          daysActiveCount: newDays,
+          lastMessageAt: ts,
+          lastMessagePreview: refusalText.slice(0, 120),
+          relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
+        },
+      }).catch(() => {})
+    }
+
+    track({
+      userId: String(user.id),
+      event: 'chat.safety_blocked',
+      properties: {
+        layer: 'input',
+        severity: safetyVerdict.severity,
+        category: safetyVerdict.category,
+      },
+    })
+
+    const stream = new ReadableStream({
+      start(controller) {
+        const enc = (s: string) => new TextEncoder().encode(s)
+        const send = (event: string, data: unknown) => {
+          controller.enqueue(enc(sseEvent(event, data)))
+        }
+        if (isNewConversation) send('conversation', { conversationId })
+        send('message', { messageId: refusalMsgId })
+        send('delta', { text: refusalText })
+        send('done', { finishReason: 'safety_blocked' })
+        controller.close()
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    })
+  }
+
   const isImageRequest = detectImageIntent(message, convLanguage)
 
   // ---------------------------------------------------------------------------
@@ -487,6 +647,11 @@ export async function POST(req: NextRequest) {
   // TEXT path (unchanged)
   // ---------------------------------------------------------------------------
 
+  // Exclude flagged turns (Layer 3 input refusals — both the user message
+  // and the matching assistant refusal) from the LLM context. We never want
+  // the offending text replayed, and dropping the refusal too keeps the LLM
+  // unaware of the policy exchange (otherwise it tends to apologize on the
+  // next reply, which derails the persona).
   const historyResult = await payload.find({
     collection: 'messages',
     where: {
@@ -494,6 +659,7 @@ export async function POST(req: NextRequest) {
         { conversationId: { equals: conversationId } },
         { role: { in: ['user', 'assistant'] } },
         { deletedAt: { exists: false } },
+        { status: { not_equals: 'flagged' } },
       ],
     },
     sort: 'createdAt',
