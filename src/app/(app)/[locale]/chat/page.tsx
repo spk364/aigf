@@ -37,7 +37,7 @@ function CharacterCover({ name, photoUrl }: { name: string; photoUrl?: string })
   if (!photoUrl) {
     return (
       <div
-        className="mb-4 flex h-40 w-full items-center justify-center rounded-xl text-4xl font-bold text-[var(--color-bg)]"
+        className="mb-4 flex aspect-[3/4] w-full items-center justify-center rounded-xl text-4xl font-bold text-[var(--color-bg)]"
         style={{
           background:
             'linear-gradient(135deg, var(--color-accent-strong), var(--color-accent))',
@@ -51,7 +51,12 @@ function CharacterCover({ name, photoUrl }: { name: string; photoUrl?: string })
   return (
     <div className="relative mb-4 aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={photoUrl} alt={name} loading="lazy" className="h-full w-full object-cover" />
+      <img
+        src={photoUrl}
+        alt={name}
+        loading="lazy"
+        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+      />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/0 to-black/0" />
     </div>
   )
@@ -86,6 +91,7 @@ export default async function ChatPage({ params }: Props) {
     limit: 20,
   })
 
+  // Mobile-only: render the conversations list inline (no sidebar on mobile).
   const conversationsResult = await payload.find({
     collection: 'conversations',
     where: {
@@ -99,8 +105,6 @@ export default async function ChatPage({ params }: Props) {
     limit: 20,
   })
 
-  // Batch-load primary images for the conversation list (snapshot has only the
-  // name; we look up the underlying character by id to get its photo).
   const conversationCharacterIds = new Set<string>()
   for (const conv of conversationsResult.docs) {
     const cid = conv.characterId
@@ -126,18 +130,21 @@ export default async function ChatPage({ params }: Props) {
         if (url) conversationCharacterPhotos.set(String(c.id), url)
       }
     } catch {
-      // photos are non-critical — fall back to initials
+      // photos non-critical
     }
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-bg)] px-4 py-10 text-[var(--color-text)]">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-3xl font-bold text-[var(--color-text)]">{t('title')}</h1>
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3 animate-fade-in-up">
+          <div>
+            <h1 className="text-2xl font-bold text-[var(--color-text)] sm:text-3xl">{t('title')}</h1>
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">{t('startNewChat')}</p>
+          </div>
           <Link
             href={`/${locale}/builder`}
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--color-accent-strong)] px-4 py-2.5 text-sm font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
+            className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-[var(--color-accent-strong)] px-4 py-2.5 text-sm font-semibold text-[var(--color-bg)] transition-all duration-200 hover:scale-[1.02] hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -156,14 +163,14 @@ export default async function ChatPage({ params }: Props) {
           </Link>
         </div>
 
-        {/* Your conversations */}
+        {/* Mobile-only: conversations list. Desktop has the sidebar instead. */}
         {conversationsResult.docs.length > 0 && (
-          <section className="mb-10">
+          <section className="mb-10 md:hidden">
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
               {t('yourConversations')}
             </h2>
             <div className="flex flex-col gap-2">
-              {conversationsResult.docs.map((conv) => {
+              {conversationsResult.docs.map((conv, idx) => {
                 const snapshot = conv.characterSnapshot as { name?: string } | null
                 const name = snapshot?.name ?? 'Conversation'
                 const cid = conv.characterId
@@ -178,10 +185,11 @@ export default async function ChatPage({ params }: Props) {
                   <Link
                     key={String(conv.id)}
                     href={`/${locale}/chat/${conv.id}`}
-                    className="flex items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-4 transition-colors hover:border-[var(--color-accent-strong)]/30 hover:bg-[var(--color-surface-2)]"
+                    style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
+                    className="group flex animate-fade-in-up cursor-pointer items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3.5 transition-all duration-200 hover:border-[var(--color-accent-strong)]/40 hover:bg-[var(--color-surface-2)] active:scale-[0.99]"
                   >
                     <CharacterAvatar name={name} photoUrl={photoUrl} />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="font-semibold text-[var(--color-text)]">{name}</div>
                       {conv.lastMessagePreview && (
                         <div className="truncate text-sm text-[var(--color-text-muted)]">
@@ -193,7 +201,7 @@ export default async function ChatPage({ params }: Props) {
                       xmlns="http://www.w3.org/2000/svg"
                       viewBox="0 0 20 20"
                       fill="currentColor"
-                      className="ml-auto h-4 w-4 shrink-0 text-[var(--color-text-muted)]"
+                      className="ml-auto h-4 w-4 shrink-0 text-[var(--color-text-muted)] transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]"
                       aria-hidden
                     >
                       <path
@@ -209,7 +217,6 @@ export default async function ChatPage({ params }: Props) {
           </section>
         )}
 
-        {/* Meet someone new */}
         <section>
           <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
             {t('startNewChat')}
@@ -218,13 +225,14 @@ export default async function ChatPage({ params }: Props) {
             <p className="text-sm text-[var(--color-text-muted)]">{t('noCharactersYet')}</p>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {charactersResult.docs.map((char) => {
+              {charactersResult.docs.map((char, idx) => {
                 const photoUrl = getPrimaryPhotoUrl(char)
                 return (
                   <Link
                     key={String(char.id)}
                     href={`/${locale}/chat/new?characterId=${char.id}`}
-                    className="group flex flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition-all hover:border-[var(--color-accent-strong)]/40 hover:bg-[var(--color-surface-2)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[var(--color-accent-strong)]/5"
+                    style={{ animationDelay: `${Math.min(idx * 35, 280)}ms` }}
+                    className="group flex animate-fade-in-up cursor-pointer flex-col rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:bg-[var(--color-surface-2)] hover:shadow-xl hover:shadow-[var(--color-accent-strong)]/10"
                   >
                     <CharacterCover name={char.name} photoUrl={photoUrl} />
 
@@ -246,6 +254,6 @@ export default async function ChatPage({ params }: Props) {
           )}
         </section>
       </div>
-    </main>
+    </div>
   )
 }

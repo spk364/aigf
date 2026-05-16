@@ -71,6 +71,17 @@
     "imagePending": "Создаю фото...",
     "imageQueuePosition": "Позиция в очереди: {n}",
     "imageFailed": "Не удалось создать фото. Попробуй ещё раз.",
+    "noConversationsYet": "Чатов пока нет — выбери, с кем начать.",
+    "quickActions": {
+      "askPhoto": "Пришли фото",
+      "askVoice": "Озвучить ответ",
+      "askVideo": "Снять видео",
+      "photoCost": "{n} токенов",
+      "voiceCost": "{n} токенов",
+      "videoCost": "{n} токенов",
+      "tokensRemaining": "Осталось {n} токенов",
+      "videoSoon": "Скоро"
+    },
     "image": {
       "upgradeRequired": "Фотографии доступны только на Premium-плане. {link}, чтобы открыть.",
       "tokensRequired": "У тебя закончились токены в этом месяце. {link}, чтобы пополнить.",

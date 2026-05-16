@@ -71,6 +71,17 @@
     "imagePending": "Generating image...",
     "imageQueuePosition": "Queue position: {n}",
     "imageFailed": "Couldn't generate the image. Try again.",
+    "noConversationsYet": "No conversations yet — pick someone to start chatting.",
+    "quickActions": {
+      "askPhoto": "Send me a photo",
+      "askVoice": "Hear last reply",
+      "askVideo": "Make a video",
+      "photoCost": "{n} tokens",
+      "voiceCost": "{n} tokens",
+      "videoCost": "{n} tokens",
+      "tokensRemaining": "{n} tokens left",
+      "videoSoon": "Soon"
+    },
     "image": {
       "upgradeRequired": "Photos are a Premium feature. {link} to unlock.",
       "tokensRequired": "You're out of tokens this month. {link} to top up.",

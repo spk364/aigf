@@ -135,8 +135,14 @@ export function CharactersGrid({ locale, characters }: Props) {
         </div>
       ) : (
         <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-          {filtered.map((c) => (
-            <li key={c.id}>
+          {filtered.map((c, i) => (
+            <li
+              key={c.id}
+              className="animate-fade-in-up"
+              // Cap the stagger so re-filtering doesn't feel sluggish on
+              // large result sets.
+              style={{ animationDelay: `${Math.min(i, 9) * 35}ms` }}
+            >
               <CharacterTileCard character={c} locale={locale} />
             </li>
           ))}
@@ -146,10 +152,11 @@ export function CharactersGrid({ locale, characters }: Props) {
   )
 }
 
-// Per-card subcomponent so each card owns its own video ref. Video starts
-// auto-playing when the card scrolls into view (IntersectionObserver in
-// useAutoplayInView). Cards without a videoUrl render only the photo
-// and behave as before.
+// Per-card subcomponent so each card owns its own video ref. Default
+// hover mode in CharacterCardMedia means the preview clip stays paused
+// until the user hovers the card (or focuses it). Touch devices fall
+// back to autoplay-in-view inside the media component. Cards without a
+// videoUrl render only the photo and behave as before.
 function CharacterTileCard({
   character,
   locale,
@@ -168,7 +175,7 @@ function CharacterTileCard({
         photoUrl={c.photoUrl}
         videoUrl={c.videoUrl}
         alt={c.name}
-        className="absolute inset-0 h-full w-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-[600ms] motion-safe:ease-out motion-safe:group-hover:scale-[1.04]"
       />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
       <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
