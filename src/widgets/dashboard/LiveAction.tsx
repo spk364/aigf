@@ -52,8 +52,8 @@ function LivePulse() {
 // Per-card subcomponent so each video gets its own ref. Inlined rather than
 // shared with PersonaCard / CharactersGrid because the surrounding card
 // chrome (teaser line, scrollable row sizing, "Play with me" CTA) is
-// LiveAction-specific. Video starts on intersection — the still photo
-// only shows until the first frame buffers.
+// LiveAction-specific. Video plays whenever the card is in view and
+// ping-pongs forward/backward via mode="autoplay" so there's no loop seam.
 function LiveActionCard({
   character,
   locale,
@@ -74,7 +74,8 @@ function LiveActionCard({
         photoUrl={c.photoUrl}
         videoUrl={c.videoUrl}
         alt={c.name}
-        className="absolute inset-0 h-full w-full object-cover"
+        mode="autoplay"
+        className="absolute inset-0 h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-[600ms] motion-safe:ease-out motion-safe:group-hover:scale-[1.04]"
       />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
 
@@ -125,13 +126,19 @@ export function LiveAction({ locale, characters }: Props) {
       </div>
 
       <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 sm:gap-4 [scrollbar-width:thin]">
-        {characters.map((c) => (
-          <LiveActionCard
+        {characters.map((c, i) => (
+          <div
             key={c.id}
-            character={c}
-            locale={locale}
-            teaser={pickTeaser(c.archetypeRaw, c.id)}
-          />
+            className="flex shrink-0 animate-fade-in-up"
+            // Cap the stagger so the last visible card doesn't lag behind.
+            style={{ animationDelay: `${Math.min(i, 7) * 60}ms` }}
+          >
+            <LiveActionCard
+              character={c}
+              locale={locale}
+              teaser={pickTeaser(c.archetypeRaw, c.id)}
+            />
+          </div>
         ))}
       </div>
     </section>

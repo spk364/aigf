@@ -71,7 +71,7 @@ export function PersonaCard({ character, href }: Props) {
           photoUrl={photoUrl}
           videoUrl={videoUrl}
           alt={name}
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-[600ms] motion-safe:ease-out motion-safe:group-hover:scale-[1.04]"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/0 to-black/0" />
 

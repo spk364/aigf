@@ -41,6 +41,14 @@ export type ChatStrings = {
   imagePending: string
   imageQueuePosition: string
   imageFailed: string
+  askPhoto: string
+  askVoice: string
+  askVideo: string
+  photoCost: string
+  voiceCost: string
+  videoCost: string
+  tokensRemaining: string
+  videoSoon: string
 }
 
 type Props = {
@@ -69,7 +77,24 @@ const defaultStrings: ChatStrings = {
   imagePending: 'Generating image...',
   imageQueuePosition: 'Queue position: {n}',
   imageFailed: "Couldn't generate the image. Try again.",
+  askPhoto: 'Send me a photo',
+  askVoice: 'Voice message',
+  askVideo: 'Make a video',
+  photoCost: '{n} tokens',
+  voiceCost: '{n} tokens',
+  videoCost: '{n} tokens',
+  tokensRemaining: '{n} tokens',
+  videoSoon: 'Soon',
 }
+
+// Per-action token costs — single source of truth lives in
+// `src/features/billing/cost.ts`. Mirrored here so the UI can preview a
+// price without round-tripping to the server. Keep in sync.
+const TOKEN_COSTS = {
+  photo: 2,
+  voice: 2,
+  video: 20,
+} as const
 
 function parseSseChunk(raw: string): Array<{ event: string; data: string }> {
   const events: Array<{ event: string; data: string }> = []
@@ -230,6 +255,64 @@ function IconStop() {
   )
 }
 
+function IconCoin() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="h-3 w-3"
+      aria-hidden
+    >
+      <path d="M10 1.5a8.5 8.5 0 100 17 8.5 8.5 0 000-17zm.9 4.6v.7c1 .1 1.7.6 1.9 1.4l-1.3.3c-.1-.4-.5-.6-1-.6-.6 0-.9.2-.9.6 0 .3.2.5.8.6l.9.2c1.4.3 1.9.8 1.9 1.7 0 1-.7 1.6-1.7 1.8v.7H10v-.7c-1.1-.1-1.8-.6-2-1.6l1.3-.3c.1.5.5.7 1.1.7s.9-.2.9-.6c0-.3-.2-.5-.8-.6l-.9-.2c-1.3-.3-1.8-.8-1.8-1.7 0-1 .7-1.6 1.7-1.8v-.7h.5z" />
+    </svg>
+  )
+}
+function IconMic() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.8}
+      stroke="currentColor"
+      className="h-3.5 w-3.5"
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5M12 18.75a6 6 0 01-6-6v-1.5m6 7.5v3m-3.75-3a3.75 3.75 0 117.5 0V12a3.75 3.75 0 01-7.5 0V8.25z" />
+    </svg>
+  )
+}
+function IconVideo() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.8}
+      stroke="currentColor"
+      className="h-3.5 w-3.5"
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25V7.5A2.25 2.25 0 0013.5 5.25h-9A2.25 2.25 0 002.25 7.5v9A2.25 2.25 0 004.5 18.75z" />
+    </svg>
+  )
+}
+function IconPhoto() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.8}
+      stroke="currentColor"
+      className="h-3.5 w-3.5"
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+    </svg>
+  )
+}
 function IconLoader() {
   return (
     <svg
@@ -332,6 +415,25 @@ export function ChatInterface({
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Live token balance for cost previews next to action buttons. Refetched
+  // after any action that may have spent tokens (image, TTS) and once on
+  // mount. `null` means "not loaded" — UI hides the chip until we know.
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null)
+  const refreshBalance = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tokens/balance', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = (await res.json()) as { balance: number }
+      setTokenBalance(typeof data.balance === 'number' ? data.balance : null)
+    } catch {
+      // network blip — leave previous balance
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshBalance()
+  }, [refreshBalance])
+
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -409,6 +511,7 @@ export function ChatInterface({
                     : m,
                 ),
               )
+              void refreshBalance()
               return
             }
             if (data.phase === 'failed') {
@@ -449,7 +552,7 @@ export function ChatInterface({
     return () => {
       for (const cancel of cancellers) cancel()
     }
-  }, [messages])
+  }, [messages, refreshBalance])
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -743,13 +846,14 @@ export function ChatInterface({
           prev.map((m) => (m.id === id ? { ...m, audioUrl } : m)),
         )
         playUrl(id, audioUrl)
+        void refreshBalance()
       } catch {
         // Surface failure quietly — chat is still readable; the user can retry.
       } finally {
         setPendingTtsId((cur) => (cur === id ? null : cur))
       }
     },
-    [messages, playingId, pendingTtsId, playUrl, stopPlayback],
+    [messages, playingId, pendingTtsId, playUrl, stopPlayback, refreshBalance],
   )
 
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant' && m.type !== 'image')
@@ -760,17 +864,25 @@ export function ChatInterface({
   // route to common opener intents we know the chat handles well — image
   // requests trigger the image-intent detector in /api/chat.
   const hasUserSent = messages.some((m) => m.role === 'user')
-  const quickChips =
-    !hasUserSent
-      ? [
-          { label: '👋 Say hi', text: 'Hey, how are you?' },
-          { label: '📷 Photo', text: 'Send me a selfie' },
-          { label: '🍷 Plans', text: 'What are you up to tonight?' },
-        ]
-      : []
+  const welcomeChips = !hasUserSent
+    ? [
+        { label: '👋 Say hi', text: 'Hey, how are you?' },
+        { label: '🍷 Plans', text: 'What are you up to tonight?' },
+      ]
+    : []
+
+  const hasEnoughTokens = (cost: number) => tokenBalance === null || tokenBalance >= cost
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-[var(--color-bg)]">
+    <div
+      className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]"
+      style={{
+        // safe-area padding for iOS notch / home indicator. Tailwind v4 lacks
+        // a built-in arbitrary env() util, so it lives inline.
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
       {/* Backdrop: blurred character photo bleeds through the entire chat
           at very low opacity for an immersive, in-her-room feel. */}
       {characterPhotoUrl && (
@@ -785,12 +897,14 @@ export function ChatInterface({
         </div>
       )}
 
-      {/* Header */}
-      <header className="relative z-10 flex items-center gap-3 border-b border-white/5 bg-[var(--color-bg)]/70 px-3 py-3 backdrop-blur-md sm:px-5 sm:py-3.5">
+      {/* Header — sticky so it stays pinned through scrolling. min-h-[3.25rem]
+          guards against the header collapsing on tiny mobile viewports when
+          the URL bar pushes content. */}
+      <header className="relative z-20 flex min-h-[3.25rem] items-center gap-2 border-b border-white/5 bg-[var(--color-bg)]/80 px-2 py-2 backdrop-blur-md sm:gap-3 sm:px-5 sm:py-3">
         <Link
           href={`/${locale}/chat`}
           aria-label={s.backToChats}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-white/5 hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+          className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
         >
           <IconChevronLeft />
         </Link>
@@ -803,27 +917,39 @@ export function ChatInterface({
           />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold leading-tight text-[var(--color-text)]">
+          <p className="truncate text-sm font-semibold leading-tight text-[var(--color-text)] sm:text-base">
             {characterName}
           </p>
           <p className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
             {showTyping ? (
-              <>
-                <span className="font-medium text-[var(--color-accent)]">{s.typing}</span>
-              </>
+              <span className="font-medium text-[var(--color-accent)] animate-fade-in">
+                {s.typing}
+              </span>
             ) : (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Online
+                <span>Online</span>
               </>
             )}
           </p>
         </div>
         <nav className="flex shrink-0 items-center gap-1">
+          {/* Token balance pill — visible only after first balance fetch.
+              Doubles as a CTA to /tokens for top-up. */}
+          {tokenBalance !== null && (
+            <Link
+              href={`/${locale}/tokens`}
+              title={s.tokensRemaining.replace('{n}', String(tokenBalance))}
+              className="hidden cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-[var(--color-surface)]/60 px-2.5 py-1.5 text-xs font-semibold text-[var(--color-text)] transition-all duration-200 hover:scale-105 hover:border-[var(--color-accent-strong)]/40 hover:bg-[var(--color-surface-2)] sm:inline-flex"
+            >
+              <span className="text-[var(--color-accent)]"><IconCoin /></span>
+              <span>{tokenBalance}</span>
+            </Link>
+          )}
           <Link
             href={`/${locale}/dashboard`}
             aria-label={s.dashboard}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-white/5 hover:text-[var(--color-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+            className="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)] sm:flex"
             title={s.dashboard}
           >
             <IconHome />
@@ -846,7 +972,7 @@ export function ChatInterface({
             return (
               <div
                 key={msg.id}
-                className={`flex items-end gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'} ${isGrouped ? 'mt-0.5' : 'mt-1.5'}`}
+                className={`flex items-end gap-2 animate-bubble-in ${isUser ? 'flex-row-reverse' : 'flex-row'} ${isGrouped ? 'mt-0.5' : 'mt-1.5'}`}
               >
                 {/* Avatar slot for assistant — empty placeholder keeps the
                     bubble column aligned across grouped messages. */}
@@ -871,7 +997,7 @@ export function ChatInterface({
                       width={msg.imageWidth}
                       height={msg.imageHeight}
                       loading="eager"
-                      className="h-auto w-full rounded-3xl object-cover shadow-lg ring-1 ring-white/5"
+                      className="h-auto w-full cursor-zoom-in rounded-3xl object-cover shadow-lg ring-1 ring-white/5 transition-transform duration-300 hover:scale-[1.01] active:scale-[0.99]"
                     />
                   </div>
                 ) : msg.type === 'image' && msg.imageStatus === 'pending' ? (
@@ -905,25 +1031,33 @@ export function ChatInterface({
                     <span className="whitespace-pre-wrap">{msg.content}</span>
 
                     {!isUser && (
-                      <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="mt-1.5 flex items-center gap-1 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
                         {!msg.id.startsWith('local-') && (
                           <button
                             onClick={() => handleToggleTts(msg.id)}
                             disabled={pendingTtsId !== null && pendingTtsId !== msg.id}
                             aria-label={playingId === msg.id ? 'Stop' : 'Play voice'}
-                            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-white/10 hover:text-[var(--color-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                            title={playingId === msg.id ? 'Stop' : s.voiceCost.replace('{n}', String(TOKEN_COSTS.voice))}
+                            className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {pendingTtsId === msg.id
                               ? <IconLoader />
                               : playingId === msg.id
                                 ? <IconStop />
                                 : <IconSpeaker />}
+                            {/* Show cost only if we never played + haven't cached the clip yet */}
+                            {!msg.audioUrl && pendingTtsId !== msg.id && playingId !== msg.id && (
+                              <span className="inline-flex items-center gap-0.5 text-[var(--color-text-muted)]/80">
+                                <IconCoin />
+                                {TOKEN_COSTS.voice}
+                              </span>
+                            )}
                           </button>
                         )}
                         <button
                           onClick={() => handleCopy(msg.id, msg.content)}
                           aria-label={copiedId === msg.id ? s.copied : s.copy}
-                          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-white/10 hover:text-[var(--color-text)]"
+                          className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95"
                         >
                           <IconClipboard />
                           {copiedId === msg.id ? s.copied : ''}
@@ -932,7 +1066,7 @@ export function ChatInterface({
                           <button
                             onClick={handleRegenerate}
                             aria-label={s.regenerate}
-                            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-colors hover:bg-white/10 hover:text-[var(--color-text)]"
+                            className="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95"
                           >
                             <IconArrowPath />
                           </button>
@@ -1008,31 +1142,62 @@ export function ChatInterface({
         </div>
       )}
 
-      {/* Quick action chips above the composer when the user hasn't spoken */}
-      {quickChips.length > 0 && (
-        <div className="relative z-10 mx-auto w-full max-w-3xl px-4 pb-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {quickChips.map((chip) => (
-              <button
-                key={chip.label}
-                type="button"
-                onClick={() => sendMessage(chip.text)}
-                disabled={isStreaming}
-                className="rounded-full border border-white/10 bg-[var(--color-surface-2)]/70 px-3 py-1.5 text-xs font-medium text-[var(--color-text)] backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/40 hover:bg-[var(--color-surface)] disabled:opacity-50"
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
+      {/* Token-cost action chips — always visible above composer (collapses on
+          mobile to scroll horizontally). Shows the user exactly what each
+          paid action costs before they spend. */}
+      <div className="relative z-10 mx-auto w-full max-w-3xl px-3 pb-1 sm:px-4">
+        <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {welcomeChips.map((chip) => (
+            <button
+              key={chip.label}
+              type="button"
+              onClick={() => sendMessage(chip.text)}
+              disabled={isStreaming}
+              className="shrink-0 cursor-pointer rounded-full border border-white/10 bg-[var(--color-surface-2)]/70 px-3 py-1.5 text-xs font-medium text-[var(--color-text)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/40 hover:bg-[var(--color-surface)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {chip.label}
+            </button>
+          ))}
+          {/* Photo: triggers image-intent in /api/chat → fal.ai generation */}
+          <TokenCostChip
+            icon={<IconPhoto />}
+            label={s.askPhoto}
+            cost={TOKEN_COSTS.photo}
+            disabled={isStreaming || !hasEnoughTokens(TOKEN_COSTS.photo)}
+            onClick={() => sendMessage('Send me a selfie')}
+          />
+          {/* Voice: this just hints the user to use the per-message TTS button.
+              We highlight that voice playback costs tokens here so users
+              expect the charge before clicking the speaker on a bubble. */}
+          <TokenCostChip
+            icon={<IconMic />}
+            label={s.askVoice}
+            cost={TOKEN_COSTS.voice}
+            disabled={isStreaming || !lastAssistantMsg || !hasEnoughTokens(TOKEN_COSTS.voice)}
+            onClick={() => {
+              // Play the latest assistant message (or noop if none yet)
+              if (lastAssistantMsg) handleToggleTts(lastAssistantMsg.id)
+            }}
+          />
+          {/* Video: gated on Premium+/token availability. We don't have a
+              video pipeline shipped yet — clicking shows the "soon" badge
+              path via title; no-op send keeps users from spending. */}
+          <TokenCostChip
+            icon={<IconVideo />}
+            label={s.askVideo}
+            cost={TOKEN_COSTS.video}
+            disabled
+            badge={s.videoSoon}
+          />
         </div>
-      )}
+      </div>
 
       {/* Composer — pill-shaped sticky input */}
       <form
         onSubmit={handleSubmit}
-        className="relative z-10 px-3 pb-4 pt-2 sm:px-4"
+        className="relative z-10 px-3 pb-3 pt-2 sm:px-4 sm:pb-4"
       >
-        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-full border border-white/10 bg-[var(--color-surface)]/95 p-1.5 shadow-lg shadow-black/20 backdrop-blur-md focus-within:border-[var(--color-accent-strong)]/40 focus-within:ring-2 focus-within:ring-[var(--color-accent-strong)]/20">
+        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-full border border-white/10 bg-[var(--color-surface)]/95 p-1.5 shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200 focus-within:border-[var(--color-accent-strong)]/40 focus-within:ring-2 focus-within:ring-[var(--color-accent-strong)]/20">
           <textarea
             ref={textareaRef}
             value={input}
@@ -1054,12 +1219,54 @@ export function ChatInterface({
             type="submit"
             disabled={isStreaming || !input.trim()}
             aria-label={s.send}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent-strong)] text-[var(--color-bg)] transition-all hover:scale-105 hover:bg-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)] disabled:scale-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="group flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[var(--color-accent-strong)] text-[var(--color-bg)] transition-all duration-200 hover:scale-110 hover:bg-[var(--color-accent)] hover:shadow-lg hover:shadow-[var(--color-accent-strong)]/40 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)] disabled:scale-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
           >
-            <IconArrowUp />
+            <span className="transition-transform duration-200 group-hover:-translate-y-px">
+              <IconArrowUp />
+            </span>
           </button>
         </div>
       </form>
     </div>
+  )
+}
+
+function TokenCostChip({
+  icon,
+  label,
+  cost,
+  onClick,
+  disabled,
+  badge,
+}: {
+  icon: React.ReactNode
+  label: string
+  cost: number
+  onClick?: () => void
+  disabled?: boolean
+  badge?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={`${label} — ${cost} tokens`}
+      className="group relative inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-white/10 bg-[var(--color-surface-2)]/70 px-3 py-1.5 text-xs font-medium text-[var(--color-text)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/40 hover:bg-[var(--color-surface)] hover:shadow-md hover:shadow-[var(--color-accent-strong)]/10 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:bg-[var(--color-surface-2)]/70"
+    >
+      <span className="text-[var(--color-text-muted)] transition-colors duration-200 group-hover:text-[var(--color-accent)]">
+        {icon}
+      </span>
+      <span>{label}</span>
+      <span className="inline-flex items-center gap-0.5 rounded-full bg-[var(--color-accent-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--color-accent)]">
+        <IconCoin />
+        {cost}
+      </span>
+      {badge && (
+        <span className="ml-0.5 rounded-full border border-white/10 bg-[var(--color-bg)]/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
+          {badge}
+        </span>
+      )}
+    </button>
   )
 }

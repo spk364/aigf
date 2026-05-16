@@ -16,11 +16,12 @@ export function StoriesRow({ locale, characters }: Props) {
   return (
     <section aria-label="Stories">
       <div className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-2 sm:gap-5 [scrollbar-width:thin]">
-        {characters.map((c) => (
+        {characters.map((c, i) => (
           <Link
             key={c.id}
             href={`/${locale}/chat/new?characterId=${c.id}`}
-            className="group flex w-[68px] shrink-0 flex-col items-center gap-1.5 sm:w-[76px]"
+            className="group flex w-[68px] shrink-0 animate-fade-in-up flex-col items-center gap-1.5 sm:w-[76px]"
+            style={{ animationDelay: `${Math.min(i, 11) * 40}ms` }}
           >
             <span
               className="relative grid h-[64px] w-[64px] place-items-center rounded-full p-[2px] sm:h-[72px] sm:w-[72px]"

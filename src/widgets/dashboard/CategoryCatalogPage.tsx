@@ -76,11 +76,23 @@ export async function CategoryCatalogPage({ locale, category }: Props) {
 
       <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
         <div className="mx-auto flex max-w-6xl flex-col gap-8">
-          <HeroBanner locale={locale} banners={banners} coverImageUrl={heroCover} />
+          <div className="animate-fade-in-up">
+            <HeroBanner locale={locale} banners={banners} coverImageUrl={heroCover} />
+          </div>
 
-          {stories.length > 0 && <StoriesRow locale={locale} characters={stories} />}
-          {live.length > 0 && <LiveAction locale={locale} characters={live} />}
-          <CharactersGrid locale={locale} characters={characters} />
+          {stories.length > 0 && (
+            <div className="animate-fade-in-up" style={{ animationDelay: '80ms' }}>
+              <StoriesRow locale={locale} characters={stories} />
+            </div>
+          )}
+          {live.length > 0 && (
+            <div className="animate-fade-in-up" style={{ animationDelay: '140ms' }}>
+              <LiveAction locale={locale} characters={live} />
+            </div>
+          )}
+          <div className="animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+            <CharactersGrid locale={locale} characters={characters} />
+          </div>
         </div>
       </div>
     </DashboardShell>

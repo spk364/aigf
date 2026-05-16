@@ -142,31 +142,37 @@ export default async function ConversationPage({ params }: Props) {
   })
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--color-bg)]">
-      <ChatInterface
-        initialConversationId={conversationId}
-        initialMessages={initialMessages}
-        locale={locale}
-        characterName={snapshot?.name ?? 'Anna'}
-        characterPhotoUrl={characterPhotoUrl}
-        strings={{
-          typing: t('typing'),
-          regenerate: t('regenerate'),
-          copy: t('copy'),
-          copied: 'Copied',
-          inputPlaceholder: t('inputPlaceholder'),
-          send: t('send'),
-          errorGeneric: t('errorGeneric'),
-          errorQuota: t('errorQuota'),
-          upgradeCta: t('upgradeCta'),
-          backToChats: t('backToChats'),
-          backToHome: t('backToHome'),
-          dashboard: t('dashboard'),
-          imagePending: t('imagePending'),
-          imageQueuePosition: t('imageQueuePosition'),
-          imageFailed: t('imageFailed'),
-        }}
-      />
-    </div>
+    <ChatInterface
+      initialConversationId={conversationId}
+      initialMessages={initialMessages}
+      locale={locale}
+      characterName={snapshot?.name ?? 'Anna'}
+      characterPhotoUrl={characterPhotoUrl}
+      strings={{
+        typing: t('typing'),
+        regenerate: t('regenerate'),
+        copy: t('copy'),
+        copied: 'Copied',
+        inputPlaceholder: t('inputPlaceholder'),
+        send: t('send'),
+        errorGeneric: t('errorGeneric'),
+        errorQuota: t('errorQuota'),
+        upgradeCta: t('upgradeCta'),
+        backToChats: t('backToChats'),
+        backToHome: t('backToHome'),
+        dashboard: t('dashboard'),
+        imagePending: t('imagePending'),
+        imageQueuePosition: t('imageQueuePosition'),
+        imageFailed: t('imageFailed'),
+        askPhoto: t('quickActions.askPhoto'),
+        askVoice: t('quickActions.askVoice'),
+        askVideo: t('quickActions.askVideo'),
+        photoCost: t('quickActions.photoCost'),
+        voiceCost: t('quickActions.voiceCost'),
+        videoCost: t('quickActions.videoCost'),
+        tokensRemaining: t('quickActions.tokensRemaining'),
+        videoSoon: t('quickActions.videoSoon'),
+      }}
+    />
   )
 }

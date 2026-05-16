@@ -58,18 +58,26 @@ export default async function DashboardPage({ params }: Props) {
       <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
         <div className="mx-auto flex max-w-6xl flex-col gap-8">
           {!emailVerified && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-300">
+            <div className="animate-fade-in rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3 text-sm text-amber-300">
               {t('dashboard.emailNotVerified')}
             </div>
           )}
 
-          <HeroBanner locale={locale} coverImageUrl={heroCover} />
+          <div className="animate-fade-in-up">
+            <HeroBanner locale={locale} coverImageUrl={heroCover} />
+          </div>
 
-          <StoriesRow locale={locale} characters={stories} />
+          <div className="animate-fade-in-up" style={{ animationDelay: '80ms' }}>
+            <StoriesRow locale={locale} characters={stories} />
+          </div>
 
-          <LiveAction locale={locale} characters={live} />
+          <div className="animate-fade-in-up" style={{ animationDelay: '140ms' }}>
+            <LiveAction locale={locale} characters={live} />
+          </div>
 
-          <CharactersGrid locale={locale} characters={featured} />
+          <div className="animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+            <CharactersGrid locale={locale} characters={featured} />
+          </div>
         </div>
       </div>
     </DashboardShell>
