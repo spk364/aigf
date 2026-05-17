@@ -413,6 +413,7 @@ export function ChatInterface({
   const conversationIdRef = useRef<string | undefined>(initialConversationId)
   const abortRef = useRef<AbortController | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const messageListRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Live token balance for cost previews next to action buttons. Refetched
@@ -444,7 +445,13 @@ export function ChatInterface({
   }, [])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Scroll the message list directly (not via scrollIntoView). With
+    // scrollIntoView the browser walks up looking for ANY scrollable
+    // ancestor and will scroll the chat root even though it has
+    // overflow-hidden — that shifts the header off-screen by tens of
+    // pixels and made the chat header invisible.
+    const el = messageListRef.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [messages, draft])
 
   // ── Async image generation polling ────────────────────────────────────────
@@ -877,9 +884,9 @@ export function ChatInterface({
     <div
       className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--color-bg)]"
       style={{
-        // safe-area padding for iOS notch / home indicator. Tailwind v4 lacks
-        // a built-in arbitrary env() util, so it lives inline.
-        paddingTop: 'env(safe-area-inset-top)',
+        // iOS home-indicator clearance for the composer only — the notch is
+        // already handled by DashboardShell's top bar above us, so adding
+        // safe-area-inset-top here would just push our header off-screen.
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
@@ -897,10 +904,11 @@ export function ChatInterface({
         </div>
       )}
 
-      {/* Header — sticky so it stays pinned through scrolling. min-h-[3.25rem]
-          guards against the header collapsing on tiny mobile viewports when
-          the URL bar pushes content. */}
-      <header className="relative z-20 flex min-h-[3.25rem] items-center gap-2 border-b border-white/5 bg-[var(--color-bg)]/80 px-2 py-2 backdrop-blur-md sm:gap-3 sm:px-5 sm:py-3">
+      {/* Header — shrink-0 inside the flex-col so it can never be squeezed
+          out by the message list. min-h guards against collapse on small
+          viewports. Solid bg (not /80) so messages don't bleed through if
+          the backdrop-blur fails on older browsers. */}
+      <header className="relative z-20 flex min-h-[3.5rem] shrink-0 items-center gap-2 border-b border-white/5 bg-[var(--color-bg)]/95 px-3 py-2 backdrop-blur-md sm:gap-3 sm:px-5 sm:py-3">
         <Link
           href={`/${locale}/chat`}
           aria-label={s.backToChats}
@@ -958,7 +966,12 @@ export function ChatInterface({
       </header>
 
       {/* Message list */}
-      <div className="relative z-10 flex-1 overflow-y-auto px-3 py-5 sm:px-4" role="log" aria-live="polite">
+      <div
+        ref={messageListRef}
+        className="relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-5 sm:px-4"
+        role="log"
+        aria-live="polite"
+      >
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {messages.map((msg, idx) => {
             const isUser = msg.role === 'user'
@@ -1120,7 +1133,7 @@ export function ChatInterface({
 
       {/* Error banner */}
       {error && (
-        <div className="relative z-10 mx-auto w-full max-w-3xl px-4 pb-2">
+        <div className="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-4 pb-2">
           <div
             role="alert"
             className={
@@ -1145,7 +1158,7 @@ export function ChatInterface({
       {/* Token-cost action chips — always visible above composer (collapses on
           mobile to scroll horizontally). Shows the user exactly what each
           paid action costs before they spend. */}
-      <div className="relative z-10 mx-auto w-full max-w-3xl px-3 pb-1 sm:px-4">
+      <div className="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pb-1 sm:px-4">
         <div className="-mx-1 flex items-center gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {welcomeChips.map((chip) => (
             <button
@@ -1195,7 +1208,7 @@ export function ChatInterface({
       {/* Composer — pill-shaped sticky input */}
       <form
         onSubmit={handleSubmit}
-        className="relative z-10 px-3 pb-3 pt-2 sm:px-4 sm:pb-4"
+        className="relative z-10 shrink-0 px-3 pb-3 pt-2 sm:px-4 sm:pb-4"
       >
         <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-full border border-white/10 bg-[var(--color-surface)]/95 p-1.5 shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200 focus-within:border-[var(--color-accent-strong)]/40 focus-within:ring-2 focus-within:ring-[var(--color-accent-strong)]/20">
           <textarea

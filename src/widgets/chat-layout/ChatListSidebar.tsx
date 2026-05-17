@@ -88,9 +88,9 @@ export async function ChatListSidebar({ locale }: Props) {
   })
 
   return (
-    <div className="flex h-full flex-col bg-[var(--color-surface)]/40 backdrop-blur-sm">
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-4">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
+    <div className="flex h-full w-full min-w-0 flex-col bg-[var(--color-surface)]/40 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-4">
+        <h2 className="truncate text-sm font-bold uppercase tracking-wider text-[var(--color-text-muted)]">
           {t('yourConversations')}
         </h2>
         <Link
@@ -167,8 +167,8 @@ async function EmptyState({ locale }: { locale: string }) {
 
 export function ChatListSidebarSkeleton() {
   return (
-    <div className="flex h-full flex-col bg-[var(--color-surface)]/40 backdrop-blur-sm">
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-4">
+    <div className="flex h-full w-full min-w-0 flex-col bg-[var(--color-surface)]/40 backdrop-blur-sm">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-4">
         <div className="h-3 w-32 animate-pulse rounded bg-[var(--color-surface-2)]" />
         <div className="h-8 w-8 animate-pulse rounded-full bg-[var(--color-surface-2)]" />
       </div>
