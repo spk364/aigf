@@ -26,6 +26,7 @@ import { AuditLogs } from './collections/audit-logs'
 import { CharacterDrafts } from './collections/character-drafts'
 import { MemoryEntries } from './collections/memory-entries'
 import { Banners } from './collections/banners'
+import { PaywallBlocks } from './collections/paywall-blocks'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -152,6 +153,7 @@ export default buildConfig({
     AuditLogs,
     MemoryEntries,
     Banners,
+    PaywallBlocks,
   ],
 
   typescript: {

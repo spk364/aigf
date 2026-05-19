@@ -7,6 +7,10 @@ import { buildCheckoutUrl } from '@/features/billing/ccbill/checkout'
 import { PLANS } from '@/features/billing/plans'
 import type { PlanKey } from '@/features/billing/plans'
 import { track } from '@/shared/analytics/posthog'
+import { ExitIntentModal } from '@/widgets/paywall'
+import { getPaywallTeasers } from '@/widgets/paywall/teasers'
+import { getPaywallBlock } from '@/widgets/paywall/admin-config'
+import { getActiveExitIntentPromo } from '@/features/promotions/exit-intent-promo'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -28,6 +32,35 @@ export default async function UpgradePage({ params }: Props) {
 
   const activeSub = subResult.docs[0] ?? null
   const isBillingConfigured = !!process.env.CCBILL_ACCOUNT_NUM
+
+  // Exit-intent surfaces only make sense for users who don't already pay us.
+  // Fetching teasers + promo unconditionally would still be safe but wastes
+  // a Payload query.
+  const cmsBlock = activeSub ? null : await getPaywallBlock('exit_intent', locale)
+  const promo = activeSub
+    ? null
+    : getActiveExitIntentPromo({
+        percentOff: cmsBlock?.discountPercent,
+        planKey: cmsBlock?.discountPlanKey,
+        code: cmsBlock?.promoCode,
+        expiresInHours: cmsBlock?.expiresInHours,
+      })
+  // Skip fetching teaser characters when an admin pinned a hero image —
+  // the modal will use that single asset and the strip would never render.
+  const teasers = activeSub || cmsBlock?.imageUrl ? [] : await getPaywallTeasers()
+  const exitIntentStrings = activeSub
+    ? null
+    : {
+        badge: cmsBlock?.badge ?? t('exitIntent.badge'),
+        headline: cmsBlock?.headline ?? t('exitIntent.headline'),
+        subheadline: cmsBlock?.subheadline ?? t('exitIntent.subheadline'),
+        expiresIn: cmsBlock?.expiresInLabel ?? t('exitIntent.expiresIn'),
+        pricePerMonth: cmsBlock?.pricePerPeriodLabel ?? t('exitIntent.pricePerMonth'),
+        cta: cmsBlock?.primaryCta ?? t('exitIntent.cta'),
+        decline: cmsBlock?.declineCta ?? t('exitIntent.decline'),
+        countdownFallback: t('exitIntent.countdownFallback'),
+        close: t('exitIntent.close'),
+      }
 
   track({
     userId: String(user.id),
@@ -244,6 +277,21 @@ export default async function UpgradePage({ params }: Props) {
           })}
         </div>
       </div>
+
+      {promo && exitIntentStrings && (
+        <ExitIntentModal
+          upgradeUrl={`/${locale}/upgrade?promo=${promo.code}`}
+          teasers={teasers}
+          heroImageUrl={cmsBlock?.imageUrl}
+          discount={{
+            percentOff: promo.percentOff,
+            originalPriceCents: promo.originalPriceCents,
+            discountedPriceCents: promo.discountedPriceCents,
+            expiresInHours: promo.expiresInHours,
+          }}
+          strings={exitIntentStrings}
+        />
+      )}
     </main>
   )
 }
