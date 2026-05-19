@@ -7,7 +7,9 @@ import { buildCheckoutUrl } from '@/features/billing/ccbill/checkout'
 import { PLANS } from '@/features/billing/plans'
 import type { PlanKey } from '@/features/billing/plans'
 import { track } from '@/shared/analytics/posthog'
-import { ExitIntentModal, getPaywallTeasers, getPaywallBlock } from '@/widgets/paywall'
+import { ExitIntentModal } from '@/widgets/paywall'
+import { getPaywallTeasers } from '@/widgets/paywall/teasers'
+import { getPaywallBlock } from '@/widgets/paywall/admin-config'
 import { getActiveExitIntentPromo } from '@/features/promotions/exit-intent-promo'
 
 type Props = {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { PaywallTeaser } from './teasers'
+import type { PaywallTeaser } from './teasers-types'
 import { Modal, ModalCloseButton } from './Modal'
 import { usePaywallAnalytics } from './usePaywallAnalytics'
 

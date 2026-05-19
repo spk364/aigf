@@ -1,11 +1,9 @@
 import 'server-only'
 import { cache } from 'react'
 import { getFeaturedCharacters } from '@/widgets/landing/featured-data'
+import type { PaywallTeaser } from './teasers-types'
 
-export type PaywallTeaser = {
-  name: string
-  photoUrl: string
-}
+export type { PaywallTeaser } from './teasers-types'
 
 /**
  * Up to 3 published, hand-picked characters used as eye candy in the exit-
