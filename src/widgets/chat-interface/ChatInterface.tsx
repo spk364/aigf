@@ -2,6 +2,13 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChatPaywallModal } from '@/widgets/paywall'
+import type {
+  ChatPaywallPlans,
+  ChatPaywallReason,
+  ChatPaywallStrings,
+  PaywallTeaser,
+} from '@/widgets/paywall'
 
 type Message = {
   id: string
@@ -59,6 +66,15 @@ type Props = {
   characterName?: string
   characterPhotoUrl?: string
   strings?: Partial<ChatStrings>
+  /** All paywall props are optional so existing call-sites keep compiling. */
+  paywall?: {
+    upgradeUrl: string
+    tokensUrl: string
+    plans: ChatPaywallPlans
+    /** Pre-built per-reason copy. Selected at runtime when the modal opens. */
+    stringsByReason: Record<ChatPaywallReason, ChatPaywallStrings>
+    fallbackTeaser?: PaywallTeaser
+  }
 }
 
 const defaultStrings: ChatStrings = {
@@ -391,6 +407,7 @@ export function ChatInterface({
   characterName = 'Anna',
   characterPhotoUrl,
   strings: stringsProp,
+  paywall,
 }: Props) {
   const s = { ...defaultStrings, ...stringsProp }
   const [messages, setMessages] = useState<Message[]>(initialMessages)
@@ -403,6 +420,10 @@ export function ChatInterface({
   // Set when the server returns 429 (free-tier daily cap). Switches the error
   // banner into a paywall variant with a direct upgrade CTA.
   const [showUpgradeCta, setShowUpgradeCta] = useState(false)
+  // Inline paywall modal: opens when the server signals 429 or an out-of-
+  // tokens error mid-stream. The chat-error banner still renders behind it
+  // so a user who closes the modal still has the contextual nudge.
+  const [paywallReason, setPaywallReason] = useState<ChatPaywallReason | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
   // TTS playback state. Only one assistant clip plays at a time; clicking ▶
   // on another message stops the current one. `pendingTtsId` covers the
@@ -596,6 +617,7 @@ export function ChatInterface({
           // paywall instead of the generic error and let the user upgrade.
           setError(s.errorQuota)
           setShowUpgradeCta(true)
+          if (paywall) setPaywallReason('quota')
           setStreamingState('idle')
           return
         }
@@ -657,6 +679,15 @@ export function ChatInterface({
               setCurrentMsgId(null)
             } else if (event === 'done') {
               const finishReason = (JSON.parse(data) as { finishReason?: string }).finishReason
+              // Paywall: free user attempted a Premium-only request, or any
+              // user ran out of tokens mid-stream. Both already wrote an
+              // "Upgrade" message into the conversation; we additionally pop
+              // the inline modal so the CTA is hard to miss.
+              if (paywall && finishReason === 'entitlement_denied') {
+                setPaywallReason('premium_feature')
+              } else if (paywall && finishReason === 'insufficient_tokens') {
+                setPaywallReason('tokens')
+              }
               // image_submitted means the image-pending placeholder is already
               // in the message list — nothing to commit from the text draft.
               const isImagePath = finishReason === 'image_submitted' || finishReason === 'image_generated'
@@ -672,8 +703,11 @@ export function ChatInterface({
               }
               setStreamingState('idle')
             } else if (event === 'error') {
-              const parsed = JSON.parse(data) as { message: string }
+              const parsed = JSON.parse(data) as { message: string; reason?: string }
               setError(parsed.message)
+              if (paywall && parsed.reason === 'insufficient_tokens') {
+                setPaywallReason('tokens')
+              }
               setStreamingState('idle')
             }
           }
@@ -685,7 +719,7 @@ export function ChatInterface({
         setStreamingState('idle')
       }
     },
-    [streamingState, initialCharacterId, locale, s.errorGeneric, s.errorQuota],
+    [streamingState, initialCharacterId, locale, s.errorGeneric, s.errorQuota, paywall],
   )
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1191,6 +1225,22 @@ export function ChatInterface({
           />
         </div>
       </div>
+
+      {paywall && (
+        <ChatPaywallModal
+          open={paywallReason !== null}
+          onClose={() => setPaywallReason(null)}
+          reason={paywallReason ?? 'quota'}
+          locale={locale}
+          upgradeUrl={paywall.upgradeUrl}
+          tokensUrl={paywall.tokensUrl}
+          characterName={characterName}
+          characterPhotoUrl={characterPhotoUrl}
+          fallbackTeaser={paywall.fallbackTeaser}
+          plans={paywall.plans}
+          strings={paywall.stringsByReason[paywallReason ?? 'quota']}
+        />
+      )}
 
       {/* Composer — pill-shaped sticky input */}
       <form

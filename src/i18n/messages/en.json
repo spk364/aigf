@@ -88,6 +88,36 @@
       "linkText": "Upgrade",
       "failed": "Failed to generate image. Please try again.",
       "alt": "Photo from {name}"
+    },
+    "paywall": {
+      "quota": {
+        "badge": "Daily limit reached",
+        "headline": "Want to keep talking with {name}?",
+        "subheadline": "You've used today's free messages. Upgrade now and pick up right where you left off."
+      },
+      "tokens": {
+        "badge": "Out of tokens",
+        "headline": "Just one more thing from {name}",
+        "subheadline": "Photos, voice and videos run on tokens. Top up so {name} can keep showing you more."
+      },
+      "premium_feature": {
+        "badge": "Premium feature",
+        "headline": "{name} saves the spicy stuff for Premium",
+        "subheadline": "Photos, voice, and long-term memory are part of the Premium plan."
+      },
+      "perks": {
+        "unlimited": "Unlimited daily messages",
+        "tokens": "Tokens for photos, voice & video",
+        "smarter": "Smarter, more in-character replies",
+        "cancel": "Cancel anytime"
+      },
+      "yearlySaveLabel": "Save {percent}%",
+      "pricePerMonth": " /mo",
+      "pricePerYear": " /yr",
+      "primaryCta": "Cancel anytime · Secure checkout",
+      "secondaryCta": "Or buy tokens instead",
+      "decline": "Not now",
+      "close": "Close"
     }
   },
   "billing": {
@@ -129,6 +159,17 @@
       "mostPopular": "Most popular",
       "currentPlan": "Current plan:",
       "manage": "Manage subscription"
+    },
+    "exitIntent": {
+      "badge": "Wait — limited offer",
+      "headline": "Don't leave them hanging",
+      "subheadline": "Stay tonight and they're yours — half price on your first month, no strings attached.",
+      "expiresIn": "Offer expires in",
+      "pricePerMonth": "/ first month",
+      "cta": "Claim my discount",
+      "decline": "No thanks, I'll pass",
+      "countdownFallback": "{hours}:{minutes}:{seconds}",
+      "close": "Close"
     },
     "return": {
       "processing": "Processing your payment...",
