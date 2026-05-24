@@ -3,9 +3,11 @@
 -- 7-year retention for CSAM-class). Part of the T0-1 safety pipeline.
 --
 -- Matches Payload's auto-generated table conventions so a subsequent
--- PAYLOAD_PUSH_DB=true boot is a no-op. Relationship fields named with an `Id`
--- suffix (userId, relatedMessageId) map to columns `user_id`, `related_message_id`;
--- `resolvedBy` (no suffix) maps to `resolved_by_id`.
+-- PAYLOAD_PUSH_DB=true boot is a no-op. Payload snake_cases the field name AND
+-- appends `_id` to every relationship column, so `userId` → `user_id_id`,
+-- `relatedMessageId` → `related_message_id_id`, `resolvedBy` → `resolved_by_id`.
+-- (Verified against the existing token_transactions table: user_id_id,
+-- related_message_id_id, admin_user_id_id.)
 --
 -- FKs use ON DELETE SET NULL (not CASCADE) so incident records survive user
 -- deletion for the retention window — users are soft-deleted anyway.
@@ -53,62 +55,62 @@ END $$;
 -- ── content_flags ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS content_flags (
   id          serial PRIMARY KEY,
-  user_id     integer,
+  user_id_id  integer,
   flag_type   enum_content_flags_flag_type NOT NULL,
   context     jsonb,
   updated_at  timestamp(3) with time zone NOT NULL DEFAULT now(),
   created_at  timestamp(3) with time zone NOT NULL DEFAULT now(),
   CONSTRAINT content_flags_user_id_users_id_fk
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (user_id_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS content_flags_user_id_idx ON content_flags (user_id);
+CREATE INDEX IF NOT EXISTS content_flags_user_id_idx ON content_flags (user_id_id);
 CREATE INDEX IF NOT EXISTS content_flags_flag_type_idx ON content_flags (flag_type);
 CREATE INDEX IF NOT EXISTS content_flags_user_flagtype_created_idx
-  ON content_flags (user_id, flag_type, created_at);
+  ON content_flags (user_id_id, flag_type, created_at);
 CREATE INDEX IF NOT EXISTS content_flags_user_created_idx
-  ON content_flags (user_id, created_at);
+  ON content_flags (user_id_id, created_at);
 CREATE INDEX IF NOT EXISTS content_flags_updated_at_idx ON content_flags (updated_at);
 CREATE INDEX IF NOT EXISTS content_flags_created_at_idx ON content_flags (created_at);
 
 -- ── safety_incidents ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS safety_incidents (
-  id                    serial PRIMARY KEY,
-  user_id               integer,
-  severity              enum_safety_incidents_severity NOT NULL DEFAULT 'medium',
-  category              enum_safety_incidents_category NOT NULL,
-  triggered_at          enum_safety_incidents_triggered_at,
-  detection_method      enum_safety_incidents_detection_method,
-  related_message_id    integer,
-  related_image_id      integer,
-  related_character_id  integer,
-  scoring_details       jsonb,
-  evidence_snapshot     jsonb,
-  status                enum_safety_incidents_status NOT NULL DEFAULT 'open',
-  action_taken          enum_safety_incidents_action_taken DEFAULT 'none',
-  resolved_at           timestamp(3) with time zone,
-  resolved_by_id        integer,
-  resolution_notes      text,
-  updated_at            timestamp(3) with time zone NOT NULL DEFAULT now(),
-  created_at            timestamp(3) with time zone NOT NULL DEFAULT now(),
+  id                      serial PRIMARY KEY,
+  user_id_id              integer,
+  severity                enum_safety_incidents_severity NOT NULL DEFAULT 'medium',
+  category                enum_safety_incidents_category NOT NULL,
+  triggered_at            enum_safety_incidents_triggered_at,
+  detection_method        enum_safety_incidents_detection_method,
+  related_message_id_id   integer,
+  related_image_id_id     integer,
+  related_character_id_id integer,
+  scoring_details         jsonb,
+  evidence_snapshot       jsonb,
+  status                  enum_safety_incidents_status NOT NULL DEFAULT 'open',
+  action_taken            enum_safety_incidents_action_taken DEFAULT 'none',
+  resolved_at             timestamp(3) with time zone,
+  resolved_by_id_id       integer,
+  resolution_notes        text,
+  updated_at              timestamp(3) with time zone NOT NULL DEFAULT now(),
+  created_at              timestamp(3) with time zone NOT NULL DEFAULT now(),
   CONSTRAINT safety_incidents_user_id_users_id_fk
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id_id) REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT safety_incidents_related_message_id_messages_id_fk
-    FOREIGN KEY (related_message_id) REFERENCES messages(id) ON DELETE SET NULL,
+    FOREIGN KEY (related_message_id_id) REFERENCES messages(id) ON DELETE SET NULL,
   CONSTRAINT safety_incidents_related_image_id_media_assets_id_fk
-    FOREIGN KEY (related_image_id) REFERENCES media_assets(id) ON DELETE SET NULL,
+    FOREIGN KEY (related_image_id_id) REFERENCES media_assets(id) ON DELETE SET NULL,
   CONSTRAINT safety_incidents_related_character_id_characters_id_fk
-    FOREIGN KEY (related_character_id) REFERENCES characters(id) ON DELETE SET NULL,
+    FOREIGN KEY (related_character_id_id) REFERENCES characters(id) ON DELETE SET NULL,
   CONSTRAINT safety_incidents_resolved_by_id_users_id_fk
-    FOREIGN KEY (resolved_by_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (resolved_by_id_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS safety_incidents_user_id_idx ON safety_incidents (user_id);
+CREATE INDEX IF NOT EXISTS safety_incidents_user_id_idx ON safety_incidents (user_id_id);
 CREATE INDEX IF NOT EXISTS safety_incidents_severity_idx ON safety_incidents (severity);
 CREATE INDEX IF NOT EXISTS safety_incidents_category_idx ON safety_incidents (category);
 CREATE INDEX IF NOT EXISTS safety_incidents_status_idx ON safety_incidents (status);
 CREATE INDEX IF NOT EXISTS safety_incidents_user_created_idx
-  ON safety_incidents (user_id, created_at);
+  ON safety_incidents (user_id_id, created_at);
 CREATE INDEX IF NOT EXISTS safety_incidents_status_severity_idx
   ON safety_incidents (status, severity);
 CREATE INDEX IF NOT EXISTS safety_incidents_category_created_idx
