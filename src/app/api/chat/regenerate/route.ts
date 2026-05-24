@@ -11,6 +11,7 @@ import { streamChatCompletion, OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_REGENERATE_LIMIT } from '@/shared/rate-limit/presets'
 import { checkAssistantOutput } from '@/features/safety/output-filter'
+import { getAccountState } from '@/shared/auth/account-status'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
 const LLM_TEMPERATURE = 0.85
@@ -30,6 +31,11 @@ export async function POST(req: NextRequest) {
   const user = await getCurrentUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const access = getAccountState(user)
+  if (access.blocked) {
+    return NextResponse.json({ error: `account_${access.reason}`, until: access.until }, { status: 403 })
   }
 
   const rl = await checkRateLimit(CHAT_REGENERATE_LIMIT, `u:${user.id}`)

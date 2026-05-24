@@ -22,6 +22,7 @@ import { CHAT_LIMIT, IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 import { submitChatImageJob, IMAGE_TOKEN_COST } from '@/features/chat/image-job'
 import { checkUserInput } from '@/features/safety/input-filter'
 import { checkAssistantOutput } from '@/features/safety/output-filter'
+import { getAccountState } from '@/shared/auth/account-status'
 
 const LLM_MODEL = OPENROUTER_MODEL
 // DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
@@ -97,6 +98,16 @@ export async function POST(req: NextRequest) {
   const user = await getCurrentUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Enforce safety escalation: a suspended/banned user can't chat. Without this
+  // the status writes in escalation.ts would have no effect.
+  const access = getAccountState(user)
+  if (access.blocked) {
+    return NextResponse.json(
+      { error: `account_${access.reason}`, until: access.until },
+      { status: 403 },
+    )
   }
 
   const log = createLogger({ requestId, userId: String(user.id) })
