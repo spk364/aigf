@@ -3,11 +3,11 @@
 -- 7-year retention for CSAM-class). Part of the T0-1 safety pipeline.
 --
 -- Matches Payload's auto-generated table conventions so a subsequent
--- PAYLOAD_PUSH_DB=true boot is a no-op. Payload snake_cases the field name AND
--- appends `_id` to every relationship column, so `userId` → `user_id_id`,
--- `relatedMessageId` → `related_message_id_id`, `resolvedBy` → `resolved_by_id`.
--- (Verified against the existing token_transactions table: user_id_id,
--- related_message_id_id, admin_user_id_id.)
+-- PAYLOAD_PUSH_DB=true boot is a no-op. Payload's relationship column =
+-- snake_case(fieldName) + '_id'. So `userId` → `user_id_id`, `relatedMessageId`
+-- → `related_message_id_id`, but `resolvedBy` → `resolved_by_id` (no double _id,
+-- because the field name doesn't end in Id). Verified against the live insert
+-- statement Payload generates + the token_transactions table.
 --
 -- FKs use ON DELETE SET NULL (not CASCADE) so incident records survive user
 -- deletion for the retention window — users are soft-deleted anyway.
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS safety_incidents (
   status                  enum_safety_incidents_status NOT NULL DEFAULT 'open',
   action_taken            enum_safety_incidents_action_taken DEFAULT 'none',
   resolved_at             timestamp(3) with time zone,
-  resolved_by_id_id       integer,
+  resolved_by_id          integer,
   resolution_notes        text,
   updated_at              timestamp(3) with time zone NOT NULL DEFAULT now(),
   created_at              timestamp(3) with time zone NOT NULL DEFAULT now(),
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS safety_incidents (
   CONSTRAINT safety_incidents_related_character_id_characters_id_fk
     FOREIGN KEY (related_character_id_id) REFERENCES characters(id) ON DELETE SET NULL,
   CONSTRAINT safety_incidents_resolved_by_id_users_id_fk
-    FOREIGN KEY (resolved_by_id_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (resolved_by_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS safety_incidents_user_id_idx ON safety_incidents (user_id_id);
