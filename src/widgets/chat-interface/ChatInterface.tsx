@@ -648,6 +648,13 @@ export function ChatInterface({
               const parsed = JSON.parse(data) as { text: string }
               draftContent += parsed.text
               setDraft(draftContent)
+            } else if (event === 'replace') {
+              // Output safety filter substituted the reply — discard what we
+              // streamed and show the refusal instead. The 'done' that follows
+              // commits this replaced text.
+              const parsed = JSON.parse(data) as { text: string }
+              draftContent = parsed.text
+              setDraft(draftContent)
             } else if (event === 'image-pending') {
               // Server has submitted a fal job and saved handles. Push a
               // placeholder message; useImageStatusPolling will resolve it.

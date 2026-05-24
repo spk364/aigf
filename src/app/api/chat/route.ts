@@ -1,5 +1,3 @@
-// TODO(phase-3-safety): add input/output safety filters before/after LLM call
-
 export const maxDuration = 60
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -22,6 +20,8 @@ import { isPremiumPlan } from '@/features/billing/plans'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_LIMIT, IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 import { submitChatImageJob, IMAGE_TOKEN_COST } from '@/features/chat/image-job'
+import { checkUserInput } from '@/features/safety/input-filter'
+import { checkAssistantOutput } from '@/features/safety/output-filter'
 
 const LLM_MODEL = OPENROUTER_MODEL
 // DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
@@ -124,6 +124,45 @@ export async function POST(req: NextRequest) {
   const { conversationId: incomingConversationId, characterId, message, locale } = parsed.data
 
   const payload = await getPayload({ config })
+
+  // ── Input safety filter (pre-LLM) ──────────────────────────────────────────
+  // Runs before quota so a blocked attempt doesn't consume the user's daily
+  // allowance (abuse is bounded by escalation, not quota) and before persisting
+  // anything — offending input is never written to the DB. Records a flag +
+  // incident and may suspend/ban via escalation.
+  const inputVerdict = await checkUserInput({
+    payload,
+    userId: user.id,
+    text: message,
+    locale,
+    relatedCharacterId: characterId ?? null,
+    source: 'web',
+  })
+  if (!inputVerdict.allowed) {
+    log.warn({ msg: 'chat.input_blocked', kind: inputVerdict.kind, escalation: inputVerdict.escalation })
+    track({
+      userId: String(user.id),
+      event: 'safety.input_blocked',
+      properties: { kind: inputVerdict.kind, escalation: inputVerdict.escalation },
+    })
+    const refusal = inputVerdict.userMessage
+    const blockStream = new ReadableStream({
+      start(controller) {
+        const enc = (s: string) => new TextEncoder().encode(s)
+        controller.enqueue(enc(sseEvent('delta', { text: refusal })))
+        controller.enqueue(enc(sseEvent('done', { finishReason: 'safety_blocked' })))
+        controller.close()
+      },
+    })
+    return new Response(blockStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
+    })
+  }
 
   const cap = await getDailyMessageCap(payload, user)
   const quota = await checkAndIncrementQuota(user.id, cap)
@@ -614,11 +653,29 @@ export async function POST(req: NextRequest) {
 
         const latencyMs = Date.now() - startTime
 
+        // ── Output safety filter (post-LLM) ──────────────────────────────────
+        // Backstop for CSAM-class model drift. Streamed live for UX; if the
+        // assembled reply trips a hard block we overwrite the persisted content
+        // and tell the client to replace what it rendered.
+        let finalContent = accumulatedContent
+        const outputVerdict = await checkAssistantOutput({
+          payload,
+          userId: user.id,
+          text: accumulatedContent,
+          locale: convLanguage,
+          relatedMessageId: assistantMsgId,
+          relatedCharacterId: convCharacterId,
+        })
+        if (!outputVerdict.safe) {
+          finalContent = outputVerdict.replacement
+          send('replace', { text: finalContent })
+        }
+
         await payload.update({
           collection: 'messages',
           id: assistantMsgId,
           data: {
-            content: accumulatedContent,
+            content: finalContent,
             status: 'completed',
             completedAt: new Date().toISOString(),
             generationMetadata: {
@@ -629,6 +686,7 @@ export async function POST(req: NextRequest) {
               temperature: LLM_TEMPERATURE,
               latencyMs,
               timeToFirstTokenMs: timeToFirstToken,
+              ...(outputVerdict.safe ? {} : { outputFiltered: true }),
             },
           },
         })
@@ -645,7 +703,7 @@ export async function POST(req: NextRequest) {
             messageCount: newCnt,
             daysActiveCount: newDays,
             lastMessageAt: ts,
-            lastMessagePreview: accumulatedContent.slice(0, 120),
+            lastMessagePreview: finalContent.slice(0, 120),
             relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
           },
         })
@@ -666,7 +724,7 @@ export async function POST(req: NextRequest) {
 
           // Add the current user message and the just-generated assistant message.
           extractionMessages.push({ role: 'user', content: message, id: 'current-user' })
-          extractionMessages.push({ role: 'assistant', content: accumulatedContent, id: assistantMsgId })
+          extractionMessages.push({ role: 'assistant', content: finalContent, id: assistantMsgId })
 
           void extractMemories({
             payload,
