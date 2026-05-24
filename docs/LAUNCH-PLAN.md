@@ -29,19 +29,23 @@
 
 ## 🔴 TIER 0 — Блокеры запуска (нельзя пускать живых платящих юзеров)
 
-### T0-1. Safety pipeline (САМЫЙ ВАЖНЫЙ) ⬜
-Сейчас `src/shared/ai/safety.ts` — заглушка, всегда `flagged:false`. Для adult-проекта это критично (18 USC 2257, CSAM-риск).
+### T0-1. Safety pipeline (САМЫЙ ВАЖНЫЙ) 🟡 в основном готово
+Было: `src/shared/ai/safety.ts` — заглушка. Реализовано в ветке `feat/safety-pipeline`.
 
-Scope:
-- **Apparent-age классификатор на NSFW-выходе.** Vision-модель (fal.ai CLIP-head / или внешний возрастной классификатор) → если apparent age < 25 на NSFW → block + refund + incident. Расширить существующий `image-analysis.ts` (там уже есть pipeline + black-frame detection для tech-refund).
-- **Input-scoring фильтр (pre-LLM)** по §3.10 спеки: hard blocks (underage/family/bestiality/non-consent/celebrity) + combinatorial scoring (youthAmplifiers vs adultMarkers).
-- **Output-фильтр (post-LLM)**: текстовый классификатор → in-character refusal.
-- **Коллекции** `content-flags` и `safety-incidents` (схемы в data-model.md §6) + Payload config + миграция.
-- **Escalation**: 3 blocked attempts/24ч → temp suspension; 5/неделя → ban. Через `content-flags` + крон.
+Сделано:
+- ✅ **Input-scoring движок** `src/features/safety/scoring.ts` — мультиязычный (en/ru/es), hard blocks (underage/age-числа/school+sexual/family+sexual/bestiality/non-consent/celebrity+sexual) + combinatorial (youth vs adult), Unicode word-boundary матчинг. 19 тестов.
+- ✅ **Коллекции** `content-flags` + `safety-incidents` + регистрация + миграция `0008`.
+- ✅ **Incident/flag recording + escalation** (`incidents.ts`, `escalation.ts`): 3 блока/24ч → suspend, 5/7д → ban, severe (CSAM) → мгновенный ban; пишет в `users.status` + `audit-logs`.
+- ✅ **Apparent-age классификатор** `src/shared/ai/apparent-age.ts` (fal-hosted VLM, moondream по умолчанию, env-override). `classifyImageSafety` блокирует apparent-minor / < 21; **fail-closed в prod**, fail-open в dev. 6 тестов парсинга.
+- ✅ **Input/output фильтры врезаны** в `/api/chat` (pre-LLM до квоты, post-LLM с `replace`-событием) и `/api/chat/regenerate`.
+- ✅ **Enforcement статуса** `account-status.ts` — забаненный/suspended юзер получает 403 в chat-роутах (7 тестов).
+- ✅ **Age-гейт превью билдера** (authed sync + poll, guest) через `image-age-gate.ts`.
 
-Файлы: `src/shared/ai/safety.ts` (реализация), новый `src/features/safety/` (input-filter, output-filter, scoring, escalation), `src/payload/collections/content-flags.ts` + `safety-incidents.ts`, миграция, врезка в `/api/chat/route.ts` (pre/post LLM) и в image-job путь.
-
-Acceptance: NSFW-картинка с apparent-age флагом блокируется + рефанд + строка в `safety-incidents`; underage-инпут ловится до LLM; 3 страйка → suspension; всё логируется.
+Осталось перед мерджем/прод:
+- ⏳ **Применить миграцию `0008`** (`psql -f` или `PAYLOAD_PUSH_DB=true` один раз) — таблицы должны появиться в БД.
+- ⏳ **Верифицировать `AGE_CLASSIFIER_FAL_ENDPOINT`** против живого fal-вызова (точный slug moondream + форма ответа) — единственное, что требует реальной проверки. До этого в prod все картинки будут блокироваться (fail-closed).
+- ⏳ **Free-text scoring в полях билдера** (looks/personality/custom occupation) — defense-in-depth; output age-gate уже покрывает главный риск. `validateName` уже есть.
+- ⏳ Крон авто-сброса истёкших suspension (сейчас `getAccountState` авто-разблокирует по времени, статус в БД остаётся `suspended` — косметика для админки).
 
 ### T0-2. Real CCBill ⬜
 Сейчас checkout отдаёт mock URL, MD5-подпись вебхука — stub, DataLink cancel только локально.

@@ -9,6 +9,7 @@ import {
   FAL_ENDPOINT_FLUX_SCHNELL,
 } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
+import { gateGeneratedImageAge } from '@/features/safety/image-age-gate'
 import {
   ETHNICITIES,
   BODY_TYPES,
@@ -351,6 +352,19 @@ export async function generateGuestPreviewAction(
   const newPreviews: GuestPreviewEntry[] = []
 
   for (const img of result.images) {
+    // Apparent-age gate (spec §3.10 Layer 6). Guests have no user row, so there
+    // is no escalation target — the gate still rejects apparent-minor output and
+    // opens an incident (userId null) for review.
+    const ageGate = await gateGeneratedImageAge({
+      payload,
+      imageUrl: img.url,
+      width: img.width,
+      height: img.height,
+      userId: null,
+      surface: 'guest-builder',
+    })
+    if (!ageGate.ok) continue
+
     try {
       const persisted = await persistGeneratedImage({
         payload,
