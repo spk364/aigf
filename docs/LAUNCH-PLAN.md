@@ -41,11 +41,15 @@
 - ✅ **Enforcement статуса** `account-status.ts` — забаненный/suspended юзер получает 403 в chat-роутах (7 тестов).
 - ✅ **Age-гейт превью билдера** (authed sync + poll, guest) через `image-age-gate.ts`.
 
+Проверено на деве (2026-05-24):
+- ✅ **Миграция `0008` применена** в Supabase (после 2 правок имён relationship-колонок: `userId`→`user_id_id`, `resolvedBy`→`resolved_by_id` — правило `snake_case(field)+'_id'`, выверено по живому INSERT Payload).
+- ✅ **Полный путь подтверждён** через dev-сервер: заблокированный ввод → refusal SSE + строки в `content_flags` И `safety_incidents`; 3 страйка/24ч → `users.status=suspended` + запись в `audit_logs`; suspended-юзер → 403 `account_suspended`. Тестовые строки почищены.
+
 Осталось перед мерджем/прод:
-- ⏳ **Применить миграцию `0008`** (`psql -f` или `PAYLOAD_PUSH_DB=true` один раз) — таблицы должны появиться в БД.
-- ⏳ **Верифицировать `AGE_CLASSIFIER_FAL_ENDPOINT`** против живого fal-вызова (точный slug moondream + форма ответа) — единственное, что требует реальной проверки. До этого в prod все картинки будут блокироваться (fail-closed).
+- ⏳ **Верифицировать `AGE_CLASSIFIER_FAL_ENDPOINT`** против живого fal-вызова (точный slug moondream + форма ответа) — единственное непроверенное звено. До этого в prod все картинки блокируются (fail-closed). Текстовый пайплайн проверен полностью.
 - ⏳ **Free-text scoring в полях билдера** (looks/personality/custom occupation) — defense-in-depth; output age-gate уже покрывает главный риск. `validateName` уже есть.
 - ⏳ Крон авто-сброса истёкших suspension (сейчас `getAccountState` авто-разблокирует по времени, статус в БД остаётся `suspended` — косметика для админки).
+- ℹ️ Vercel-проект `gfai` хронически падает (7+ дней, до этой ветки) — легаси-дубль; настоящий проект `aigf` собирается зелёным.
 
 ### T0-2. Real CCBill ⬜
 Сейчас checkout отдаёт mock URL, MD5-подпись вебхука — stub, DataLink cancel только локально.
