@@ -12,6 +12,12 @@ const envSchema = z.object({
   FAL_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 
+  // Safety — apparent-age classifier (fal-hosted, NSFW-tolerant VLM).
+  // Endpoint is overridable so the model can be swapped without a code change.
+  // When FAL_KEY is unset, the classifier can't run: it fails CLOSED in
+  // production (blocks the image) and OPEN in dev (passes), per env.NODE_ENV.
+  AGE_CLASSIFIER_FAL_ENDPOINT: z.string().optional(),
+
   // Email
   RESEND_API_KEY: z.string().optional(),
 

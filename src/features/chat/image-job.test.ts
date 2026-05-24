@@ -27,6 +27,18 @@ vi.mock('@/features/tokens/ledger', () => ({
   autoRefund: (...args: unknown[]) => autoRefundMock(...args),
 }))
 
+const recordContentFlagMock = vi.fn()
+const recordSafetyIncidentMock = vi.fn()
+vi.mock('@/features/safety/incidents', () => ({
+  recordContentFlag: (...args: unknown[]) => recordContentFlagMock(...args),
+  recordSafetyIncident: (...args: unknown[]) => recordSafetyIncidentMock(...args),
+}))
+
+const maybeEscalateMock = vi.fn()
+vi.mock('@/features/safety/escalation', () => ({
+  maybeEscalate: (...args: unknown[]) => maybeEscalateMock(...args),
+}))
+
 vi.mock('@/shared/analytics/posthog', () => ({
   track: vi.fn(),
 }))
@@ -92,6 +104,9 @@ beforeEach(() => {
   persistMock.mockReset()
   classifyMock.mockReset()
   autoRefundMock.mockReset()
+  recordContentFlagMock.mockReset()
+  recordSafetyIncidentMock.mockReset()
+  maybeEscalateMock.mockReset()
 })
 
 describe('finalizeChatImageJob', () => {
@@ -236,7 +251,15 @@ describe('finalizeChatImageJob', () => {
       publicUrl: 'https://cdn/flag.jpg',
       storageKey: 'k',
     })
-    classifyMock.mockResolvedValue({ flagged: true, reason: 'minor_likeness' })
+    classifyMock.mockResolvedValue({
+      flagged: true,
+      reason: 'apparent_minor',
+      category: 'age_classifier_flag',
+      severe: true,
+      apparentAge: 16,
+      minorRisk: true,
+      classifierRan: true,
+    })
 
     const payload = makePayload({
       messages: [{ id: 'msg-1', conversationId: 'conv-1', status: 'pending', generationMetadata: { falJob: baseHandles } }],
@@ -252,11 +275,64 @@ describe('finalizeChatImageJob', () => {
       type: 'safety_refund',
       idempotencyKey: 'image:refund:safety:msg-1',
     })
+    // A real classifier flag opens an incident, records a behavioural flag, and
+    // runs escalation with the severe bit forwarded.
+    expect(recordSafetyIncidentMock).toHaveBeenCalledTimes(1)
+    expect(recordSafetyIncidentMock.mock.calls[0]![1]).toMatchObject({
+      category: 'age_classifier_flag',
+      triggeredAt: 'apparent_age_classifier',
+      severity: 'critical',
+    })
+    expect(recordContentFlagMock).toHaveBeenCalledTimes(1)
+    expect(maybeEscalateMock).toHaveBeenCalledWith(payload, 'user-1', { severe: true })
     const asset = payload.__store['media-assets']![0]!
     expect(asset.deletedAt).toBeTruthy()
     const msg = payload.__store.messages[0]!
     expect(msg.status).toBe('failed')
     expect(msg.errorReason).toBe('safety_flagged')
+  })
+
+  it('fails closed as a tech refund (no incident) when the classifier is unavailable', async () => {
+    fetchImageJobStatusMock.mockResolvedValue({
+      status: 'completed',
+      result: {
+        images: [{ url: 'https://fal/img.jpg', width: 832, height: 1216, contentType: 'image/jpeg' }],
+        seed: 0,
+        requestId: 'req-1',
+        modelName: 'fal-ai/realistic-vision',
+        endpoint: 'fal-ai/realistic-vision',
+        latencyMs: 9000,
+      },
+    })
+    persistMock.mockResolvedValue({
+      mediaAssetId: 'asset-unavail',
+      publicUrl: 'https://cdn/unavail.jpg',
+      storageKey: 'k',
+    })
+    // classifierRan:false → fail-closed branch (production behaviour).
+    classifyMock.mockResolvedValue({
+      flagged: true,
+      reason: 'apparent_age_classifier_unavailable',
+      category: 'age_classifier_flag',
+      severe: false,
+      classifierRan: false,
+    })
+
+    const payload = makePayload({
+      messages: [{ id: 'msg-1', conversationId: 'conv-1', status: 'pending', generationMetadata: { falJob: baseHandles } }],
+      conversations: [baseConvo],
+      'media-assets': [{ id: 'asset-unavail', publicUrl: 'https://cdn/unavail.jpg' }],
+    })
+    const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+    expect(result.phase).toBe('failed')
+    if (result.phase === 'failed') expect(result.error).toBe('safety_unavailable')
+
+    // Infra gap, not a user violation: tech refund, no incident, no escalation.
+    expect(autoRefundMock.mock.calls[0]![1]).toMatchObject({ type: 'tech_refund' })
+    expect(recordSafetyIncidentMock).not.toHaveBeenCalled()
+    expect(maybeEscalateMock).not.toHaveBeenCalled()
+    const msg = payload.__store.messages[0]!
+    expect(msg.errorReason).toBe('safety_unavailable')
   })
 
   it('treats missing fal handles as failed (defensive)', async () => {
