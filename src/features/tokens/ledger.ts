@@ -1,6 +1,16 @@
 // Only grant/spend/refundByAdmin should write to token_balances
 import type { BasePayload } from 'payload'
 
+// messages is an integer-id collection; Payload rejects a string id on its
+// relationship field ("ValidationError: Related Message Id"). Callers often
+// hold the id as a string (String(msg.id), route params), so coerce a numeric
+// string back to a number here — the single choke point for every ledger write.
+function coerceRelId(v: string | number | null | undefined): number | string | null {
+  if (v == null) return null
+  if (typeof v === 'number') return v
+  return /^\d+$/.test(v) ? Number(v) : v
+}
+
 export type GrantType =
   | 'grant_subscription'
   | 'grant_subscription_upfront'
@@ -235,7 +245,7 @@ export async function spend(
         balanceAfter: newBalance,
         idempotencyKey: opts.idempotencyKey ?? null,
         reason: opts.reason ?? null,
-        relatedMessageId: opts.relatedMessageId ?? null,
+        relatedMessageId: coerceRelId(opts.relatedMessageId),
       },
       overrideAccess: true,
       req: { transactionID: txId } as never,
@@ -311,7 +321,7 @@ export async function refundByAdmin(
         balanceAfter: newBalance,
         idempotencyKey: opts.idempotencyKey ?? null,
         reason: opts.reason,
-        relatedMessageId: opts.relatedMessageId ?? null,
+        relatedMessageId: coerceRelId(opts.relatedMessageId),
         adminUserId,
       },
       overrideAccess: true,
@@ -396,7 +406,7 @@ export async function autoRefund(
         balanceAfter: newBalance,
         idempotencyKey: opts.idempotencyKey,
         reason: opts.reason,
-        relatedMessageId: opts.relatedMessageId ?? null,
+        relatedMessageId: coerceRelId(opts.relatedMessageId),
       },
       overrideAccess: true,
       req: { transactionID: txId } as never,
