@@ -17,6 +17,7 @@ import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
 import { generateImage, submitImageJob, fetchImageJobStatus } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
+import { gateGeneratedImageAge } from '@/features/safety/image-age-gate'
 import { track } from '@/shared/analytics/posthog'
 import {
   ARCHETYPES,
@@ -385,6 +386,18 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
       // Analysis failure is non-fatal — fall through and persist anyway.
     }
 
+    // Apparent-age gate (spec §3.10 Layer 6) — same classifier as chat images.
+    // Free previews, so no token refund; a flag records an incident + escalates.
+    const ageGate = await gateGeneratedImageAge({
+      payload,
+      imageUrl: img.url,
+      width: img.width,
+      height: img.height,
+      userId: user.id,
+      surface: 'builder',
+    })
+    if (!ageGate.ok) continue
+
     let persisted: Awaited<ReturnType<typeof persistGeneratedImage>>
     try {
       persisted = await persistGeneratedImage({
@@ -610,6 +623,17 @@ export async function fetchPreviewJobStatusAction(draftId: string): Promise<Fetc
     } catch {
       // Analysis failure is non-fatal — fall through and persist anyway.
     }
+
+    const ageGate = await gateGeneratedImageAge({
+      payload,
+      imageUrl: img.url,
+      width: img.width,
+      height: img.height,
+      userId: user.id,
+      surface: 'builder-poll',
+    })
+    if (!ageGate.ok) continue
+
     try {
       persisted = await persistGeneratedImage({
         payload,

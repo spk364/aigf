@@ -8,6 +8,8 @@ import {
 } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { classifyImageSafety } from '@/shared/ai/safety'
+import { recordContentFlag, recordSafetyIncident } from '@/features/safety/incidents'
+import { maybeEscalate } from '@/features/safety/escalation'
 import { autoRefund } from '@/features/tokens/ledger'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { track } from '@/shared/analytics/posthog'
@@ -317,12 +319,48 @@ export async function finalizeChatImageJob(
   })
 
   if (verdict.flagged) {
-    log.warn({ msg: 'chat.image.safety_flagged', mediaAssetId: persistResult.mediaAssetId, reason: verdict.reason })
+    // Pull the flagged asset (soft-delete keeps the row for forensics) and
+    // fail the message in every flagged branch below.
     await input.payload.update({
       collection: 'media-assets',
       id: String(persistResult.mediaAssetId),
       data: { deletedAt: new Date().toISOString() },
     }).catch(() => {})
+
+    // Classifier couldn't run and we failed closed (production). This is an
+    // infrastructure gap, not a user violation — refund as tech, no incident,
+    // no escalation, and surface a distinct error so it's diagnosable.
+    if (!verdict.classifierRan) {
+      log.error({ msg: 'chat.image.age_classifier_unavailable', reason: verdict.reason })
+      await autoRefund(input.payload, {
+        userId: input.userId,
+        type: 'tech_refund',
+        amount: IMAGE_TOKEN_COST,
+        reason: 'age_classifier_unavailable',
+        relatedMessageId: input.messageId,
+        idempotencyKey: refundTechKey,
+      })
+      await input.payload.update({
+        collection: 'messages',
+        id: input.messageId,
+        data: { status: 'failed', errorReason: 'safety_unavailable', completedAt: new Date().toISOString() },
+      })
+      return { phase: 'failed', error: 'safety_unavailable' }
+    }
+
+    log.warn({
+      msg: 'chat.image.safety_flagged',
+      mediaAssetId: persistResult.mediaAssetId,
+      reason: verdict.reason,
+      severe: verdict.severe,
+      apparentAge: verdict.apparentAge,
+    })
+
+    const charRef = conversation.characterId
+    const characterId =
+      typeof charRef === 'object' && charRef !== null
+        ? (charRef as { id: string | number }).id
+        : charRef
 
     await autoRefund(input.payload, {
       userId: input.userId,
@@ -332,6 +370,38 @@ export async function finalizeChatImageJob(
       relatedMessageId: input.messageId,
       idempotencyKey: refundSafetyKey,
     })
+
+    await recordContentFlag(input.payload, {
+      userId: input.userId,
+      flagType: 'blocked_image',
+      context: {
+        category: verdict.category,
+        reason: verdict.reason,
+        apparentAge: verdict.apparentAge ?? null,
+        minorRisk: verdict.minorRisk ?? null,
+        source: 'web',
+      },
+    })
+
+    await recordSafetyIncident(input.payload, {
+      userId: input.userId,
+      severity: verdict.severe ? 'critical' : 'high',
+      category: 'age_classifier_flag',
+      triggeredAt: 'apparent_age_classifier',
+      detectionMethod: 'vision_model',
+      relatedMessageId: input.messageId,
+      relatedImageId: persistResult.mediaAssetId,
+      relatedCharacterId: characterId ?? null,
+      evidenceSnapshot: {
+        reason: verdict.reason,
+        apparentAge: verdict.apparentAge ?? null,
+        minorRisk: verdict.minorRisk ?? null,
+        model: result.modelName,
+        endpoint: result.endpoint,
+      },
+    })
+
+    await maybeEscalate(input.payload, input.userId, { severe: verdict.severe })
 
     await input.payload.update({
       collection: 'messages',

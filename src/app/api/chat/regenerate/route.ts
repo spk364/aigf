@@ -10,6 +10,8 @@ import { getCurrentUser } from '@/shared/auth/current-user'
 import { streamChatCompletion, OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_REGENERATE_LIMIT } from '@/shared/rate-limit/presets'
+import { checkAssistantOutput } from '@/features/safety/output-filter'
+import { getAccountState } from '@/shared/auth/account-status'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
 const LLM_TEMPERATURE = 0.85
@@ -29,6 +31,11 @@ export async function POST(req: NextRequest) {
   const user = await getCurrentUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const access = getAccountState(user)
+  if (access.blocked) {
+    return NextResponse.json({ error: `account_${access.reason}`, until: access.until }, { status: 403 })
   }
 
   const rl = await checkRateLimit(CHAT_REGENERATE_LIMIT, `u:${user.id}`)
@@ -164,11 +171,30 @@ export async function POST(req: NextRequest) {
 
         const latencyMs = Date.now() - startTime
 
+        // Output safety filter (post-LLM) — same backstop as chat/route.ts.
+        const convCharacterId =
+          typeof conversation.characterId === 'object' && conversation.characterId !== null
+            ? (conversation.characterId as { id: string | number }).id
+            : conversation.characterId
+        let finalContent = accumulatedContent
+        const outputVerdict = await checkAssistantOutput({
+          payload,
+          userId: user.id,
+          text: accumulatedContent,
+          locale: (conversation.language as string | null | undefined) ?? 'en',
+          relatedMessageId: newMsgId,
+          relatedCharacterId: convCharacterId,
+        })
+        if (!outputVerdict.safe) {
+          finalContent = outputVerdict.replacement
+          send('replace', { text: finalContent })
+        }
+
         await payload.update({
           collection: 'messages',
           id: newMsgId,
           data: {
-            content: accumulatedContent,
+            content: finalContent,
             status: 'completed',
             completedAt: new Date().toISOString(),
             generationMetadata: {
@@ -179,6 +205,7 @@ export async function POST(req: NextRequest) {
               temperature: LLM_TEMPERATURE,
               latencyMs,
               timeToFirstTokenMs: timeToFirstToken,
+              ...(outputVerdict.safe ? {} : { outputFiltered: true }),
             },
           },
         })
@@ -188,7 +215,7 @@ export async function POST(req: NextRequest) {
           id: conversationId,
           data: {
             lastMessageAt: new Date().toISOString(),
-            lastMessagePreview: accumulatedContent.slice(0, 120),
+            lastMessagePreview: finalContent.slice(0, 120),
           },
         })
 
