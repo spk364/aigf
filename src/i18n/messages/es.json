@@ -88,6 +88,36 @@
       "linkText": "Mejorar",
       "failed": "No se pudo generar la foto. Intentalo de nuevo.",
       "alt": "Foto de {name}"
+    },
+    "paywall": {
+      "quota": {
+        "badge": "Limite diario",
+        "headline": "Quieres seguir hablando con {name}?",
+        "subheadline": "Has usado tus mensajes gratis de hoy. Mejora ahora y retoma justo donde lo dejaste."
+      },
+      "tokens": {
+        "badge": "Sin tokens",
+        "headline": "Una cosa mas de {name}",
+        "subheadline": "Fotos, voz y video usan tokens. Recarga para que {name} pueda mostrarte mas."
+      },
+      "premium_feature": {
+        "badge": "Funcion Premium",
+        "headline": "{name} guarda lo bueno para Premium",
+        "subheadline": "Fotos, voz y memoria de largo plazo forman parte del plan Premium."
+      },
+      "perks": {
+        "unlimited": "Mensajes diarios ilimitados",
+        "tokens": "Tokens para fotos, voz y video",
+        "smarter": "Respuestas mas inteligentes y en personaje",
+        "cancel": "Cancela cuando quieras"
+      },
+      "yearlySaveLabel": "Ahorra {percent}%",
+      "pricePerMonth": " /mes",
+      "pricePerYear": " /ano",
+      "primaryCta": "Cancela cuando quieras · Pago seguro",
+      "secondaryCta": "O compra tokens sueltos",
+      "decline": "Ahora no",
+      "close": "Cerrar"
     }
   },
   "billing": {
@@ -129,6 +159,17 @@
       "mostPopular": "Mas popular",
       "currentPlan": "Plan actual:",
       "manage": "Gestionar suscripcion"
+    },
+    "exitIntent": {
+      "badge": "Espera — oferta limitada",
+      "headline": "No los dejes esperando",
+      "subheadline": "Quedate esta noche y son tuyas — 50% de descuento en tu primer mes, sin condiciones.",
+      "expiresIn": "La oferta termina en",
+      "pricePerMonth": "/ primer mes",
+      "cta": "Quiero mi descuento",
+      "decline": "No, gracias",
+      "countdownFallback": "{hours}:{minutes}:{seconds}",
+      "close": "Cerrar"
     },
     "return": {
       "processing": "Procesando tu pago...",

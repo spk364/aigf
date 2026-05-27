@@ -28,6 +28,7 @@ import { MemoryEntries } from './collections/memory-entries'
 import { Banners } from './collections/banners'
 import { ContentFlags } from './collections/content-flags'
 import { SafetyIncidents } from './collections/safety-incidents'
+import { PaywallBlocks } from './collections/paywall-blocks'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -156,6 +157,7 @@ export default buildConfig({
     Banners,
     ContentFlags,
     SafetyIncidents,
+    PaywallBlocks,
   ],
 
   typescript: {

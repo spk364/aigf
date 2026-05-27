@@ -4,6 +4,12 @@ import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
 import { notFound } from 'next/navigation'
 import { ChatInterface } from '@/widgets/chat-interface/ChatInterface'
 import { getTranslations } from 'next-intl/server'
+import { getPaywallTeasers } from '@/widgets/paywall/teasers'
+import { getPaywallBlock } from '@/widgets/paywall/admin-config'
+import type { PaywallSurface } from '@/widgets/paywall/admin-config'
+import type { ChatPaywallReason, ChatPaywallStrings } from '@/widgets/paywall'
+import { PLANS } from '@/features/billing/plans'
+import { getActiveExitIntentPromo } from '@/features/promotions/exit-intent-promo'
 
 type Props = {
   params: Promise<{ locale: string; conversationId: string }>
@@ -141,6 +147,62 @@ export default async function ConversationPage({ params }: Props) {
     return base
   })
 
+  // ─── Paywall plumbing ───────────────────────────────────────────────────
+  // Per-reason copy is resolved server-side: admin CMS row first, then bundled
+  // i18n. Carrying the promo code on the upgrade URL lets analytics attribute
+  // chat-paywall-driven checkouts back to this surface even before CCBill
+  // coupon support lands.
+  const tPaywall = await getTranslations('chat.paywall')
+  const tBilling = await getTranslations('billing.plans')
+  const promo = getActiveExitIntentPromo()
+  const upgradeUrl = `/${locale}/upgrade?promo=${promo.code}`
+  const tokensUrl = `/${locale}/tokens`
+
+  const reasonToSurface: Record<ChatPaywallReason, PaywallSurface> = {
+    quota: 'chat_paywall_quota',
+    tokens: 'chat_paywall_tokens',
+    premium_feature: 'chat_paywall_premium',
+  }
+  const reasons: ChatPaywallReason[] = ['quota', 'tokens', 'premium_feature']
+  const cmsBlocks = await Promise.all(
+    reasons.map((r) => getPaywallBlock(reasonToSurface[r], locale)),
+  )
+
+  const stringsByReason = Object.fromEntries(
+    reasons.map((reason, i) => {
+      const cms = cmsBlocks[i]
+      const value: ChatPaywallStrings = {
+        badge: cms?.badge ?? tPaywall(`${reason}.badge`),
+        headline: cms?.headline ?? tPaywall(`${reason}.headline`),
+        subheadline: cms?.subheadline ?? tPaywall(`${reason}.subheadline`),
+        perks: cms?.perks ?? [
+          tPaywall('perks.unlimited'),
+          tPaywall('perks.tokens'),
+          tPaywall('perks.smarter'),
+          tPaywall('perks.cancel'),
+        ],
+        monthlyLabel: tBilling('premium_monthly.name'),
+        yearlyLabel: tBilling('premium_yearly.name'),
+        yearlySaveLabel: tPaywall('yearlySaveLabel'),
+        pricePerMonth: tPaywall('pricePerMonth'),
+        pricePerYear: tPaywall('pricePerYear'),
+        primaryCta: cms?.primaryCta ?? tPaywall('primaryCta'),
+        secondaryCta: cms?.secondaryCta ?? tPaywall('secondaryCta'),
+        decline: cms?.declineCta ?? tPaywall('decline'),
+        close: tPaywall('close'),
+      }
+      return [reason, value]
+    }),
+  ) as Record<ChatPaywallReason, ChatPaywallStrings>
+
+  // Single fallback teaser if the character lookup above didn't yield a photo —
+  // grabs the first featured character so the modal still has eye candy.
+  let fallbackTeaser: { name: string; photoUrl: string } | undefined
+  if (!characterPhotoUrl) {
+    const teasers = await getPaywallTeasers()
+    fallbackTeaser = teasers[0]
+  }
+
   return (
     <ChatInterface
       initialConversationId={conversationId}
@@ -148,6 +210,17 @@ export default async function ConversationPage({ params }: Props) {
       locale={locale}
       characterName={snapshot?.name ?? 'Anna'}
       characterPhotoUrl={characterPhotoUrl}
+      paywall={{
+        upgradeUrl,
+        tokensUrl,
+        plans: {
+          monthlyPriceCents: PLANS.premium_monthly.priceCents,
+          yearlyPriceCents: PLANS.premium_yearly.priceCents,
+          yearlySavePercent: 36,
+        },
+        stringsByReason,
+        fallbackTeaser,
+      }}
       strings={{
         typing: t('typing'),
         regenerate: t('regenerate'),

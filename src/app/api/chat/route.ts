@@ -455,7 +455,10 @@ export async function POST(req: NextRequest) {
               completedAt: new Date().toISOString(),
             },
           })
-          send('error', { message: tokensRequiredMessageForLocale(convLanguage, upgradeUrl) })
+          send('error', {
+            message: tokensRequiredMessageForLocale(convLanguage, upgradeUrl),
+            reason: 'insufficient_tokens',
+          })
           controller.close()
           return
         }
