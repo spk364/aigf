@@ -46,7 +46,7 @@
 - ✅ **Полный путь подтверждён** через dev-сервер: заблокированный ввод → refusal SSE + строки в `content_flags` И `safety_incidents`; 3 страйка/24ч → `users.status=suspended` + запись в `audit_logs`; suspended-юзер → 403 `account_suspended`. Тестовые строки почищены.
 
 Осталось перед мерджем/прод:
-- ⏳ **Верифицировать `AGE_CLASSIFIER_FAL_ENDPOINT`** против живого fal-вызова (точный slug moondream + форма ответа) — единственное непроверенное звено. До этого в prod все картинки блокируются (fail-closed). Текстовый пайплайн проверен полностью.
+- ✅ **Age-классификатор проверен вживую (2026-05-24).** Дефолт переключён `moondream2`→`fal-ai/llava-next`: moondream2 на fal игнорирует `prompt` (только caption), moondream2/visual-query переусердствует (ложные minorRisk). llava-next следует JSON-инструкции, ~3с, NSFW-толерантен. Парсер достаёт JSON из markdown-фенса.
 - ⏳ **Free-text scoring в полях билдера** (looks/personality/custom occupation) — defense-in-depth; output age-gate уже покрывает главный риск. `validateName` уже есть.
 - ⏳ Крон авто-сброса истёкших suspension (сейчас `getAccountState` авто-разблокирует по времени, статус в БД остаётся `suspended` — косметика для админки).
 - ℹ️ Vercel-проект `gfai` хронически падает (7+ дней, до этой ветки) — легаси-дубль; настоящий проект `aigf` собирается зелёным.
