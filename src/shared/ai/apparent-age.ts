@@ -23,7 +23,12 @@ const log = createLogger({ scope: 'safety.apparent-age' })
 
 const DEFAULT_ENDPOINT = 'fal-ai/llava-next'
 const FAL_RUN_BASE = 'https://fal.run'
-const TIMEOUT_MS = 20_000
+// llava-next warm latency is ~3s, but the first call after an idle period
+// (cold start) can take 30-40s. The chat-image-status route has maxDuration=60,
+// leaving ~15s for persist + DB updates after a worst-case classifier wait.
+// Verified empirically (2026-05-28): 20s aborted on cold start → fail-closed
+// would block legitimate images in prod during the cold window.
+const TIMEOUT_MS = 45_000
 
 const PROMPT =
   'You are an age-verification classifier for an adults-only (18+) platform. ' +
