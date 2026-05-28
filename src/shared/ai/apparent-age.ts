@@ -3,11 +3,17 @@ import { createLogger } from '@/shared/lib/logger'
 
 // Apparent-age estimator for generated images (spec §3.10 Layer 6).
 //
-// Uses a fal-hosted, open-weight vision model (moondream by default — no
+// Uses a fal-hosted, open-weight vision model (LLaVA-NeXT by default — no
 // platform safety refusals, so it will actually look at NSFW outputs, unlike
 // OpenAI/Gemini/OpenRouter vision which reject them). Endpoint is env-
 // configurable (AGE_CLASSIFIER_FAL_ENDPOINT) so a more accurate age model can
 // be dropped in later without touching call sites.
+//
+// Model choice (verified live 2026-05-24): fal-ai/llava-next follows the
+// JSON instruction and returns {"apparentAge","minorRisk"} in ~3s. fal-ai/
+// moondream2 was rejected — its fal endpoint ignores `prompt` and only captions
+// the image (no age answer); moondream2/visual-query answers but over-flags
+// (rated an adult woman minorRisk:true → false-positive bans).
 //
 // Called synchronously via fal.run (VLMs return in 1-4s); no queue/poll needed.
 // Returns null when it can't produce a usable answer (no key, network error,
@@ -15,9 +21,14 @@ import { createLogger } from '@/shared/lib/logger'
 
 const log = createLogger({ scope: 'safety.apparent-age' })
 
-const DEFAULT_ENDPOINT = 'fal-ai/moondream2'
+const DEFAULT_ENDPOINT = 'fal-ai/llava-next'
 const FAL_RUN_BASE = 'https://fal.run'
-const TIMEOUT_MS = 20_000
+// llava-next warm latency is ~3s, but the first call after an idle period
+// (cold start) can take 30-40s. The chat-image-status route has maxDuration=60,
+// leaving ~15s for persist + DB updates after a worst-case classifier wait.
+// Verified empirically (2026-05-28): 20s aborted on cold start → fail-closed
+// would block legitimate images in prod during the cold window.
+const TIMEOUT_MS = 45_000
 
 const PROMPT =
   'You are an age-verification classifier for an adults-only (18+) platform. ' +
