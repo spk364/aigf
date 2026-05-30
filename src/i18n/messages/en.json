@@ -679,5 +679,14 @@
         "confirm": "Type DELETE exactly to confirm."
       }
     }
+  },
+  "gallery": {
+    "title": "{name}’s gallery",
+    "subtitle": "Photos you generate with {name} will appear here",
+    "countLabel": "{n} photos",
+    "backToChat": "Back to chat",
+    "empty": "No photos yet",
+    "emptyHint": "Ask for a photo in the chat — your generated images collect here.",
+    "close": "Close"
   }
 }
