@@ -118,7 +118,8 @@
       "secondaryCta": "Or buy tokens instead",
       "decline": "Not now",
       "close": "Close"
-    }
+    },
+    "gallery": "Gallery"
   },
   "billing": {
     "plans": {
@@ -489,11 +490,31 @@
       }
     },
     "personality": {
-      "dominant": { "label": "Stance", "left": "Submissive", "right": "Dominant" },
-      "confident": { "label": "Confidence", "left": "Insecure", "right": "Confident" },
-      "passionate": { "label": "Warmth", "left": "Cold", "right": "Passionate" },
-      "outgoing": { "label": "Energy", "left": "Reserved", "right": "Outgoing" },
-      "playful": { "label": "Mood", "left": "Serious", "right": "Playful" }
+      "dominant": {
+        "label": "Stance",
+        "left": "Submissive",
+        "right": "Dominant"
+      },
+      "confident": {
+        "label": "Confidence",
+        "left": "Insecure",
+        "right": "Confident"
+      },
+      "passionate": {
+        "label": "Warmth",
+        "left": "Cold",
+        "right": "Passionate"
+      },
+      "outgoing": {
+        "label": "Energy",
+        "left": "Reserved",
+        "right": "Outgoing"
+      },
+      "playful": {
+        "label": "Mood",
+        "left": "Serious",
+        "right": "Playful"
+      }
     },
     "actions": {
       "generatePreviews": "Generate her photo",
@@ -613,5 +634,14 @@
       "emailNotVerified": "Please verify your email address. Check your inbox for a verification link.",
       "logout": "Sign out"
     }
+  },
+  "gallery": {
+    "title": "{name}’s gallery",
+    "subtitle": "Photos you generate with {name} will appear here",
+    "countLabel": "{n} photos",
+    "backToChat": "Back to chat",
+    "empty": "No photos yet",
+    "emptyHint": "Ask for a photo in the chat — your generated images collect here.",
+    "close": "Close"
   }
 }
