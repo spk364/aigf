@@ -118,8 +118,7 @@
       "secondaryCta": "O compra tokens sueltos",
       "decline": "Ahora no",
       "close": "Cerrar"
-    },
-    "gallery": "Galería"
+    }
   },
   "billing": {
     "plans": {
@@ -633,6 +632,52 @@
       "welcome": "Hola, {name}!",
       "emailNotVerified": "Verifica tu correo electronico. Revisa tu bandeja de entrada para encontrar el enlace de verificacion.",
       "logout": "Cerrar sesion"
+    }
+  },
+  "settings": {
+    "heading": "Ajustes",
+    "save": "Guardar cambios",
+    "saved": "Guardado",
+    "nav": {
+      "profile": "Perfil",
+      "content": "Contenido",
+      "account": "Cuenta"
+    },
+    "profile": {
+      "title": "Perfil",
+      "email": "Correo",
+      "emailHint": "Tu correo se usa para iniciar sesión y no se cambia aquí.",
+      "displayName": "Nombre visible",
+      "displayNamePlaceholder": "¿Cómo te llamamos?",
+      "language": "Idioma"
+    },
+    "content": {
+      "title": "Preferencias de contenido",
+      "nsfwLabel": "Mostrar contenido NSFW",
+      "nsfwHint": "Desbloquea contenido para adultos en toda la app. Debes ser mayor de 18.",
+      "ageNote": "Al activarlo confirmas que tienes al menos 18 años."
+    },
+    "account": {
+      "title": "Cuenta",
+      "changePassword": "Cambiar contraseña",
+      "currentPassword": "Contraseña actual",
+      "newPassword": "Nueva contraseña",
+      "confirmPassword": "Confirma la nueva contraseña",
+      "passwordHint": "Al menos 10 caracteres.",
+      "updatePassword": "Actualizar contraseña",
+      "passwordSaved": "Tu contraseña se ha actualizado.",
+      "googleManaged": "Tu cuenta usa inicio de sesión con Google, así que no hay contraseña que cambiar aquí.",
+      "deleteTitle": "Eliminar cuenta",
+      "deleteHint": "Esto desactiva tu cuenta y programa la eliminación de todos tus datos. No se puede deshacer.",
+      "deleteConfirmLabel": "Escribe DELETE para confirmar",
+      "deleteButton": "Eliminar mi cuenta",
+      "errors": {
+        "weak": "La nueva contraseña debe tener al menos 10 caracteres.",
+        "mismatch": "Las nuevas contraseñas no coinciden.",
+        "currentRequired": "Introduce tu contraseña actual.",
+        "wrongCurrent": "Tu contraseña actual es incorrecta.",
+        "confirm": "Escribe DELETE exactamente para confirmar."
+      }
     }
   },
   "gallery": {
