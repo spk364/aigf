@@ -139,8 +139,11 @@ export function GenerateVideoButton() {
   }>({ primaryImageUrl: null, referenceImageUrl: null, sourceImageUrl: null })
   const [motionStrength, setMotionStrength] = useState<MotionStrength>('medium')
   const [mood, setMood] = useState<MotionMood>('gentle')
+  // Gender-neutral default — admin can refine per character (e.g. "He slowly…"
+  // / "She slowly…"). The previous default was female-only, which produced
+  // wrong narrations when the character is male.
   const [motionDescription, setMotionDescription] = useState(
-    'She slowly turns her head to look at the camera and smiles warmly',
+    'Slowly turns to look at the camera with a warm smile',
   )
   const [resolution, setResolution] = useState<Resolution>('720p')
   const [modelEndpoint, setModelEndpoint] = useState<string>(DEFAULT_VIDEO_MODEL_ID)
@@ -540,7 +543,7 @@ export function GenerateVideoButton() {
           onChange={(e) => setMotionDescription(e.target.value)}
           disabled={isBusy}
           rows={2}
-          placeholder="e.g. She slowly turns her head and gives a soft smile"
+          placeholder="e.g. Slowly turns to look at the camera with a soft smile"
           style={{
             width: '100%',
             padding: '6px 8px',

@@ -815,7 +815,7 @@ export const BOYS: BoyPersona[] = [
         name: 'Daniel',
         tagline: 'Reads you out loud.',
         shortBio: 'Underlines passages, then quotes them back at the right moment. Coffee, never cream.',
-        petNamesForUser: ['darling', 'clever girl'],
+        petNamesForUser: ['darling', 'clever one'],
       },
       ru: {
         language: 'ru',

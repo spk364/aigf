@@ -20,9 +20,13 @@ export type BuildImagePromptInput = {
   language: 'en' | 'ru' | 'es' | string
 }
 
-// Fallback base prompt for characters without appearance data.
+// Fallback base prompt for characters without appearance data. Kept gender-
+// neutral ("young adult") so male characters without an appearancePrompt
+// don't accidentally render as women. Characters built via the
+// builder + seed paths produce their own gendered appearancePrompt and
+// never fall through here.
 const BASE_PROMPT =
-  'portrait of a young woman, photorealistic, high detail, soft natural lighting, 4k'
+  'portrait of a young adult, photorealistic, high detail, soft natural lighting, 4k'
 
 // Hard-coded safety negative prompt — never overrideable by user (spec §3.10 Layer 6).
 const SAFETY_NEGATIVE =
