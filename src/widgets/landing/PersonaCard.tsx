@@ -64,14 +64,14 @@ export function PersonaCard({ character, href }: Props) {
   return (
     <Link
       href={href}
-      className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_50px_-12px_rgba(192,116,255,0.35)]"
+      className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]"
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden" style={tileStyle}>
         <CharacterCardMedia
           photoUrl={photoUrl}
           videoUrl={videoUrl}
           alt={name}
-          className="absolute inset-0 h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-[600ms] motion-safe:ease-out motion-safe:group-hover:scale-[1.04]"
+          className="absolute inset-0 h-full w-full object-cover"
         />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/0 to-black/0" />
 
