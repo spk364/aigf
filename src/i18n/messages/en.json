@@ -489,11 +489,31 @@
       }
     },
     "personality": {
-      "dominant": { "label": "Stance", "left": "Submissive", "right": "Dominant" },
-      "confident": { "label": "Confidence", "left": "Insecure", "right": "Confident" },
-      "passionate": { "label": "Warmth", "left": "Cold", "right": "Passionate" },
-      "outgoing": { "label": "Energy", "left": "Reserved", "right": "Outgoing" },
-      "playful": { "label": "Mood", "left": "Serious", "right": "Playful" }
+      "dominant": {
+        "label": "Stance",
+        "left": "Submissive",
+        "right": "Dominant"
+      },
+      "confident": {
+        "label": "Confidence",
+        "left": "Insecure",
+        "right": "Confident"
+      },
+      "passionate": {
+        "label": "Warmth",
+        "left": "Cold",
+        "right": "Passionate"
+      },
+      "outgoing": {
+        "label": "Energy",
+        "left": "Reserved",
+        "right": "Outgoing"
+      },
+      "playful": {
+        "label": "Mood",
+        "left": "Serious",
+        "right": "Playful"
+      }
     },
     "actions": {
       "generatePreviews": "Generate her photo",
@@ -612,6 +632,52 @@
       "welcome": "Hello, {name}!",
       "emailNotVerified": "Please verify your email address. Check your inbox for a verification link.",
       "logout": "Sign out"
+    }
+  },
+  "settings": {
+    "heading": "Settings",
+    "save": "Save changes",
+    "saved": "Saved",
+    "nav": {
+      "profile": "Profile",
+      "content": "Content",
+      "account": "Account"
+    },
+    "profile": {
+      "title": "Profile",
+      "email": "Email",
+      "emailHint": "Your email is used for sign-in and cannot be changed here.",
+      "displayName": "Display name",
+      "displayNamePlaceholder": "How should we call you?",
+      "language": "Language"
+    },
+    "content": {
+      "title": "Content preferences",
+      "nsfwLabel": "Show NSFW content",
+      "nsfwHint": "Unlock mature content across the app. You must be 18+.",
+      "ageNote": "By enabling this you confirm you are at least 18 years old."
+    },
+    "account": {
+      "title": "Account",
+      "changePassword": "Change password",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm new password",
+      "passwordHint": "At least 10 characters.",
+      "updatePassword": "Update password",
+      "passwordSaved": "Your password has been updated.",
+      "googleManaged": "Your account uses Google sign-in, so there is no password to change here.",
+      "deleteTitle": "Delete account",
+      "deleteHint": "This deactivates your account and schedules all your data for deletion. This cannot be undone.",
+      "deleteConfirmLabel": "Type DELETE to confirm",
+      "deleteButton": "Delete my account",
+      "errors": {
+        "weak": "New password must be at least 10 characters.",
+        "mismatch": "The new passwords do not match.",
+        "currentRequired": "Please enter your current password.",
+        "wrongCurrent": "Your current password is incorrect.",
+        "confirm": "Type DELETE exactly to confirm."
+      }
     }
   }
 }

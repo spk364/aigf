@@ -12,6 +12,7 @@ export type SidebarKey =
   | 'my-ai'
   | 'tokens'
   | 'premium'
+  | 'settings'
 
 export type SidebarNavItem = {
   href: string
@@ -167,7 +168,12 @@ export async function DashboardShell({
 
   const profileBlock = isAuthed ? (
     <div className="border-t border-[var(--color-border)] p-3">
-      <div className="mb-2 flex items-center gap-2 rounded-lg p-2">
+      {/* The profile row links to settings — the conventional spot users look
+          for account controls. */}
+      <Link
+        href={`/${locale}/settings`}
+        className="mb-2 flex items-center gap-2 rounded-lg p-2 transition-colors hover:bg-white/5"
+      >
         <div
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold text-[var(--color-bg)]"
           style={{
@@ -191,7 +197,12 @@ export async function DashboardShell({
             )}
           </p>
         </div>
-      </div>
+        <span className="text-[var(--color-text-muted)]" aria-hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+          </svg>
+        </span>
+      </Link>
       <div className="flex items-center gap-1.5">
         <LocaleSwitcher locale={locale} />
         <form action={handleLogout} className="flex-1">
