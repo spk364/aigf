@@ -234,6 +234,7 @@ export default async function ConversationPage({ params }: Props) {
         backToChats: t('backToChats'),
         backToHome: t('backToHome'),
         dashboard: t('dashboard'),
+        gallery: t('gallery'),
         imagePending: t('imagePending'),
         imageQueuePosition: t('imageQueuePosition'),
         imageFailed: t('imageFailed'),

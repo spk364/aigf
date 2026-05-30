@@ -118,7 +118,8 @@
       "secondaryCta": "O compra tokens sueltos",
       "decline": "Ahora no",
       "close": "Cerrar"
-    }
+    },
+    "gallery": "Galería"
   },
   "billing": {
     "plans": {
@@ -489,11 +490,31 @@
       }
     },
     "personality": {
-      "dominant": { "label": "Postura", "left": "Sumisa", "right": "Dominante" },
-      "confident": { "label": "Confianza", "left": "Insegura", "right": "Segura" },
-      "passionate": { "label": "Calidez", "left": "Fría", "right": "Apasionada" },
-      "outgoing": { "label": "Energía", "left": "Reservada", "right": "Extrovertida" },
-      "playful": { "label": "Ánimo", "left": "Seria", "right": "Juguetona" }
+      "dominant": {
+        "label": "Postura",
+        "left": "Sumisa",
+        "right": "Dominante"
+      },
+      "confident": {
+        "label": "Confianza",
+        "left": "Insegura",
+        "right": "Segura"
+      },
+      "passionate": {
+        "label": "Calidez",
+        "left": "Fría",
+        "right": "Apasionada"
+      },
+      "outgoing": {
+        "label": "Energía",
+        "left": "Reservada",
+        "right": "Extrovertida"
+      },
+      "playful": {
+        "label": "Ánimo",
+        "left": "Seria",
+        "right": "Juguetona"
+      }
     },
     "actions": {
       "generatePreviews": "Generar foto",
@@ -613,5 +634,14 @@
       "emailNotVerified": "Verifica tu correo electronico. Revisa tu bandeja de entrada para encontrar el enlace de verificacion.",
       "logout": "Cerrar sesion"
     }
+  },
+  "gallery": {
+    "title": "Galería de {name}",
+    "subtitle": "Las fotos que generes con {name} aparecerán aquí",
+    "countLabel": "{n} fotos",
+    "backToChat": "Volver al chat",
+    "empty": "Aún no hay fotos",
+    "emptyHint": "Pide una foto en el chat: tus imágenes generadas se reúnen aquí.",
+    "close": "Cerrar"
   }
 }

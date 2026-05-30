@@ -45,6 +45,7 @@ export type ChatStrings = {
   backToChats: string
   backToHome: string
   dashboard: string
+  gallery: string
   imagePending: string
   imageQueuePosition: string
   imageFailed: string
@@ -90,6 +91,7 @@ const defaultStrings: ChatStrings = {
   backToChats: 'All chats',
   backToHome: 'Home',
   dashboard: 'Dashboard',
+  gallery: 'Gallery',
   imagePending: 'Generating image...',
   imageQueuePosition: 'Queue position: {n}',
   imageFailed: "Couldn't generate the image. Try again.",
@@ -196,6 +198,26 @@ function IconHome() {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M2.25 12 12 3l9.75 9M4.5 9.75v9.75A1.5 1.5 0 0 0 6 21h3v-6h6v6h3a1.5 1.5 0 0 0 1.5-1.5V9.75"
+      />
+    </svg>
+  )
+}
+
+function IconGallery() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.8}
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
       />
     </svg>
   )
@@ -993,6 +1015,18 @@ export function ChatInterface({
             >
               <span className="text-[var(--color-accent)]"><IconCoin /></span>
               <span>{tokenBalance}</span>
+            </Link>
+          )}
+          {/* Gallery — only on an existing conversation (a brand-new chat has
+              no images yet). Links to the per-character gallery. */}
+          {initialConversationId && (
+            <Link
+              href={`/${locale}/chat/${initialConversationId}/gallery`}
+              aria-label={s.gallery}
+              title={s.gallery}
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+            >
+              <IconGallery />
             </Link>
           )}
           <Link
