@@ -118,6 +118,42 @@
       "secondaryCta": "O compra tokens sueltos",
       "decline": "Ahora no",
       "close": "Cerrar"
+    },
+    "photoComposer": {
+      "title": "Pedir una foto",
+      "subtitle": "Elige un estilo — o solo envía",
+      "groups": {
+        "outfit": "Ropa",
+        "pose": "Pose",
+        "setting": "Lugar"
+      },
+      "options": {
+        "outfit": {
+          "casual": "Casual",
+          "dress": "Vestido elegante",
+          "cozy": "Suéter cómodo",
+          "swimwear": "Traje de baño",
+          "lingerie": "Lencería",
+          "workout": "Ropa deportiva"
+        },
+        "pose": {
+          "selfie": "Selfie",
+          "lying": "Acostada",
+          "sitting": "Junto a la ventana",
+          "mirror": "Selfie al espejo",
+          "lookingBack": "Por encima del hombro"
+        },
+        "setting": {
+          "bedroom": "Dormitorio",
+          "beach": "Playa al atardecer",
+          "cafe": "Cafetería",
+          "home": "En casa",
+          "city": "Ciudad de noche"
+        }
+      },
+      "extraPlaceholder": "¿Algo más? (opcional)",
+      "send": "Enviar petición de foto",
+      "cancel": "Cerrar"
     }
   },
   "billing": {

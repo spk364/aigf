@@ -9,6 +9,7 @@ import type {
   ChatPaywallStrings,
   PaywallTeaser,
 } from '@/widgets/paywall'
+import { PhotoComposer, type PhotoComposerStrings } from './PhotoComposer'
 
 type Message = {
   id: string
@@ -67,6 +68,9 @@ type Props = {
   characterName?: string
   characterPhotoUrl?: string
   strings?: Partial<ChatStrings>
+  /** Optional — when provided, the photo chip opens the outfit/pose/setting
+      composer instead of sending a plain selfie. */
+  photoComposer?: PhotoComposerStrings
   /** All paywall props are optional so existing call-sites keep compiling. */
   paywall?: {
     upgradeUrl: string
@@ -429,11 +433,15 @@ export function ChatInterface({
   characterName = 'Anna',
   characterPhotoUrl,
   strings: stringsProp,
+  photoComposer,
   paywall,
 }: Props) {
   const s = { ...defaultStrings, ...stringsProp }
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
+  // Open state for the photo composer sheet (T1-3). Only used when the
+  // photoComposer strings prop is supplied.
+  const [photoComposerOpen, setPhotoComposerOpen] = useState(false)
   const [streamingState, setStreamingState] = useState<StreamingState>('idle')
   const [draft, setDraft] = useState('')
   // currentMsgId tracked for potential future use (e.g. scroll-to-message)
@@ -1230,6 +1238,21 @@ export function ChatInterface({
         </div>
       )}
 
+      {/* Photo composer sheet — opens from the photo chip when strings provided. */}
+      {photoComposer && photoComposerOpen && (
+        <div className="relative z-10 shrink-0 pb-2">
+          <PhotoComposer
+            strings={photoComposer}
+            cost={TOKEN_COSTS.photo}
+            onClose={() => setPhotoComposerOpen(false)}
+            onSubmit={(message) => {
+              setPhotoComposerOpen(false)
+              sendMessage(message)
+            }}
+          />
+        </div>
+      )}
+
       {/* Token-cost action chips — always visible above composer (collapses on
           mobile to scroll horizontally). Shows the user exactly what each
           paid action costs before they spend. */}
@@ -1252,7 +1275,10 @@ export function ChatInterface({
             label={s.askPhoto}
             cost={TOKEN_COSTS.photo}
             disabled={isStreaming || !hasEnoughTokens(TOKEN_COSTS.photo)}
-            onClick={() => sendMessage('Send me a selfie')}
+            onClick={() => {
+              if (photoComposer) setPhotoComposerOpen((v) => !v)
+              else sendMessage('Send me a selfie')
+            }}
           />
           {/* Voice: this just hints the user to use the per-message TTS button.
               We highlight that voice playback costs tokens here so users
