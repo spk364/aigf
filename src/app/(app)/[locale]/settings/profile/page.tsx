@@ -1,5 +1,9 @@
 import { getTranslations } from 'next-intl/server'
+import Link from 'next/link'
+import { getPayload } from 'payload'
+import config from '@payload-config'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
+import { getBalance } from '@/features/tokens/ledger'
 import { updateProfileAction } from '@/features/settings/actions'
 import {
   SettingsShell,
@@ -23,6 +27,9 @@ export default async function ProfileSettingsPage({ params, searchParams }: Prop
   const displayName = (user as unknown as { displayName?: string | null }).displayName ?? ''
   const userLocale = (user as unknown as { locale?: string | null }).locale ?? locale
 
+  const payload = await getPayload({ config })
+  const balance = await getBalance(payload, user.id)
+
   return (
     <SettingsShell
       locale={locale}
@@ -36,6 +43,20 @@ export default async function ProfileSettingsPage({ params, searchParams }: Prop
       title={t('profile.title')}
     >
       {saved && <SettingsSavedBanner message={t('saved')} />}
+
+      {/* Token balance + top-up link */}
+      <div className="mb-6 flex items-center justify-between rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]/60 px-4 py-3">
+        <div>
+          <p className="text-xs text-[var(--color-text-muted)]">{t('profile.tokenBalance')}</p>
+          <p className="text-2xl font-bold text-[var(--color-text)]">{balance.toLocaleString()}</p>
+        </div>
+        <Link
+          href={`/${locale}/plans`}
+          className="rounded-xl bg-[var(--color-accent-strong)] px-4 py-2 text-sm font-semibold text-[var(--color-bg)] transition-colors hover:bg-[var(--color-accent)]"
+        >
+          {t('profile.getMore')}
+        </Link>
+      </div>
 
       <form action={updateProfileAction} className="space-y-5">
         <div>

@@ -37,6 +37,8 @@ import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 import { checkRateLimit } from '@/shared/rate-limit/limiter'
 import { IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 import { isPremiumPlan } from '@/features/billing/plans'
+import { getBalance, spend, autoRefund } from '@/features/tokens/ledger'
+import { CHARACTER_CREATION_COST } from '@/features/billing/cost'
 
 const LLM_MODEL = OPENROUTER_MODEL
 // Keep aligned with src/app/api/chat/route.ts — see note there on temperature choice.
@@ -887,6 +889,25 @@ export async function finalizeBuilderAction(
   // .findByID + .update calls below all need the numeric form.
   const referenceId = coerceRelId(selectedReferenceMediaAssetId)
 
+  // ── Charge the flat creation fee (tokenomics). Reserve BEFORE creating the
+  // character; if anything below throws, autoRefund returns the tokens. The
+  // idempotency key is the draft id so a double-submit can't double-charge.
+  const creationKey = `character:create:${draft.id}`
+  const balance = await getBalance(payload, user.id)
+  if (balance < CHARACTER_CREATION_COST) {
+    return { ok: false, error: 'insufficient_tokens' }
+  }
+  const reserve = await spend(payload, {
+    userId: user.id,
+    type: 'spend_character_creation',
+    amount: CHARACTER_CREATION_COST,
+    reason: `create character: ${name}`.slice(0, 240),
+    idempotencyKey: creationKey,
+  })
+  if (!reserve.ok) {
+    return { ok: false, error: 'insufficient_tokens' }
+  }
+
   // ── Resolve archetype + traits (unique path falls back to a neutral profile)
   const archetypeValue =
     pathChoice === 'unique'
@@ -981,7 +1002,9 @@ export async function finalizeBuilderAction(
   const slug = `${slugify(name)}-${nanoid8()}`
 
   // TODO(moderation): wire custom characters through moderation queue when pipeline lands
-  const character = await payload.create({
+  let character: Awaited<ReturnType<typeof payload.create>>
+  try {
+    character = await payload.create({
     collection: 'characters',
     data: {
       kind: 'custom',
@@ -1054,7 +1077,20 @@ export async function finalizeBuilderAction(
       primaryImageId: referenceId,
     },
     overrideAccess: true,
-  })
+    })
+  } catch (err) {
+    // Creation failed after we charged — return the tokens so the user isn't
+    // billed for a character that never existed. autoRefund is idempotent on
+    // the key, so a retry won't double-refund.
+    await autoRefund(payload, {
+      userId: user.id,
+      type: 'tech_refund',
+      amount: CHARACTER_CREATION_COST,
+      reason: 'character_create_failed',
+      idempotencyKey: `${creationKey}:refund`,
+    })
+    return { ok: false, error: err instanceof Error ? err.message : 'create_failed' }
+  }
 
   // Link every preview the user generated during this draft to the new
   // character — the selected one as the canonical reference, the rest as

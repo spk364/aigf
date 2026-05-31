@@ -31,6 +31,12 @@ export const VIDEO_TOKEN_COST = 20
 // from chat history because it's an upgrade users can opt into.
 export const ADVANCED_LLM_COST = 2
 
+// Flat fee to finalize (create) a custom character. Builder previews stay free
+// (capped per draft); the spend lands once, when the user commits to "create".
+// Covers the accumulated preview $-cost amortized across abandoned drafts and
+// ties character creation into the token economy. Refunded if creation fails.
+export const CHARACTER_CREATION_COST = 20
+
 // Per-day TTS playback ceiling. Token spend alone doesn't bound abuse — a user
 // who buys tokens_3000 could in theory burn 1500 fal.ai TTS calls in a day.
 // Cap = soft ceiling: above it, return 429 with retry-after midnight UTC.

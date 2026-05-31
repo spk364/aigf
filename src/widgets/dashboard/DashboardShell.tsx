@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { logoutAction } from '@/features/auth/actions/logout'
 import { redirect } from 'next/navigation'
 import { MobileSidebar } from './MobileSidebar'
+import { TokenBalancePill } from './TokenBalancePill'
 
 export type SidebarKey =
   | 'home'
@@ -101,7 +102,7 @@ export function buildNavItems(
     // TODO: /my-ai route — currently routed to /chat which lists user conversations.
     { href: `/${locale}/chat`, label: 'My AI', icon: 'heart', active: active === 'my-ai' },
     {
-      href: `/${locale}/upgrade`,
+      href: `/${locale}/plans`,
       label: 'Premium',
       icon: 'crown',
       active: active === 'premium',
@@ -203,6 +204,9 @@ export async function DashboardShell({
           </svg>
         </span>
       </Link>
+      <div className="mb-2">
+        <TokenBalancePill locale={locale} label="Tokens" />
+      </div>
       <div className="flex items-center gap-1.5">
         <LocaleSwitcher locale={locale} />
         <form action={handleLogout} className="flex-1">

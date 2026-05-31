@@ -10,7 +10,10 @@ import { grant } from '@/features/tokens/ledger'
 export const DEV_USER_EMAIL = 'dev@local.test'
 const DEV_USER_PASSWORD = 'dev-password-12345'
 const DEV_USER_DOB = '1990-01-01T00:00:00.000Z'
-const DEV_TOKEN_FLOOR = 500
+// Effectively unlimited for demo/QA — every paid action stays affordable so the
+// dev user can exercise the full app (chat images, TTS, video, character
+// creation) without ever hitting a paywall.
+const DEV_TOKEN_FLOOR = 1_000_000
 const DEV_PERIOD_DAYS = 30
 
 async function findDevUser(payload: Payload) {

@@ -33,6 +33,7 @@ export type SpendType =
   | 'spend_voice_message'
   | 'spend_voice_call'
   | 'spend_advanced_llm'
+  | 'spend_character_creation'
 
 type TokenTransaction = {
   id: string | number

@@ -233,6 +233,11 @@
       "payCard": "Pay with card",
       "payCrypto": "Pay with crypto",
       "mockMode": "Billing is not configured. Purchases will be credited as a stub for development."
+    },
+    "plansSection": {
+      "subscriptions": "Subscriptions",
+      "tokenPacks": "Token packs",
+      "tokenPacksHint": "One-time top-ups. Tokens never expire and carry over."
     }
   },
   "errors": {
@@ -624,7 +629,8 @@
       "previewSafetyFiltered": "The image generator filtered every preview as unsafe. Try softening the description or switching art style, then regenerate.",
       "previewTimeout": "Generation timed out. Pick a faster model (FLUX schnell / Fast SDXL) or retry — Pony/Illustrious checkpoints warm up after the first hit.",
       "finalizeFailed": "Could not finalize the character. Try again, or contact support if the problem persists.",
-      "validationFailed": "Please check your inputs and try again."
+      "validationFailed": "Please check your inputs and try again.",
+      "insufficientTokens": "You don’t have enough tokens to create this character. Top up on the Plans page."
     }
   },
   "auth": {
@@ -685,7 +691,9 @@
       "emailHint": "Your email is used for sign-in and cannot be changed here.",
       "displayName": "Display name",
       "displayNamePlaceholder": "How should we call you?",
-      "language": "Language"
+      "language": "Language",
+      "tokenBalance": "Token balance",
+      "getMore": "Get more"
     },
     "content": {
       "title": "Content preferences",
