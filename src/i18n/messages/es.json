@@ -233,6 +233,11 @@
       "payCard": "Pagar con tarjeta",
       "payCrypto": "Pagar con cripto",
       "mockMode": "El cobro no esta configurado. Las compras se acreditaran como stub para desarrollo."
+    },
+    "plansSection": {
+      "subscriptions": "Suscripciones",
+      "tokenPacks": "Paquetes de tokens",
+      "tokenPacksHint": "Recargas únicas. Los tokens no caducan y se acumulan."
     }
   },
   "errors": {
@@ -624,7 +629,8 @@
       "previewSafetyFiltered": "El generador filtro todas las previews como inseguras. Suaviza la descripcion o cambia el estilo y vuelve a intentarlo.",
       "previewTimeout": "La generacion excedio el tiempo limite. Elige un modelo mas rapido (FLUX schnell / Fast SDXL) o reintenta — los checkpoints Pony/Illustrious se calientan tras el primer hit.",
       "finalizeFailed": "No se pudo finalizar el personaje. Intentalo de nuevo o contacta soporte si el problema persiste.",
-      "validationFailed": "Por favor revisa tus datos e intentalo de nuevo."
+      "validationFailed": "Por favor revisa tus datos e intentalo de nuevo.",
+      "insufficientTokens": "No tienes suficientes tokens para crear este personaje. Recarga en la página de planes."
     }
   },
   "auth": {
@@ -685,7 +691,9 @@
       "emailHint": "Tu correo se usa para iniciar sesión y no se cambia aquí.",
       "displayName": "Nombre visible",
       "displayNamePlaceholder": "¿Cómo te llamamos?",
-      "language": "Idioma"
+      "language": "Idioma",
+      "tokenBalance": "Saldo de tokens",
+      "getMore": "Conseguir más"
     },
     "content": {
       "title": "Preferencias de contenido",

@@ -2439,7 +2439,12 @@ export function CharacterBuilderWizard({ draftId, initialDraft, strings }: Props
     try {
       const result = await finalizeBuilderAction(draftId)
       if (result && !result.ok) {
-        setFinalizeError(result.error)
+        const friendly =
+          result.error === 'insufficient_tokens'
+            ? t(strings, 'builder.errors.insufficientTokens',
+                'You don’t have enough tokens to create this character. Top up on the Plans page.')
+            : result.error
+        setFinalizeError(friendly)
         setFinalizing(false)
       }
     } catch (e) {

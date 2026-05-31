@@ -51,6 +51,7 @@ export const TokenTransactions: CollectionConfig = {
         { label: 'Spend Voice Message', value: 'spend_voice_message' },
         { label: 'Spend Voice Call', value: 'spend_voice_call' },
         { label: 'Spend Advanced LLM', value: 'spend_advanced_llm' },
+        { label: 'Spend Character Creation', value: 'spend_character_creation' },
         { label: 'Refund', value: 'refund' },
         { label: 'Safety Refund', value: 'safety_refund' },
         { label: 'Tech Refund', value: 'tech_refund' },
