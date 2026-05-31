@@ -677,7 +677,10 @@
         "currentRequired": "Introduce tu contraseña actual.",
         "wrongCurrent": "Tu contraseña actual es incorrecta.",
         "confirm": "Escribe DELETE exactamente para confirmar."
-      }
+      },
+      "exportTitle": "Exportar tus datos",
+      "exportHint": "Descarga una copia de todos tus datos (perfil, conversaciones, personajes, medios, facturación) como archivo JSON.",
+      "exportButton": "Descargar mis datos"
     }
   },
   "gallery": {

@@ -280,6 +280,15 @@ export const Users: CollectionConfig = {
       admin: { date: { pickerAppearance: 'dayAndTime' } },
     },
     {
+      // Set by the GDPR purge cron once a soft-deleted account's 90-day grace
+      // window has passed and its personal data has been hard-deleted +
+      // anonymized. Distinct from deletedAt (which marks the soft delete).
+      name: 'purgedAt',
+      type: 'date',
+      index: true,
+      admin: { date: { pickerAppearance: 'dayAndTime' } },
+    },
+    {
       name: 'totalMessagesCount',
       type: 'number',
       defaultValue: 0,
