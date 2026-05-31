@@ -182,23 +182,12 @@ export async function createDraftAction(language: 'en' | 'ru' | 'es') {
 
   const premium = await isPremiumUser(payload, user.id)
 
+  // Character creation is now gated by tokens (CHARACTER_CREATION_COST, charged
+  // at finalize), not by an artificial per-tier character cap — so a user with
+  // tokens can create as many characters as they can pay for. We keep the
+  // concurrent-open-drafts cap for free users as abuse prevention (each open
+  // draft enables up to 5 FREE fal previews).
   if (!premium) {
-    const existing = await payload.find({
-      collection: 'characters',
-      where: {
-        and: [
-          { kind: { equals: 'custom' } },
-          { createdBy: { equals: user.id } },
-          { deletedAt: { exists: false } },
-        ],
-      },
-      limit: 1,
-      overrideAccess: true,
-    })
-    if (existing.totalDocs >= 1) {
-      return { error: 'free_tier_limit' as const }
-    }
-
     // Cap parallel unfinalised drafts. Each draft enables up to 5 fal
     // previews — without this cap a free user could chain N drafts together
     // and accumulate preview spend up to IMAGE_GEN_LIMIT (300/day).
