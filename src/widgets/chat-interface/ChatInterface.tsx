@@ -727,7 +727,10 @@ export function ChatInterface({
               // image_submitted means the image-pending placeholder is already
               // in the message list — nothing to commit from the text draft.
               const isImagePath = finishReason === 'image_submitted' || finishReason === 'image_generated'
-              if (!isImagePath) {
+              // Photo-only turns stream no text — the character sent just a
+              // photo. Skip committing an empty bubble; the image-pending event
+              // (which arrives right after this `done`) renders the photo.
+              if (!isImagePath && draftContent.trim()) {
                 const committedMsg: Message = {
                   id: finalMsgId ?? `assistant-${Date.now()}`,
                   role: 'assistant',
