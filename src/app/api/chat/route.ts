@@ -70,6 +70,43 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// Photos cost tokens and require Premium. We resolve eligibility BEFORE
+// generating the reply so we only ever offer the photo capability to users who
+// can actually pay — the character never promises a photo it can't deliver, and
+// an unaffordable explicit request goes straight to the paywall. Two indexed
+// reads (subscription + balance); the atomic `spend` reserve at submit time
+// remains the authoritative, race-safe gate.
+type PhotoEligibility = {
+  isPremium: boolean
+  balance: number
+  eligible: boolean
+  /** Why a photo can't be sent, when not eligible. */
+  blockedReason: 'premium_feature' | 'tokens' | null
+}
+
+async function resolvePhotoEligibility(
+  payload: Awaited<ReturnType<typeof getPayload>>,
+  userId: string | number,
+): Promise<PhotoEligibility> {
+  const subResult = await payload.find({
+    collection: 'subscriptions',
+    where: { and: [{ userId: { equals: userId } }, { status: { equals: 'active' } }] },
+    limit: 1,
+    overrideAccess: true,
+  })
+  const activeSub = subResult.docs[0]
+  const isPremium = !!activeSub && isPremiumPlan(activeSub.plan as string | null)
+  if (!isPremium) {
+    return { isPremium: false, balance: 0, eligible: false, blockedReason: 'premium_feature' }
+  }
+
+  const balance = await getBalance(payload, userId)
+  if (balance < IMAGE_TOKEN_COST) {
+    return { isPremium: true, balance, eligible: false, blockedReason: 'tokens' }
+  }
+  return { isPremium: true, balance, eligible: true, blockedReason: null }
+}
+
 export async function POST(req: NextRequest) {
   const { requestId } = getRequestContext(req.headers)
   const handlerStart = Date.now()
@@ -277,6 +314,14 @@ export async function POST(req: NextRequest) {
   // clearly asks, so explicit requests are always honoured.
   // ---------------------------------------------------------------------------
 
+  // Resolve photo affordability up front (Premium + token balance). We only
+  // teach the model the [SEND_PHOTO] directive when the user can actually pay,
+  // so it never promises a photo we can't deliver. An explicit request from an
+  // ineligible user is turned into a paywall nudge at the end of the stream.
+  const photoEligibility = await resolvePhotoEligibility(payload, user.id)
+  const photoBlockedReason =
+    explicitPhotoRequest && !photoEligibility.eligible ? photoEligibility.blockedReason : null
+
   const historyResult = await payload.find({
     collection: 'messages',
     where: {
@@ -316,8 +361,12 @@ export async function POST(req: NextRequest) {
   })
 
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
-  // can answer naturally AND attach a photo in the same turn.
-  openrouterMessages.push({ role: 'system', content: photoCapabilityInstructions() })
+  // can answer naturally AND attach a photo in the same turn. Only advertised to
+  // users who can pay for it (Premium + tokens) — others never learn the marker,
+  // so they can't be promised a photo.
+  if (photoEligibility.eligible) {
+    openrouterMessages.push({ role: 'system', content: photoCapabilityInstructions() })
+  }
 
   const memoryBlock = formatMemoriesForPrompt(memories)
   if (memoryBlock) {
@@ -349,10 +398,10 @@ export async function POST(req: NextRequest) {
   tailMessages.reverse()
   for (const m of tailMessages) openrouterMessages.push(m)
 
-  // When the user clearly asked for a photo, force the directive this turn so an
-  // explicit request is never dropped (the regex booster behind the old image
-  // branch). Placed last for maximum salience.
-  if (explicitPhotoRequest) {
+  // When an eligible user clearly asked for a photo, force the directive this
+  // turn so an explicit request is never dropped (the regex booster behind the
+  // old image branch). Placed last for maximum salience.
+  if (explicitPhotoRequest && photoEligibility.eligible) {
     openrouterMessages.push({ role: 'system', content: explicitPhotoRequestInstruction() })
   }
 
@@ -517,113 +566,104 @@ export async function POST(req: NextRequest) {
         }
 
         // ── Photo dispatch ───────────────────────────────────────────────────
-        // If the reply asked to send a photo, run the same Premium + token gates
-        // as before and submit the fal job. The text above already streamed, so
-        // a gated/failed photo just falls back to "text only" + a paywall nudge.
+        // The model is only taught the directive when the user is already
+        // eligible (Premium + tokens, checked up front), so `photoRequested`
+        // implies affordability. We still reserve tokens atomically via `spend`
+        // here — that's the authoritative, race-safe gate against a balance that
+        // dropped since the up-front check (e.g. a concurrent photo).
         let finishReason = 'stop'
         let pendingImageMsgId: string | null = null
 
-        if (photoRequested) {
-          const subResult = await payload.find({
-            collection: 'subscriptions',
-            where: {
-              and: [{ userId: { equals: user.id } }, { status: { equals: 'active' } }],
-            },
-            limit: 1,
-            overrideAccess: true,
-          })
-          const activeSub = subResult.docs[0]
-          const isPremium = !!activeSub && isPremiumPlan(activeSub.plan as string | null)
+        // Explicit request from an ineligible user → keep the natural text, pop
+        // the paywall (premium upsell or token top-up).
+        if (photoBlockedReason === 'premium_feature') {
+          finishReason = 'entitlement_denied'
+        } else if (photoBlockedReason === 'tokens') {
+          finishReason = 'insufficient_tokens'
+        }
 
-          if (!isPremium) {
-            // Free user — keep the natural text, pop the upgrade paywall.
-            finishReason = 'entitlement_denied'
+        if (photoRequested && photoEligibility.eligible) {
+          const imageRl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+          if (!imageRl.allowed) {
+            log.warn({ msg: 'chat.image.rate_limited', blockedBy: imageRl.blockedBy, retryAfterSeconds: imageRl.retryAfterSeconds })
+            // Silently drop the photo; the text reply already went out.
           } else {
-            const imageRl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
-            if (!imageRl.allowed) {
-              log.warn({ msg: 'chat.image.rate_limited', blockedBy: imageRl.blockedBy, retryAfterSeconds: imageRl.retryAfterSeconds })
-              // Silently drop the photo; the text reply already went out.
+            const assistantImageMsg = await payload.create({
+              collection: 'messages',
+              data: {
+                conversationId: conversationId,
+                role: 'assistant',
+                type: 'image',
+                status: 'pending',
+              },
+            })
+            const assistantImageMsgId = String(assistantImageMsg.id)
+            const reserveKey = `image:reserve:${assistantImageMsgId}`
+            const refundTechKey = `image:refund:tech:${assistantImageMsgId}`
+
+            // Authoritative token gate: atomic reserve before we spend money at
+            // fal. Fails closed if the balance dropped since the up-front check.
+            const spendResult = await spend(payload, {
+              userId: user.id,
+              type: 'spend_image',
+              amount: IMAGE_TOKEN_COST,
+              relatedMessageId: assistantImageMsgId,
+              reason: 'on-request image',
+              idempotencyKey: reserveKey,
+            })
+
+            if (!spendResult.ok) {
+              await payload.update({
+                collection: 'messages',
+                id: assistantImageMsgId,
+                data: { status: 'failed', errorReason: 'insufficient_tokens', completedAt: new Date().toISOString() },
+              })
+              finishReason = 'insufficient_tokens'
             } else {
-              const balance = await getBalance(payload, user.id)
-              if (balance < IMAGE_TOKEN_COST) {
-                finishReason = 'insufficient_tokens'
-              } else {
-                const assistantImageMsg = await payload.create({
-                  collection: 'messages',
-                  data: {
-                    conversationId: conversationId,
-                    role: 'assistant',
-                    type: 'image',
-                    status: 'pending',
-                  },
-                })
-                const assistantImageMsgId = String(assistantImageMsg.id)
-                const reserveKey = `image:reserve:${assistantImageMsgId}`
-                const refundTechKey = `image:refund:tech:${assistantImageMsgId}`
+              const characterSnapshot = (conversation.characterSnapshot ?? {}) as {
+                name?: string
+                backstory?: { occupation?: string; location?: string }
+                appearance?: CharacterAppearance | null
+              }
+              // Prefer the model's own scene hint from the directive; fall
+              // back to the user's message for the scene.
+              const sceneSource = parsed.scene && parsed.scene.length > 0 ? parsed.scene : message
+              const { prompt, negativePrompt } = buildImagePrompt({
+                characterSnapshot,
+                userMessage: sceneSource,
+                language: convLanguage,
+              })
 
-                const spendResult = await spend(payload, {
+              const submitResult = await submitChatImageJob({
+                payload,
+                conversationId,
+                messageId: assistantImageMsgId,
+                userId: user.id,
+                prompt,
+                negativePrompt,
+                imageSize: 'portrait_4_3',
+              })
+
+              if (!submitResult.ok) {
+                log.error({ msg: 'chat.image.submit_failed', conversationId, err: submitResult.error })
+                const { autoRefund } = await import('@/features/tokens/ledger')
+                await autoRefund(payload, {
                   userId: user.id,
-                  type: 'spend_image',
+                  type: 'tech_refund',
                   amount: IMAGE_TOKEN_COST,
+                  reason: `image_submit_failed: ${submitResult.error}`.slice(0, 240),
                   relatedMessageId: assistantImageMsgId,
-                  reason: 'on-request image',
-                  idempotencyKey: reserveKey,
+                  idempotencyKey: refundTechKey,
                 })
-
-                if (!spendResult.ok) {
-                  await payload.update({
-                    collection: 'messages',
-                    id: assistantImageMsgId,
-                    data: { status: 'failed', errorReason: 'insufficient_tokens', completedAt: new Date().toISOString() },
-                  })
-                  finishReason = 'insufficient_tokens'
-                } else {
-                  const characterSnapshot = (conversation.characterSnapshot ?? {}) as {
-                    name?: string
-                    backstory?: { occupation?: string; location?: string }
-                    appearance?: CharacterAppearance | null
-                  }
-                  // Prefer the model's own scene hint from the directive; fall
-                  // back to the user's message for the scene.
-                  const sceneSource = parsed.scene && parsed.scene.length > 0 ? parsed.scene : message
-                  const { prompt, negativePrompt } = buildImagePrompt({
-                    characterSnapshot,
-                    userMessage: sceneSource,
-                    language: convLanguage,
-                  })
-
-                  const submitResult = await submitChatImageJob({
-                    payload,
-                    conversationId,
-                    messageId: assistantImageMsgId,
-                    userId: user.id,
-                    prompt,
-                    negativePrompt,
-                    imageSize: 'portrait_4_3',
-                  })
-
-                  if (!submitResult.ok) {
-                    log.error({ msg: 'chat.image.submit_failed', conversationId, err: submitResult.error })
-                    const { autoRefund } = await import('@/features/tokens/ledger')
-                    await autoRefund(payload, {
-                      userId: user.id,
-                      type: 'tech_refund',
-                      amount: IMAGE_TOKEN_COST,
-                      reason: `image_submit_failed: ${submitResult.error}`.slice(0, 240),
-                      relatedMessageId: assistantImageMsgId,
-                      idempotencyKey: refundTechKey,
-                    })
-                    await payload.update({
-                      collection: 'messages',
-                      id: assistantImageMsgId,
-                      data: { status: 'failed', errorReason: submitResult.error.slice(0, 240), completedAt: new Date().toISOString() },
-                    })
-                    // Drop the photo silently — the text reply stands.
-                  } else {
-                    pendingImageMsgId = assistantImageMsgId
-                    log.info({ msg: 'chat.image.submitted', conversationId, messageId: assistantImageMsgId })
-                  }
-                }
+                await payload.update({
+                  collection: 'messages',
+                  id: assistantImageMsgId,
+                  data: { status: 'failed', errorReason: submitResult.error.slice(0, 240), completedAt: new Date().toISOString() },
+                })
+                // Drop the photo silently — the text reply stands.
+              } else {
+                pendingImageMsgId = assistantImageMsgId
+                log.info({ msg: 'chat.image.submitted', conversationId, messageId: assistantImageMsgId })
               }
             }
           }
