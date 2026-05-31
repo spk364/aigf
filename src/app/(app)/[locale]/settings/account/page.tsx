@@ -87,6 +87,21 @@ export default async function AccountSettingsPage({ params, searchParams }: Prop
         )}
       </div>
 
+      {/* Your data — GDPR export */}
+      <div className="mb-8 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/60 p-5">
+        <h3 className="mb-1 text-sm font-semibold text-[var(--color-text)]">
+          {t('account.exportTitle')}
+        </h3>
+        <p className="mb-4 text-xs text-[var(--color-text-muted)]">{t('account.exportHint')}</p>
+        <a
+          href={`/${locale}/settings/export`}
+          download
+          className={settingsPrimaryBtnClass}
+        >
+          {t('account.exportButton')}
+        </a>
+      </div>
+
       {/* Danger zone — delete account */}
       <div className="rounded-2xl border border-[var(--color-danger)]/30 bg-[var(--color-danger)]/5 p-5">
         <h3 className="mb-1 text-sm font-semibold text-[var(--color-danger)]">
