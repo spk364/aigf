@@ -118,6 +118,42 @@
       "secondaryCta": "Or buy tokens instead",
       "decline": "Not now",
       "close": "Close"
+    },
+    "photoComposer": {
+      "title": "Ask for a photo",
+      "subtitle": "Pick a vibe — or just tap send",
+      "groups": {
+        "outfit": "Outfit",
+        "pose": "Pose",
+        "setting": "Setting"
+      },
+      "options": {
+        "outfit": {
+          "casual": "Casual",
+          "dress": "Elegant dress",
+          "cozy": "Cozy sweater",
+          "swimwear": "Swimwear",
+          "lingerie": "Lingerie",
+          "workout": "Workout"
+        },
+        "pose": {
+          "selfie": "Selfie",
+          "lying": "Lying down",
+          "sitting": "By the window",
+          "mirror": "Mirror selfie",
+          "lookingBack": "Over the shoulder"
+        },
+        "setting": {
+          "bedroom": "Bedroom",
+          "beach": "Beach sunset",
+          "cafe": "Cafe",
+          "home": "At home",
+          "city": "City at night"
+        }
+      },
+      "extraPlaceholder": "Anything else? (optional)",
+      "send": "Send photo request",
+      "cancel": "Close"
     }
   },
   "billing": {

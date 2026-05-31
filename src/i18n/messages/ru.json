@@ -118,6 +118,42 @@
       "secondaryCta": "Или просто купить токены",
       "decline": "Не сейчас",
       "close": "Закрыть"
+    },
+    "photoComposer": {
+      "title": "Попросить фото",
+      "subtitle": "Выбери вайб — или просто отправь",
+      "groups": {
+        "outfit": "Наряд",
+        "pose": "Поза",
+        "setting": "Локация"
+      },
+      "options": {
+        "outfit": {
+          "casual": "Casual",
+          "dress": "Элегантное платье",
+          "cozy": "Уютный свитер",
+          "swimwear": "Купальник",
+          "lingerie": "Бельё",
+          "workout": "Спортивная форма"
+        },
+        "pose": {
+          "selfie": "Селфи",
+          "lying": "Лёжа",
+          "sitting": "У окна",
+          "mirror": "Селфи в зеркале",
+          "lookingBack": "Через плечо"
+        },
+        "setting": {
+          "bedroom": "Спальня",
+          "beach": "Пляж на закате",
+          "cafe": "Кафе",
+          "home": "Дома",
+          "city": "Ночной город"
+        }
+      },
+      "extraPlaceholder": "Что-то ещё? (необязательно)",
+      "send": "Отправить запрос фото",
+      "cancel": "Закрыть"
     }
   },
   "billing": {

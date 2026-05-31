@@ -10,6 +10,8 @@ import type { PaywallSurface } from '@/widgets/paywall/admin-config'
 import type { ChatPaywallReason, ChatPaywallStrings } from '@/widgets/paywall'
 import { PLANS } from '@/features/billing/plans'
 import { getActiveExitIntentPromo } from '@/features/promotions/exit-intent-promo'
+import { PHOTO_OPTION_GROUPS } from '@/features/chat/photo-options'
+import type { PhotoComposerStrings } from '@/widgets/chat-interface/PhotoComposer'
 
 type Props = {
   params: Promise<{ locale: string; conversationId: string }>
@@ -203,8 +205,31 @@ export default async function ConversationPage({ params }: Props) {
     fallbackTeaser = teasers[0]
   }
 
+  // Photo composer strings — labels for every option in the catalog, resolved
+  // from i18n so the chips render in the user's language (the prompt fragments
+  // sent to the image pipeline stay English, see photo-options.ts).
+  const tPhoto = await getTranslations('chat.photoComposer')
+  const photoOptions: Record<string, string> = {}
+  for (const g of PHOTO_OPTION_GROUPS) {
+    for (const o of g.options) photoOptions[o.labelKey] = tPhoto(`options.${o.labelKey}`)
+  }
+  const photoComposer: PhotoComposerStrings = {
+    title: tPhoto('title'),
+    subtitle: tPhoto('subtitle'),
+    groups: {
+      outfit: tPhoto('groups.outfit'),
+      pose: tPhoto('groups.pose'),
+      setting: tPhoto('groups.setting'),
+    },
+    options: photoOptions,
+    extraPlaceholder: tPhoto('extraPlaceholder'),
+    send: tPhoto('send'),
+    cancel: tPhoto('cancel'),
+  }
+
   return (
     <ChatInterface
+      photoComposer={photoComposer}
       initialConversationId={conversationId}
       initialMessages={initialMessages}
       locale={locale}
