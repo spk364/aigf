@@ -42,7 +42,10 @@ export default async function ConversationPage({ params }: Props) {
         { deletedAt: { exists: false } },
       ],
     },
-    sort: 'createdAt',
+    // Most-recent 30, newest-first. Ascending 'createdAt' + limit:30 returned
+    // the OLDEST 30, so opening a long conversation showed ancient messages and
+    // hid everything recent. We re-sort to chronological for rendering below.
+    sort: '-createdAt',
     limit: 30,
   })
 
@@ -117,7 +120,10 @@ export default async function ConversationPage({ params }: Props) {
     }
   }
 
-  const initialMessages = messagesResult.docs.map((msg) => {
+  // Render oldest → newest. The query above fetches newest-first to grab the
+  // most recent 30; flip back to chronological so the transcript reads top-down.
+  const orderedDocs = messagesResult.docs.slice().reverse()
+  const initialMessages = orderedDocs.map((msg) => {
     const audioRel = (msg as Record<string, unknown>).audioAssetId
     const audioAssetId =
       audioRel && typeof audioRel === 'object' && 'id' in audioRel

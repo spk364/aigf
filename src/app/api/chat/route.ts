@@ -549,7 +549,11 @@ export async function POST(req: NextRequest) {
         { deletedAt: { exists: false } },
       ],
     },
-    sort: 'createdAt',
+    // Most-recent 30, newest-first. Plain 'createdAt' is ascending in Payload,
+    // which paired with limit:30 returns the OLDEST 30 — so on conversations
+    // longer than 30 messages the LLM never saw any recent context. We reverse
+    // to chronological order below for both the budget walk and extraction.
+    sort: '-createdAt',
     limit: 30,
   })
 
@@ -594,7 +598,10 @@ export async function POST(req: NextRequest) {
   // hit; then reverse so the LLM sees chronological order. Drops the oldest
   // messages on long convos rather than always passing the full 30. Summary +
   // memories above cover anything older.
-  const historyDocs = historyResult.docs
+  // Restore chronological (oldest → newest) order after the newest-first fetch
+  // so the budget walk below and the memory-extraction block work on a normal
+  // timeline.
+  const historyDocs = historyResult.docs.slice().reverse()
   const tailMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
   let usedChars = 0
   for (let i = historyDocs.length - 1; i >= 0; i--) {
@@ -732,7 +739,7 @@ export async function POST(req: NextRequest) {
         // The check uses newCnt (total messages, user+assistant = pairs of 2).
         // newCnt / 2 = user messages count.
         if (newCnt > 0 && (newCnt / 2) % 30 === 0) {
-          const extractionMessages = historyResult.docs
+          const extractionMessages = historyDocs
             .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
             .map((m) => ({ role: m.role as string, content: m.content ?? '', id: m.id }))
 
