@@ -103,7 +103,9 @@ export async function POST(req: NextRequest) {
         { isRegenerated: { not_equals: true } },
       ],
     },
-    sort: 'createdAt',
+    // Most-recent 30, newest-first — see chat/route.ts. Ascending 'createdAt'
+    // + limit returns the oldest 30, starving regeneration of recent context.
+    sort: '-createdAt',
     limit: 30,
   })
 
@@ -121,7 +123,8 @@ export async function POST(req: NextRequest) {
 
   // Same char-budget walk as chat/route.ts — newest backwards until budget,
   // reverse for chronological order. Drop the just-inserted streaming placeholder.
-  const historyDocs = historyResult.docs
+  // Restore chronological (oldest → newest) order after the newest-first fetch.
+  const historyDocs = historyResult.docs.slice().reverse()
   const tailMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
   let usedChars = 0
   for (let i = historyDocs.length - 1; i >= 0; i--) {
