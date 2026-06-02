@@ -11,6 +11,7 @@ import { streamChatCompletion, OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_REGENERATE_LIMIT } from '@/shared/rate-limit/presets'
 import { checkAssistantOutput } from '@/features/safety/output-filter'
+import { parsePhotoDirective } from '@/features/chat/photo-directive'
 import { getAccountState } from '@/shared/auth/account-status'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
@@ -179,11 +180,16 @@ export async function POST(req: NextRequest) {
           typeof conversation.characterId === 'object' && conversation.characterId !== null
             ? (conversation.characterId as { id: string | number }).id
             : conversation.characterId
-        let finalContent = accumulatedContent
+        // Regeneration doesn't offer the photo capability, but strip any stray
+        // [SEND_PHOTO] marker defensively so it can never reach the user.
+        let finalContent = parsePhotoDirective(accumulatedContent).cleaned
+        if (finalContent !== accumulatedContent) {
+          send('replace', { text: finalContent })
+        }
         const outputVerdict = await checkAssistantOutput({
           payload,
           userId: user.id,
-          text: accumulatedContent,
+          text: finalContent,
           locale: (conversation.language as string | null | undefined) ?? 'en',
           relatedMessageId: newMsgId,
           relatedCharacterId: convCharacterId,

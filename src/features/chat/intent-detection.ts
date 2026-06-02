@@ -1,11 +1,16 @@
-// TODO(future): replace regex with a lightweight LLM classifier once volume justifies it
+// Intent detection is no longer the *only* gate for sending a photo — the
+// character's reply decides via the [SEND_PHOTO] directive (see
+// photo-directive.ts), which the LLM applies to far more phrasings than a regex
+// can. This detector is now a reliability booster: when it matches, the chat
+// route forces the directive for the turn so an unmistakable request is never
+// missed. Hence the patterns err toward broad coverage of common phrasings.
 
 export type ChatIntent = 'image_request' | 'text'
 
 const PATTERNS: Record<'en' | 'ru' | 'es', RegExp> = {
-  en: /\b(send\s+(me\s+)?a?\s*(photo|pic|picture|selfie)|show\s+(me|yourself)|i\s+want\s+to\s+see\s+you|selfie|picture\s+of\s+you|photo\s+of\s+you)\b/i,
-  ru: /(отправь\s+фото|пришли\s+фото|пришли\s+селфи|хочу\s+тебя\s+увидеть|покажи\s+себя|покажись|сделай\s+селфи|сфоткай)/i,
-  es: /(m[aá]ndame\s+una\s+foto|env[ií]ame\s+una\s+foto|mu[eé]strate|quiero\s+verte|una\s+selfie|foto\s+tuya)/i,
+  en: /\b((send|show|share|take|snap|gimme|give\s+me)\s+(me\s+)?(a\s+)?(photo|pic|picture|selfie|image|nude|shot)|(can|could|may|let)\s+(i|me)\s+see\s+(you|that|a\s+(photo|pic))|i\s+(want|wanna|need|would\s+like)\s+to\s+see\s+you|wanna\s+see\s+you|show\s+(me|yourself)|selfie|(photo|pic|picture|image)\s+of\s+you|what\s+(do|are)\s+you\s+(look|wearing))\b/i,
+  ru: /(отправь?|пришли?|скинь?|кинь?|шли)\s*(мне\s+)?(фото|фотк[ауи]|селфи|снимок|пик|картинк[ау])|(хочу|можно|давай|хотел[аи]?\s+бы)\s+(тебя\s+)?(увидеть|фото|фотк[ау]|селфи|посмотреть)|покажи(сь|\s+себя|\s+фото|\s+фотк[ау])?|сфоткай(ся)?|сделай\s+селфи|как\s+ты\s+выглядишь/i,
+  es: /(m[aá]ndame|env[ií]ame|ens[eé][ñn]ame|manda|env[ií]a)\s+(una\s+)?(foto|selfie|imagen|fotito)|(quiero|puedo|me\s+gustar[ií]a|d[eé]jame)\s+verte|mu[eé]stra(te|me)|una\s+selfie|foto\s+tuya|c[oó]mo\s+(eres|te\s+ves)/i,
 }
 
 export function detectImageIntent(text: string, locale: 'en' | 'ru' | 'es' | string): boolean {
