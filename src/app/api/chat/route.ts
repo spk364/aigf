@@ -21,7 +21,6 @@ import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relati
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
 import { extractMemories } from '@/features/memory/extract-memories'
 import { getBalance, spend } from '@/features/tokens/ledger'
-import { isPremiumPlan } from '@/features/billing/plans'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_LIMIT, IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 import { submitChatImageJob, IMAGE_TOKEN_COST } from '@/features/chat/image-job'
@@ -70,41 +69,28 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Photos cost tokens and require Premium. We resolve eligibility BEFORE
-// generating the reply so we only ever offer the photo capability to users who
-// can actually pay — the character never promises a photo it can't deliver, and
-// an unaffordable explicit request goes straight to the paywall. Two indexed
-// reads (subscription + balance); the atomic `spend` reserve at submit time
-// remains the authoritative, race-safe gate.
+// Photos cost tokens. We resolve eligibility BEFORE generating the reply so we
+// only ever offer the photo capability to users who can actually pay — the
+// character never promises a photo it can't deliver, and an unaffordable
+// explicit request goes straight to a token top-up nudge. No Premium gate:
+// anyone with enough tokens can receive photos. The atomic `spend` reserve at
+// submit time remains the authoritative, race-safe gate.
 type PhotoEligibility = {
-  isPremium: boolean
   balance: number
   eligible: boolean
   /** Why a photo can't be sent, when not eligible. */
-  blockedReason: 'premium_feature' | 'tokens' | null
+  blockedReason: 'tokens' | null
 }
 
 async function resolvePhotoEligibility(
   payload: Awaited<ReturnType<typeof getPayload>>,
   userId: string | number,
 ): Promise<PhotoEligibility> {
-  const subResult = await payload.find({
-    collection: 'subscriptions',
-    where: { and: [{ userId: { equals: userId } }, { status: { equals: 'active' } }] },
-    limit: 1,
-    overrideAccess: true,
-  })
-  const activeSub = subResult.docs[0]
-  const isPremium = !!activeSub && isPremiumPlan(activeSub.plan as string | null)
-  if (!isPremium) {
-    return { isPremium: false, balance: 0, eligible: false, blockedReason: 'premium_feature' }
-  }
-
   const balance = await getBalance(payload, userId)
   if (balance < IMAGE_TOKEN_COST) {
-    return { isPremium: true, balance, eligible: false, blockedReason: 'tokens' }
+    return { balance, eligible: false, blockedReason: 'tokens' }
   }
-  return { isPremium: true, balance, eligible: true, blockedReason: null }
+  return { balance, eligible: true, blockedReason: null }
 }
 
 export async function POST(req: NextRequest) {
@@ -314,10 +300,10 @@ export async function POST(req: NextRequest) {
   // clearly asks, so explicit requests are always honoured.
   // ---------------------------------------------------------------------------
 
-  // Resolve photo affordability up front (Premium + token balance). We only
-  // teach the model the [SEND_PHOTO] directive when the user can actually pay,
-  // so it never promises a photo we can't deliver. An explicit request from an
-  // ineligible user is turned into a paywall nudge at the end of the stream.
+  // Resolve photo affordability up front (token balance only — no Premium gate).
+  // We only teach the model the [SEND_PHOTO] directive when the user has enough
+  // tokens, so it never promises a photo we can't deliver. An explicit request
+  // with too few tokens is turned into a top-up nudge at the end of the stream.
   const photoEligibility = await resolvePhotoEligibility(payload, user.id)
   const photoBlockedReason =
     explicitPhotoRequest && !photoEligibility.eligible ? photoEligibility.blockedReason : null
@@ -362,8 +348,8 @@ export async function POST(req: NextRequest) {
 
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
   // can answer naturally AND attach a photo in the same turn. Only advertised to
-  // users who can pay for it (Premium + tokens) — others never learn the marker,
-  // so they can't be promised a photo.
+  // users who have enough tokens — others never learn the marker, so they can't
+  // be promised a photo.
   if (photoEligibility.eligible) {
     openrouterMessages.push({ role: 'system', content: photoCapabilityInstructions() })
   }
@@ -573,18 +559,16 @@ export async function POST(req: NextRequest) {
 
         // ── Photo dispatch ───────────────────────────────────────────────────
         // The model is only taught the directive when the user is already
-        // eligible (Premium + tokens, checked up front), so `photoRequested`
+        // eligible (enough tokens, checked up front), so `photoRequested`
         // implies affordability. We still reserve tokens atomically via `spend`
         // here — that's the authoritative, race-safe gate against a balance that
         // dropped since the up-front check (e.g. a concurrent photo).
         let finishReason = 'stop'
         let pendingImageMsgId: string | null = null
 
-        // Explicit request from an ineligible user → keep the natural text, pop
-        // the paywall (premium upsell or token top-up).
-        if (photoBlockedReason === 'premium_feature') {
-          finishReason = 'entitlement_denied'
-        } else if (photoBlockedReason === 'tokens') {
+        // Explicit request but not enough tokens → keep the natural text, pop
+        // the token top-up nudge.
+        if (photoBlockedReason === 'tokens') {
           finishReason = 'insufficient_tokens'
         }
 
