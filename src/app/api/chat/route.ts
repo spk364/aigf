@@ -11,12 +11,16 @@ import { getRequestContext } from '@/shared/lib/request-context'
 import { createLogger } from '@/shared/lib/logger'
 import { track } from '@/shared/analytics/posthog'
 import { detectImageIntent } from '@/features/chat/intent-detection'
+import {
+  makeDirectiveStreamFilter,
+  photoCapabilityInstructions,
+  explicitPhotoRequestInstruction,
+} from '@/features/chat/photo-directive'
 import { buildImagePrompt, type CharacterAppearance } from '@/features/chat/image-prompt'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
 import { extractMemories } from '@/features/memory/extract-memories'
 import { getBalance, spend } from '@/features/tokens/ledger'
-import { isPremiumPlan } from '@/features/billing/plans'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_LIMIT, IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
 import { submitChatImageJob, IMAGE_TOKEN_COST } from '@/features/chat/image-job'
@@ -65,30 +69,28 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function upgradeMessageForLocale(locale: string, upgradeUrl: string): string {
-  if (locale === 'ru') {
-    return `Фотографии доступны только на Premium-плане. [Улучшить](${upgradeUrl})`
-  }
-  if (locale === 'es') {
-    return `Las fotos son una funcion Premium. [Mejorar](${upgradeUrl})`
-  }
-  return `Photos are a Premium feature. [Upgrade](${upgradeUrl})`
+// Photos cost tokens. We resolve eligibility BEFORE generating the reply so we
+// only ever offer the photo capability to users who can actually pay — the
+// character never promises a photo it can't deliver, and an unaffordable
+// explicit request goes straight to a token top-up nudge. No Premium gate:
+// anyone with enough tokens can receive photos. The atomic `spend` reserve at
+// submit time remains the authoritative, race-safe gate.
+type PhotoEligibility = {
+  balance: number
+  eligible: boolean
+  /** Why a photo can't be sent, when not eligible. */
+  blockedReason: 'tokens' | null
 }
 
-function tokensRequiredMessageForLocale(locale: string, upgradeUrl: string): string {
-  if (locale === 'ru') {
-    return `У тебя закончились токены в этом месяце. [Пополнить или улучшить план](${upgradeUrl})`
+async function resolvePhotoEligibility(
+  payload: Awaited<ReturnType<typeof getPayload>>,
+  userId: string | number,
+): Promise<PhotoEligibility> {
+  const balance = await getBalance(payload, userId)
+  if (balance < IMAGE_TOKEN_COST) {
+    return { balance, eligible: false, blockedReason: 'tokens' }
   }
-  if (locale === 'es') {
-    return `Te has quedado sin tokens este mes. [Recargar o mejorar](${upgradeUrl})`
-  }
-  return `You've run out of tokens this month. [Upgrade or buy more](${upgradeUrl})`
-}
-
-function imageFailedMessageForLocale(locale: string): string {
-  if (locale === 'ru') return 'Не удалось создать фото. Попробуй ещё раз.'
-  if (locale === 'es') return 'No se pudo generar la foto. Intentalo de nuevo.'
-  return 'Failed to generate image. Please try again.'
+  return { balance, eligible: true, blockedReason: null }
 }
 
 export async function POST(req: NextRequest) {
@@ -284,261 +286,27 @@ export async function POST(req: NextRequest) {
   log.info({ msg: 'chat.message.user_saved', conversationId, isNewConversation })
 
   const convLanguage = (conversation.language as string | null | undefined) ?? 'en'
-  const isImageRequest = detectImageIntent(message, convLanguage)
+  const explicitPhotoRequest = detectImageIntent(message, convLanguage)
 
   // ---------------------------------------------------------------------------
-  // IMAGE path
+  // Unified text + photo path
+  //
+  // The character's own reply decides whether to send a photo, via an inline
+  // [SEND_PHOTO] directive (see features/chat/photo-directive). We stream the
+  // text with the directive stripped live and, on completion, fire the fal
+  // image pipeline alongside the committed text — so the character answers
+  // naturally AND sends the photo in the same turn. `explicitPhotoRequest`
+  // (the old regex) is kept only to *force* the directive when the user
+  // clearly asks, so explicit requests are always honoured.
   // ---------------------------------------------------------------------------
-  if (isImageRequest) {
-    // Image-gen has a tighter limit — each call costs real $$ at fal.ai and
-    // burns user tokens. The chat-text limit above already passed; this is
-    // an additional gate for the cost-sensitive sub-path.
-    const imageRl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
-    if (!imageRl.allowed) {
-      log.warn({ msg: 'chat.image.rate_limited', blockedBy: imageRl.blockedBy, retryAfterSeconds: imageRl.retryAfterSeconds })
-      track({
-        userId: String(user.id),
-        event: 'chat.image.rate_limited',
-        properties: { blockedBy: imageRl.blockedBy, retryAfterSeconds: imageRl.retryAfterSeconds },
-      })
-      return NextResponse.json(rateLimitResponseBody(imageRl, 'Too many image requests'), {
-        status: 429,
-        headers: rateLimitHeaders(imageRl),
-      })
-    }
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        const enc = (s: string) => new TextEncoder().encode(s)
-        const send = (event: string, data: unknown) => {
-          controller.enqueue(enc(sseEvent(event, data)))
-        }
-
-        if (isNewConversation) {
-          send('conversation', { conversationId })
-        }
-
-        const upgradeUrl = `/${convLanguage}/upgrade`
-
-        // 1. Check subscription entitlement
-        const subResult = await payload.find({
-          collection: 'subscriptions',
-          where: {
-            and: [
-              { userId: { equals: user.id } },
-              { status: { equals: 'active' } },
-            ],
-          },
-          limit: 1,
-          overrideAccess: true,
-        })
-
-        const activeSub = subResult.docs[0]
-        const isPremium = !!activeSub && isPremiumPlan(activeSub.plan as string | null)
-
-        if (!isPremium) {
-          const upgradeMsg = upgradeMessageForLocale(convLanguage, upgradeUrl)
-          const deniedMsg = await payload.create({
-            collection: 'messages',
-            data: {
-              conversationId: conversationId,
-              role: 'assistant',
-              type: 'text',
-              status: 'completed',
-              content: upgradeMsg,
-              completedAt: new Date().toISOString(),
-            },
-          })
-          {
-            const cnt = (conversation.messageCount as number | null) ?? 0
-            const days = (conversation.daysActiveCount as number | null) ?? 0
-            const newDays = days + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
-            const newCnt = cnt + 2
-            const ts = new Date().toISOString()
-            await payload.update({
-              collection: 'conversations',
-              id: conversationId,
-              data: {
-                messageCount: newCnt,
-                daysActiveCount: newDays,
-                lastMessageAt: ts,
-                lastMessagePreview: upgradeMsg.slice(0, 120),
-                relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
-              },
-            })
-          }
-          send('message', { messageId: String(deniedMsg.id) })
-          send('delta', { text: upgradeMsg })
-          send('done', { finishReason: 'entitlement_denied' })
-          controller.close()
-          return
-        }
-
-        // 2. Pre-flight balance check (cheap UX hint — reserve below is the
-        //    authoritative gate via atomic spend).
-        const balance = await getBalance(payload, user.id)
-        if (balance < IMAGE_TOKEN_COST) {
-          const tokenMsg = tokensRequiredMessageForLocale(convLanguage, upgradeUrl)
-          const tokenDeniedMsg = await payload.create({
-            collection: 'messages',
-            data: {
-              conversationId: conversationId,
-              role: 'assistant',
-              type: 'text',
-              status: 'completed',
-              content: tokenMsg,
-              completedAt: new Date().toISOString(),
-            },
-          })
-          {
-            const cnt = (conversation.messageCount as number | null) ?? 0
-            const days = (conversation.daysActiveCount as number | null) ?? 0
-            const newDays = days + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
-            const newCnt = cnt + 2
-            const ts = new Date().toISOString()
-            await payload.update({
-              collection: 'conversations',
-              id: conversationId,
-              data: {
-                messageCount: newCnt,
-                daysActiveCount: newDays,
-                lastMessageAt: ts,
-                lastMessagePreview: tokenMsg.slice(0, 120),
-                relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
-              },
-            })
-          }
-          send('message', { messageId: String(tokenDeniedMsg.id) })
-          send('delta', { text: tokenMsg })
-          send('done', { finishReason: 'insufficient_tokens' })
-          controller.close()
-          return
-        }
-
-        // 3. Create the assistant message FIRST so we have a stable id to use
-        //    as the idempotency anchor for the reserve, refund, and any retries.
-        const assistantImageMsg = await payload.create({
-          collection: 'messages',
-          data: {
-            conversationId: conversationId,
-            role: 'assistant',
-            type: 'image',
-            status: 'pending',
-          },
-        })
-        const assistantImageMsgId = String(assistantImageMsg.id)
-        send('message', { messageId: assistantImageMsgId })
-
-        // 4. Reserve tokens BEFORE calling fal.ai. Two concurrent requests with
-        //    barely-enough balance: at most one wins; the loser short-circuits
-        //    without burning provider quota. Idempotency key keyed on the
-        //    message id so a retried HTTP request reuses the same reservation.
-        const reserveKey = `image:reserve:${assistantImageMsgId}`
-        const refundTechKey = `image:refund:tech:${assistantImageMsgId}`
-
-        const spendResult = await spend(payload, {
-          userId: user.id,
-          type: 'spend_image',
-          amount: IMAGE_TOKEN_COST,
-          relatedMessageId: assistantImageMsgId,
-          reason: 'on-request image',
-          idempotencyKey: reserveKey,
-        })
-
-        if (!spendResult.ok) {
-          await payload.update({
-            collection: 'messages',
-            id: assistantImageMsgId,
-            data: {
-              status: 'failed',
-              errorReason: 'insufficient_tokens',
-              completedAt: new Date().toISOString(),
-            },
-          })
-          send('error', {
-            message: tokensRequiredMessageForLocale(convLanguage, upgradeUrl),
-            reason: 'insufficient_tokens',
-          })
-          controller.close()
-          return
-        }
-
-        const characterSnapshot = (conversation.characterSnapshot ?? {}) as {
-          name?: string
-          backstory?: { occupation?: string; location?: string }
-          appearance?: CharacterAppearance | null
-        }
-
-        const { prompt, negativePrompt } = buildImagePrompt({
-          characterSnapshot,
-          userMessage: message,
-          language: convLanguage,
-        })
-
-        // 5. Submit fal job (fast — ~1s) and stash handles. The slow tail
-        //    (fal poll → persist → classify → ledger) lives in the
-        //    /api/chat/messages/[id]/image-status route which the client
-        //    polls until terminal. This keeps us inside the 60s function cap
-        //    even when fal queues the request behind a cold-start.
-        const submitResult = await submitChatImageJob({
-          payload,
-          conversationId,
-          messageId: assistantImageMsgId,
-          userId: user.id,
-          prompt,
-          negativePrompt,
-          imageSize: 'portrait_4_3',
-        })
-
-        if (!submitResult.ok) {
-          log.error({ msg: 'chat.image.submit_failed', conversationId, err: submitResult.error })
-
-          // Submit failed → refund and mark message as failed before stream closes.
-          // We import autoRefund inline to keep the lazy-load shape; it's only
-          // needed on this rare path.
-          const { autoRefund } = await import('@/features/tokens/ledger')
-          await autoRefund(payload, {
-            userId: user.id,
-            type: 'tech_refund',
-            amount: IMAGE_TOKEN_COST,
-            reason: `image_submit_failed: ${submitResult.error}`.slice(0, 240),
-            relatedMessageId: assistantImageMsgId,
-            idempotencyKey: refundTechKey,
-          })
-
-          await payload.update({
-            collection: 'messages',
-            id: assistantImageMsgId,
-            data: { status: 'failed', errorReason: submitResult.error.slice(0, 240), completedAt: new Date().toISOString() },
-          })
-          send('error', { message: imageFailedMessageForLocale(convLanguage) })
-          controller.close()
-          return
-        }
-
-        // Tell the client to start polling. Final image / failure surfaces
-        // through /api/chat/messages/[id]/image-status — see ChatInterface.
-        send('image-pending', { messageId: assistantImageMsgId })
-        send('done', { finishReason: 'image_submitted' })
-
-        log.info({ msg: 'chat.image.submitted', conversationId, messageId: assistantImageMsgId, latencyMs: Date.now() - handlerStart })
-        controller.close()
-      },
-    })
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      },
-    })
-  }
-
-  // ---------------------------------------------------------------------------
-  // TEXT path (unchanged)
-  // ---------------------------------------------------------------------------
+  // Resolve photo affordability up front (token balance only — no Premium gate).
+  // We only teach the model the [SEND_PHOTO] directive when the user has enough
+  // tokens, so it never promises a photo we can't deliver. An explicit request
+  // with too few tokens is turned into a top-up nudge at the end of the stream.
+  const photoEligibility = await resolvePhotoEligibility(payload, user.id)
+  const photoBlockedReason =
+    explicitPhotoRequest && !photoEligibility.eligible ? photoEligibility.blockedReason : null
 
   const historyResult = await payload.find({
     collection: 'messages',
@@ -578,6 +346,14 @@ export async function POST(req: NextRequest) {
     content: snapshot?.systemPrompt ?? '',
   })
 
+  // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
+  // can answer naturally AND attach a photo in the same turn. Only advertised to
+  // users who have enough tokens — others never learn the marker, so they can't
+  // be promised a photo.
+  if (photoEligibility.eligible) {
+    openrouterMessages.push({ role: 'system', content: photoCapabilityInstructions() })
+  }
+
   const memoryBlock = formatMemoriesForPrompt(memories)
   if (memoryBlock) {
     openrouterMessages.push({ role: 'system', content: memoryBlock })
@@ -607,6 +383,13 @@ export async function POST(req: NextRequest) {
   }
   tailMessages.reverse()
   for (const m of tailMessages) openrouterMessages.push(m)
+
+  // When an eligible user clearly asked for a photo, force the directive this
+  // turn so an explicit request is never dropped (the regex booster behind the
+  // old image branch). Placed last for maximum salience.
+  if (explicitPhotoRequest && photoEligibility.eligible) {
+    openrouterMessages.push({ role: 'system', content: explicitPhotoRequestInstruction() })
+  }
 
   const assistantMsg = await payload.create({
     collection: 'messages',
@@ -639,7 +422,10 @@ export async function POST(req: NextRequest) {
       const thinkingDelay = 600 + Math.floor(Math.random() * 900)
       await delay(thinkingDelay)
 
-      let accumulatedContent = ''
+      // The directiveFilter accumulates the RAW model output (directive
+      // included) and holds back any in-progress [SEND_PHOTO...] marker so it
+      // never flashes at the user.
+      const directiveFilter = makeDirectiveStreamFilter()
       let usageData: { prompt_tokens: number; completion_tokens: number } | undefined
       const startTime = Date.now()
       let timeToFirstToken: number | null = null
@@ -661,97 +447,232 @@ export async function POST(req: NextRequest) {
             timeToFirstToken = Date.now() - startTime
           }
 
-          accumulatedContent += chunk.delta
-          send('delta', { text: chunk.delta })
+          const safe = directiveFilter.push(chunk.delta)
+          if (safe) send('delta', { text: safe })
         }
 
         const latencyMs = Date.now() - startTime
 
+        // Pull the [SEND_PHOTO] directive (if any) out of the assembled reply.
+        const parsed = directiveFilter.finish()
+        let finalContent = parsed.cleaned
+        // Send a photo when EITHER the model emitted the directive (spontaneous
+        // photo) OR the user explicitly asked and can pay. The explicit-request
+        // regex is the deterministic trigger — DeepSeek doesn't reliably emit the
+        // marker under strong in-character prompts, so we must not depend on it
+        // for the primary "send me a selfie" flow.
+        let photoRequested =
+          parsed.requested || (explicitPhotoRequest && photoEligibility.eligible)
+
         // ── Output safety filter (post-LLM) ──────────────────────────────────
-        // Backstop for CSAM-class model drift. Streamed live for UX; if the
-        // assembled reply trips a hard block we overwrite the persisted content
-        // and tell the client to replace what it rendered.
-        let finalContent = accumulatedContent
+        // Backstop for CSAM-class model drift, run over the user-visible text. A
+        // hard block both replaces the text and cancels the photo — the reply is
+        // no longer trustworthy enough to attach an image to.
         const outputVerdict = await checkAssistantOutput({
           payload,
           userId: user.id,
-          text: accumulatedContent,
+          text: finalContent,
           locale: convLanguage,
           relatedMessageId: assistantMsgId,
           relatedCharacterId: convCharacterId,
         })
         if (!outputVerdict.safe) {
           finalContent = outputVerdict.replacement
+          photoRequested = false
+        }
+
+        const hasText = finalContent.trim().length > 0
+
+        // The streamed text (directive stripped) can drift from finalContent via
+        // the whitespace tidy or a safety replacement — reconcile the client to
+        // the canonical text whenever we touched it.
+        if (hasText && (photoRequested || !outputVerdict.safe)) {
           send('replace', { text: finalContent })
         }
 
-        await payload.update({
-          collection: 'messages',
-          id: assistantMsgId,
-          data: {
-            content: finalContent,
-            status: 'completed',
-            completedAt: new Date().toISOString(),
-            generationMetadata: {
-              model: LLM_MODEL,
-              provider: 'openrouter',
-              tokensInput: usageData?.prompt_tokens ?? null,
-              tokensOutput: usageData?.completion_tokens ?? null,
-              temperature: LLM_TEMPERATURE,
-              latencyMs,
-              timeToFirstTokenMs: timeToFirstToken,
-              ...(outputVerdict.safe ? {} : { outputFiltered: true }),
+        if (hasText) {
+          await payload.update({
+            collection: 'messages',
+            id: assistantMsgId,
+            data: {
+              content: finalContent,
+              status: 'completed',
+              completedAt: new Date().toISOString(),
+              generationMetadata: {
+                model: LLM_MODEL,
+                provider: 'openrouter',
+                tokensInput: usageData?.prompt_tokens ?? null,
+                tokensOutput: usageData?.completion_tokens ?? null,
+                temperature: LLM_TEMPERATURE,
+                latencyMs,
+                timeToFirstTokenMs: timeToFirstToken,
+                ...(outputVerdict.safe ? {} : { outputFiltered: true }),
+                ...(photoRequested ? { sentPhoto: true } : {}),
+              },
             },
-          },
-        })
+          })
 
-        const cnt = (conversation.messageCount as number | null) ?? 0
-        const days = (conversation.daysActiveCount as number | null) ?? 0
-        const newDays = days + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
-        const newCnt = cnt + 2
-        const ts = new Date().toISOString()
-        await payload.update({
-          collection: 'conversations',
-          id: conversationId,
-          data: {
-            messageCount: newCnt,
-            daysActiveCount: newDays,
-            lastMessageAt: ts,
-            lastMessagePreview: finalContent.slice(0, 120),
-            relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
-          },
-        })
+          const cnt = (conversation.messageCount as number | null) ?? 0
+          const days = (conversation.daysActiveCount as number | null) ?? 0
+          const newDays = days + (isNewActiveDay(conversation.lastMessageAt as string | null) ? 1 : 0)
+          const newCnt = cnt + 2
+          const ts = new Date().toISOString()
+          await payload.update({
+            collection: 'conversations',
+            id: conversationId,
+            data: {
+              messageCount: newCnt,
+              daysActiveCount: newDays,
+              lastMessageAt: ts,
+              lastMessagePreview: finalContent.slice(0, 120),
+              relationshipScore: computeRelationshipScore({ messageCount: newCnt, daysActiveCount: newDays, lastMessageAt: ts }),
+            },
+          })
+
+          // Trigger memory extraction every 30 user messages (fire-and-forget).
+          // The check uses newCnt (total messages, user+assistant = pairs of 2).
+          // newCnt / 2 = user messages count.
+          if (newCnt > 0 && (newCnt / 2) % 30 === 0) {
+            const extractionMessages = historyResult.docs
+              .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
+              .map((m) => ({ role: m.role as string, content: m.content ?? '', id: m.id }))
+
+            // Add the current user message and the just-generated assistant message.
+            extractionMessages.push({ role: 'user', content: message, id: 'current-user' })
+            extractionMessages.push({ role: 'assistant', content: finalContent, id: assistantMsgId })
+
+            void extractMemories({
+              payload,
+              userId: user.id,
+              characterId: convCharacterId,
+              conversationId,
+              messages: extractionMessages,
+            }).catch((err: unknown) => {
+              log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+            })
+          }
+        } else {
+          // Photo-only reply (model sent just the directive) — drop the empty
+          // placeholder text message; the image message carries the turn.
+          await payload.delete({ collection: 'messages', id: assistantMsgId }).catch(() => {})
+        }
+
+        // ── Photo dispatch ───────────────────────────────────────────────────
+        // The model is only taught the directive when the user is already
+        // eligible (enough tokens, checked up front), so `photoRequested`
+        // implies affordability. We still reserve tokens atomically via `spend`
+        // here — that's the authoritative, race-safe gate against a balance that
+        // dropped since the up-front check (e.g. a concurrent photo).
+        let finishReason = 'stop'
+        let pendingImageMsgId: string | null = null
+
+        // Explicit request but not enough tokens → keep the natural text, pop
+        // the token top-up nudge.
+        if (photoBlockedReason === 'tokens') {
+          finishReason = 'insufficient_tokens'
+        }
+
+        if (photoRequested && photoEligibility.eligible) {
+          const imageRl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+          if (!imageRl.allowed) {
+            log.warn({ msg: 'chat.image.rate_limited', blockedBy: imageRl.blockedBy, retryAfterSeconds: imageRl.retryAfterSeconds })
+            // Silently drop the photo; the text reply already went out.
+          } else {
+            const assistantImageMsg = await payload.create({
+              collection: 'messages',
+              data: {
+                conversationId: conversationId,
+                role: 'assistant',
+                type: 'image',
+                status: 'pending',
+              },
+            })
+            const assistantImageMsgId = String(assistantImageMsg.id)
+            const reserveKey = `image:reserve:${assistantImageMsgId}`
+            const refundTechKey = `image:refund:tech:${assistantImageMsgId}`
+
+            // Authoritative token gate: atomic reserve before we spend money at
+            // fal. Fails closed if the balance dropped since the up-front check.
+            const spendResult = await spend(payload, {
+              userId: user.id,
+              type: 'spend_image',
+              amount: IMAGE_TOKEN_COST,
+              relatedMessageId: assistantImageMsgId,
+              reason: 'on-request image',
+              idempotencyKey: reserveKey,
+            })
+
+            if (!spendResult.ok) {
+              await payload.update({
+                collection: 'messages',
+                id: assistantImageMsgId,
+                data: { status: 'failed', errorReason: 'insufficient_tokens', completedAt: new Date().toISOString() },
+              })
+              finishReason = 'insufficient_tokens'
+            } else {
+              const characterSnapshot = (conversation.characterSnapshot ?? {}) as {
+                name?: string
+                backstory?: { occupation?: string; location?: string }
+                appearance?: CharacterAppearance | null
+              }
+              // Prefer the model's own scene hint from the directive; fall
+              // back to the user's message for the scene.
+              const sceneSource = parsed.scene && parsed.scene.length > 0 ? parsed.scene : message
+              const { prompt, negativePrompt } = buildImagePrompt({
+                characterSnapshot,
+                userMessage: sceneSource,
+                language: convLanguage,
+              })
+
+              const submitResult = await submitChatImageJob({
+                payload,
+                conversationId,
+                messageId: assistantImageMsgId,
+                userId: user.id,
+                prompt,
+                negativePrompt,
+                imageSize: 'portrait_4_3',
+              })
+
+              if (!submitResult.ok) {
+                log.error({ msg: 'chat.image.submit_failed', conversationId, err: submitResult.error })
+                const { autoRefund } = await import('@/features/tokens/ledger')
+                await autoRefund(payload, {
+                  userId: user.id,
+                  type: 'tech_refund',
+                  amount: IMAGE_TOKEN_COST,
+                  reason: `image_submit_failed: ${submitResult.error}`.slice(0, 240),
+                  relatedMessageId: assistantImageMsgId,
+                  idempotencyKey: refundTechKey,
+                })
+                await payload.update({
+                  collection: 'messages',
+                  id: assistantImageMsgId,
+                  data: { status: 'failed', errorReason: submitResult.error.slice(0, 240), completedAt: new Date().toISOString() },
+                })
+                // Drop the photo silently — the text reply stands.
+              } else {
+                pendingImageMsgId = assistantImageMsgId
+                log.info({ msg: 'chat.image.submitted', conversationId, messageId: assistantImageMsgId })
+              }
+            }
+          }
+        }
 
         log.info({
           msg: 'chat.request.done',
           conversationId,
           latencyMs: Date.now() - handlerStart,
+          sentPhoto: pendingImageMsgId !== null,
         })
 
-        // Trigger memory extraction every 30 user messages (fire-and-forget).
-        // The check uses newCnt (total messages, user+assistant = pairs of 2).
-        // newCnt / 2 = user messages count.
-        if (newCnt > 0 && (newCnt / 2) % 30 === 0) {
-          const extractionMessages = historyResult.docs
-            .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
-            .map((m) => ({ role: m.role as string, content: m.content ?? '', id: m.id }))
-
-          // Add the current user message and the just-generated assistant message.
-          extractionMessages.push({ role: 'user', content: message, id: 'current-user' })
-          extractionMessages.push({ role: 'assistant', content: finalContent, id: assistantMsgId })
-
-          void extractMemories({
-            payload,
-            userId: user.id,
-            characterId: convCharacterId,
-            conversationId,
-            messages: extractionMessages,
-          }).catch((err: unknown) => {
-            log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
-          })
+        // Order matters: `done` commits the text bubble client-side, then the
+        // image-pending placeholder is appended below it. ChatInterface polls
+        // the image-status route from there until the photo resolves.
+        send('done', { finishReason })
+        if (pendingImageMsgId) {
+          send('image-pending', { messageId: pendingImageMsgId })
         }
-
-        send('done', { finishReason: 'stop' })
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'
         const isAbort =
@@ -761,12 +682,15 @@ export async function POST(req: NextRequest) {
           log.error({ msg: 'chat.request.error', conversationId, err: errorMsg })
         }
 
+        // Strip any (possibly partial) directive from the salvaged text so a
+        // raw [SEND_PHOTO marker never lands in a persisted message.
+        const salvaged = directiveFilter.finish().cleaned
         await payload.update({
           collection: 'messages',
           id: assistantMsgId,
           data: {
-            content: accumulatedContent,
-            status: isAbort && accumulatedContent ? 'completed' : 'failed',
+            content: salvaged,
+            status: isAbort && salvaged ? 'completed' : 'failed',
             errorReason: isAbort ? 'client_disconnected' : errorMsg,
             completedAt: new Date().toISOString(),
           },
