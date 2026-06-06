@@ -15,6 +15,12 @@ import config from '@payload-config'
 import { z } from 'zod'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
 import { generateImage, submitImageJob, fetchImageJobStatus } from '@/shared/ai/fal'
+import { submitAtlasImageJob, fetchAtlasImageJobStatus } from '@/shared/ai/atlas'
+import {
+  DEFAULT_IMAGE_MODEL_ID,
+  detectImageProvider,
+  findImageModel,
+} from '@/shared/ai/image-models'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
 import { gateGeneratedImageAge } from '@/features/safety/image-age-gate'
@@ -454,12 +460,14 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
 // client-supplied URLs (which would be a redirect/SSRF surface).
 
 export type PendingPreviewJob = {
-  // Persisted opaque handles returned by fal's submit response.
+  // Persisted opaque handles returned by the provider's submit response.
   requestId: string
   statusUrl: string
   responseUrl: string
   endpoint: string
   modelName: string
+  // Which backend to poll — fal or Atlas.
+  provider?: 'fal' | 'atlas'
   // Snapshotted so the completion path can persist the prompt actually
   // sent without re-deriving it from a draft that might have changed.
   prompt: string
@@ -509,26 +517,46 @@ export async function submitPreviewJobAction(draftId: string): Promise<SubmitPre
       ? buildUniquePrompt(uniqueDesc, appearance)
       : buildPreviewPrompt(appearance, identity, backstory)
   const negativePrompt = buildPreviewNegativePrompt(appearance)
+  // Builder previews use the Atlas default model (WAN 2.6) — same as the admin
+  // "Generate scenes" flow. fal's hardcoded NSFW classifier returns uniform
+  // black frames for spicy prompts (despite enable_safety_checker:false), which
+  // surfaced to users as "filtered every preview as unsafe". Atlas has no such
+  // prompt filter, so previews actually render. The model is still resolved
+  // generically so a future Atlas/fal picker keeps working.
   const selectedModel =
     typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null
-  const modelId = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
-  const { endpoint, modelName } = resolveFalDispatch(modelId)
-  const numInferenceSteps = endpoint === 'fal-ai/flux/schnell' ? 4 : 30
+  const pickedModel = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
+  const pickedProvider = findImageModel(pickedModel)?.provider ?? detectImageProvider(pickedModel)
+  // Force Atlas unless the user explicitly picked an Atlas model already.
+  const modelId = pickedProvider === 'atlas' ? pickedModel : DEFAULT_IMAGE_MODEL_ID
+  const provider = findImageModel(modelId)?.provider ?? detectImageProvider(modelId)
 
   let handles: Awaited<ReturnType<typeof submitImageJob>>
   try {
-    handles = await submitImageJob({
-      prompt,
-      negativePrompt,
-      imageSize: { width: 832, height: 1216 },
-      numImages: 1,
-      endpoint,
-      modelName,
-      guidanceScale: 6.5,
-      numInferenceSteps,
-    })
+    if (provider === 'atlas') {
+      handles = await submitAtlasImageJob({
+        prompt,
+        negativePrompt,
+        imageSize: { width: 832, height: 1216 },
+        numImages: 1,
+        endpoint: modelId,
+      })
+    } else {
+      const { endpoint, modelName } = resolveFalDispatch(modelId)
+      const numInferenceSteps = endpoint === 'fal-ai/flux/schnell' ? 4 : 30
+      handles = await submitImageJob({
+        prompt,
+        negativePrompt,
+        imageSize: { width: 832, height: 1216 },
+        numImages: 1,
+        endpoint,
+        modelName,
+        guidanceScale: 6.5,
+        numInferenceSteps,
+      })
+    }
   } catch (e) {
-    console.error('[builder-preview-submit] failed', { modelId, endpoint, modelName, error: e })
+    console.error('[builder-preview-submit] failed', { modelId, provider, error: e })
     return { ok: false, error: e instanceof Error ? e.message : 'submit_failed' }
   }
 
@@ -538,6 +566,7 @@ export async function submitPreviewJobAction(draftId: string): Promise<SubmitPre
     responseUrl: handles.responseUrl,
     endpoint: handles.endpoint,
     modelName: handles.modelName,
+    provider,
     prompt,
     startedAtMs: Date.now(),
   }
@@ -584,14 +613,18 @@ export async function fetchPreviewJobStatusAction(draftId: string): Promise<Fetc
 
   let status: Awaited<ReturnType<typeof fetchImageJobStatus>>
   try {
-    status = await fetchImageJobStatus({
+    const pollArgs = {
       statusUrl: pending.statusUrl,
       responseUrl: pending.responseUrl,
       requestId: pending.requestId,
       endpoint: pending.endpoint,
       modelName: pending.modelName,
       startedAtMs: pending.startedAtMs,
-    })
+    }
+    status =
+      pending.provider === 'atlas'
+        ? await fetchAtlasImageJobStatus(pollArgs)
+        : await fetchImageJobStatus(pollArgs)
   } catch (e) {
     console.error('[builder-preview-poll] failed', { error: e })
     return { ok: false, error: e instanceof Error ? e.message : 'poll_failed' }
