@@ -166,8 +166,10 @@ describe('finalizeChatImageJob', () => {
       queuePosition: 3,
       lastLog: 'in queue',
     })
+    // Fresh submission so the timeout watchdog doesn't fire.
+    const freshHandles = { ...baseHandles, submittedAt: new Date().toISOString() }
     const payload = makePayload({
-      messages: [{ id: 'msg-1', conversationId: 'conv-1', status: 'pending', generationMetadata: { falJob: baseHandles } }],
+      messages: [{ id: 'msg-1', conversationId: 'conv-1', status: 'pending', generationMetadata: { falJob: freshHandles } }],
       conversations: [baseConvo],
     })
     const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
@@ -177,6 +179,29 @@ describe('finalizeChatImageJob', () => {
     }
     expect(persistMock).not.toHaveBeenCalled()
     expect(autoRefundMock).not.toHaveBeenCalled()
+  })
+
+  it('times out and refunds a job stuck in-flight past the deadline', async () => {
+    fetchImageJobStatusMock.mockResolvedValue({
+      status: 'pending',
+      phase: 'running',
+      lastLog: 'still running',
+    })
+    // submittedAt far in the past → watchdog fires.
+    const staleHandles = { ...baseHandles, submittedAt: '2026-05-09T12:00:00Z' }
+    const payload = makePayload({
+      messages: [{ id: 'msg-1', conversationId: 'conv-1', status: 'pending', generationMetadata: { falJob: staleHandles } }],
+      conversations: [baseConvo],
+    })
+    const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+    expect(result.phase).toBe('failed')
+    if (result.phase === 'failed') expect(result.error).toBe('generation_timeout')
+    expect(autoRefundMock).toHaveBeenCalledTimes(1)
+    expect(autoRefundMock.mock.calls[0]![1]).toMatchObject({
+      type: 'tech_refund',
+      idempotencyKey: 'image:refund:tech:msg-1',
+    })
+    expect(payload.__store.messages[0]!.status).toBe('failed')
   })
 
   it('refunds on fal failure (tech_refund) and marks msg failed', async () => {

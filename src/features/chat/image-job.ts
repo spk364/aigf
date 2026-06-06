@@ -3,9 +3,16 @@ import type { BasePayload } from 'payload'
 import {
   submitImageJob,
   fetchImageJobStatus,
-  FAL_ENDPOINT_FLUX_SCHNELL,
+  FAL_ENDPOINT_LORA,
+  FAL_ENDPOINT_IP_ADAPTER_FACE_ID,
   type ImageJobStatus,
 } from '@/shared/ai/fal'
+import { submitAtlasImageJob, fetchAtlasImageJobStatus } from '@/shared/ai/atlas'
+import {
+  DEFAULT_IMAGE_MODEL_ID,
+  detectImageProvider,
+  findImageModel,
+} from '@/shared/ai/image-models'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 import { classifyImageSafety } from '@/shared/ai/safety'
 import { recordContentFlag, recordSafetyIncident } from '@/features/safety/incidents'
@@ -28,6 +35,10 @@ import { createLogger } from '@/shared/lib/logger'
 
 export const IMAGE_TOKEN_COST = 2
 
+// Watchdog deadline for a single chat image job. Past this, finalize fails the
+// message and refunds the reserved tokens rather than pending forever.
+const IMAGE_JOB_TIMEOUT_MS = 170_000
+
 type ChatImageGenerationMetadata = {
   falJob?: {
     requestId: string
@@ -37,6 +48,8 @@ type ChatImageGenerationMetadata = {
     endpoint: string
     modelName: string
     submittedAt: string
+    // Which provider's poller finalizeChatImageJob must use.
+    provider?: 'fal' | 'atlas'
   }
   prompt?: string
   negativePrompt?: string
@@ -55,7 +68,14 @@ export type SubmitChatImageInput = {
   userId: string | number
   prompt: string
   negativePrompt?: string
-  imageSize?: 'portrait_4_3' | 'square_hd' | 'square'
+  // Model id to dispatch (atlas slug, fal `fal-ai/...` slug, or HF repo id).
+  // Defaults to the admin's default model (DEFAULT_IMAGE_MODEL_ID = Atlas
+  // WAN 2.6) so chat photos match what the admin generates.
+  modelId?: string
+  // Character reference / primary image URL. When present we condition the
+  // generation on it for identity consistency — Atlas image-edit takes it as
+  // the source image; fal uses IP-Adapter Face-ID. Mirrors the admin route.
+  referenceImageUrl?: string | null
 }
 
 export type SubmitChatImageResult =
@@ -63,9 +83,11 @@ export type SubmitChatImageResult =
   | { ok: false; error: string }
 
 /**
- * Submit a fal job for an existing assistant-message in `pending` state.
- * Stashes job handles into the message's generationMetadata so the
- * status route can poll without holding extra DB columns.
+ * Submit a chat image job for an existing assistant-message in `pending` state.
+ * Provider-aware (fal or Atlas) and reference-conditioned, mirroring the admin
+ * generate-image route so chat photos look like the character. Stashes job
+ * handles + provider into the message's generationMetadata so the status route
+ * can poll the right backend.
  *
  * Caller is responsible for: token reservation (already happened upstream)
  * and entitlement / balance checks.
@@ -76,18 +98,53 @@ export async function submitChatImageJob(
   const log = createLogger({ userId: String(input.userId) })
 
   try {
-    // FLUX schnell is the cheapest viable endpoint (~$0.003/image vs ~$0.05
-    // for RealVisXL). Prompts are SD-style comma-tokens which FLUX accepts
-    // with mild quality loss; negative_prompt is silently dropped by FLUX,
-    // but the post-gen NSFW classifier (see classifyImageSafety below) still
-    // refunds + deletes any unsafe output. See docs/payments-tokenomics-plan.md
-    // §2.3 HOLE-2 for the cost rationale.
-    const handles = await submitImageJob({
-      prompt: input.prompt,
-      negativePrompt: input.negativePrompt,
-      imageSize: input.imageSize ?? 'portrait_4_3',
-      endpoint: FAL_ENDPOINT_FLUX_SCHNELL,
-    })
+    const modelId = input.modelId ?? DEFAULT_IMAGE_MODEL_ID
+    const modelMeta = findImageModel(modelId)
+    const provider = modelMeta?.provider ?? detectImageProvider(modelId)
+    const isFlux = modelMeta?.isFlux ?? false
+    const ref = input.referenceImageUrl?.trim() || null
+    // SDXL-native portrait bucket; Atlas reads it as "832*1216".
+    const imageSize = { width: 832, height: 1216 } as const
+
+    let handles: Awaited<ReturnType<typeof submitImageJob>>
+
+    if (provider === 'atlas') {
+      // Use the image-edit sibling when we can condition on a reference image
+      // (keeps the character's identity); otherwise text-to-image. WAN 2.6
+      // exposes both as `…/text-to-image` and `…/image-edit`.
+      const endpoint = ref
+        ? modelId.replace('text-to-image', 'image-edit')
+        : modelId.replace('image-edit', 'text-to-image')
+      handles = await submitAtlasImageJob({
+        prompt: input.prompt,
+        negativePrompt: input.negativePrompt,
+        imageSize,
+        numImages: 1,
+        endpoint,
+        ...(ref && endpoint.includes('image-edit') ? { ipAdapterImageUrl: ref } : {}),
+      })
+    } else {
+      // fal. Reference → IP-Adapter Face-ID for face consistency (incompatible
+      // with FLUX). HF repo ids route through fal-ai/lora; native `fal-ai/...`
+      // slugs pass through.
+      const useIpAdapter = !!ref && !isFlux
+      const looksLikeHfRepo = !modelId.startsWith('fal-ai/')
+      const endpoint = useIpAdapter
+        ? FAL_ENDPOINT_IP_ADAPTER_FACE_ID
+        : looksLikeHfRepo
+          ? FAL_ENDPOINT_LORA
+          : modelId
+      const modelName = useIpAdapter ? undefined : looksLikeHfRepo ? modelId : undefined
+      handles = await submitImageJob({
+        prompt: input.prompt,
+        negativePrompt: input.negativePrompt,
+        imageSize,
+        numImages: 1,
+        endpoint,
+        modelName,
+        ...(useIpAdapter && ref ? { ipAdapterImageUrl: ref, ipAdapterScale: 0.7 } : {}),
+      })
+    }
 
     const meta: ChatImageGenerationMetadata = {
       prompt: input.prompt,
@@ -100,6 +157,7 @@ export async function submitChatImageJob(
         endpoint: handles.endpoint,
         modelName: handles.modelName,
         submittedAt: new Date().toISOString(),
+        provider,
       },
     }
 
@@ -212,17 +270,22 @@ export async function finalizeChatImageJob(
     return { phase: 'failed', error: 'no_job_handles' }
   }
 
-  // Single fal poll. If still pending, return progress; the caller polls again.
+  // Single poll against the same provider we submitted to. If still pending,
+  // return progress; the caller polls again.
   let status: ImageJobStatus
   try {
-    status = await fetchImageJobStatus({
+    const pollArgs = {
       statusUrl: falJob.statusUrl,
       responseUrl: falJob.responseUrl,
       requestId: falJob.requestId,
       endpoint: falJob.endpoint,
       modelName: falJob.modelName,
       startedAtMs: new Date(falJob.submittedAt).getTime(),
-    })
+    }
+    status =
+      falJob.provider === 'atlas'
+        ? await fetchAtlasImageJobStatus(pollArgs)
+        : await fetchImageJobStatus(pollArgs)
   } catch (pollErr) {
     const errMsg = pollErr instanceof Error ? pollErr.message : 'poll_failed'
     log.warn({ msg: 'chat.image.poll_error', err: errMsg })
@@ -231,17 +294,40 @@ export async function finalizeChatImageJob(
     return { phase: 'pending', progress: { phase: 'unknown', lastLog: errMsg } }
   }
 
+  // Refund idempotency keys — same as the pre-async path. Safe to call
+  // multiple times because autoRefund dedupes on idempotencyKey.
+  const refundTechKey = `image:refund:tech:${input.messageId}`
+  const refundSafetyKey = `image:refund:safety:${input.messageId}`
+
   if (status.status === 'pending') {
+    // Server-side watchdog: a job that never leaves the fal queue (stuck at
+    // IN_PROGRESS) would otherwise pend forever and silently burn the user's
+    // tokens. Past the deadline, fail it terminally and refund. Generous enough
+    // (170s) to cover cold LoRA starts while staying under the client's ~180s
+    // poll budget so the user gets a clean failure instead of an infinite spinner.
+    const elapsedMs = Date.now() - new Date(falJob.submittedAt).getTime()
+    if (elapsedMs > IMAGE_JOB_TIMEOUT_MS) {
+      log.error({ msg: 'chat.image.timeout', messageId: input.messageId, elapsedMs, lastPhase: status.phase })
+      await autoRefund(input.payload, {
+        userId: input.userId,
+        type: 'tech_refund',
+        amount: IMAGE_TOKEN_COST,
+        reason: `image_gen_timeout after ${Math.round(elapsedMs / 1000)}s`,
+        relatedMessageId: input.messageId,
+        idempotencyKey: refundTechKey,
+      })
+      await input.payload.update({
+        collection: 'messages',
+        id: input.messageId,
+        data: { status: 'failed', errorReason: 'generation_timeout', completedAt: new Date().toISOString() },
+      })
+      return { phase: 'failed', error: 'generation_timeout' }
+    }
     return {
       phase: 'pending',
       progress: { phase: status.phase, queuePosition: status.queuePosition, lastLog: status.lastLog },
     }
   }
-
-  // Refund idempotency keys — same as the pre-async path. Safe to call
-  // multiple times because autoRefund dedupes on idempotencyKey.
-  const refundTechKey = `image:refund:tech:${input.messageId}`
-  const refundSafetyKey = `image:refund:safety:${input.messageId}`
 
   if (status.status === 'failed') {
     log.error({ msg: 'chat.image.gen_failed', err: status.error })
