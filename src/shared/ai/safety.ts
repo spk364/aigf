@@ -1,5 +1,6 @@
 import 'server-only'
 import { estimateApparentAge } from './apparent-age'
+import { getAgePolicy, type ArtStyleHint } from './age-safety'
 import { createLogger } from '@/shared/lib/logger'
 
 // Image output safety gate (spec §3.10 Layer 6).
@@ -18,10 +19,16 @@ import { createLogger } from '@/shared/lib/logger'
 
 const log = createLogger({ scope: 'safety.image' })
 
-// Block anything estimated below this. Matches the realistic-art 21+ policy
-// (src/shared/ai/age-safety.ts). 18-20 still blocks — we'd rather lose a few
-// legitimate young-adult renders than serve an ambiguous one.
-const APPARENT_AGE_FLOOR = 21
+// The apparent-age floor is art-style-aware and tracks the generation policy
+// in age-safety.ts: realistic → 21, anime → 18. Without the artStyle the gate
+// would apply the realistic 21 floor to anime renders, which read young to the
+// VLM by design (the anime policy is deliberately 18+), and reject legitimate
+// young-adult anime previews as `below_age_floor`. Apparent-minor (<18 or
+// minorRisk) stays a hard severe block for EVERY style — only the soft floor
+// moves. Default (no artStyle) → strict realistic 21.
+function apparentAgeFloor(artStyle: ArtStyleHint): number {
+  return getAgePolicy(artStyle).minAge
+}
 
 export type SafetyVerdict =
   | { flagged: false }
@@ -42,6 +49,10 @@ export type ClassifyImageInput = {
   contentRating?: 'sfw' | 'nsfw_soft' | 'nsfw_explicit'
   width?: number
   height?: number
+  // Selects the soft apparent-age floor (anime → 18, realistic → 21). Omit to
+  // get the strict realistic floor — callers that can't determine the style
+  // (e.g. the chat-image job) stay on the conservative 21 gate.
+  artStyle?: ArtStyleHint
 }
 
 export async function classifyImageSafety(
@@ -67,11 +78,12 @@ export async function classifyImageSafety(
   }
 
   const { apparentAge, minorRisk } = estimate
-  const belowFloor = apparentAge !== null && apparentAge < APPARENT_AGE_FLOOR
+  const floor = apparentAgeFloor(input.artStyle)
+  const belowFloor = apparentAge !== null && apparentAge < floor
   const apparentMinor = minorRisk === true || (apparentAge !== null && apparentAge < 18)
 
   if (minorRisk === true || belowFloor) {
-    log.warn({ msg: 'image.age_flagged', apparentAge, minorRisk, severe: apparentMinor })
+    log.warn({ msg: 'image.age_flagged', apparentAge, minorRisk, floor, artStyle: input.artStyle ?? 'realistic', severe: apparentMinor })
     return {
       flagged: true,
       reason: apparentMinor ? 'apparent_minor' : 'below_age_floor',
