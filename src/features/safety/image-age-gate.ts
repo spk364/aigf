@@ -1,6 +1,7 @@
 import 'server-only'
 import type { BasePayload } from 'payload'
 import { classifyImageSafety } from '@/shared/ai/safety'
+import type { ArtStyleHint } from '@/shared/ai/age-safety'
 import { recordContentFlag, recordSafetyIncident } from './incidents'
 import { maybeEscalate } from './escalation'
 
@@ -23,6 +24,9 @@ export type ImageAgeGateArgs = {
   userId: string | number | null | undefined
   surface: string // 'builder' | 'builder-poll' | ...
   relatedCharacterId?: string | number | null
+  // Selects the soft apparent-age floor (anime → 18, realistic → 21). Omit for
+  // the strict realistic floor.
+  artStyle?: ArtStyleHint
 }
 
 export async function gateGeneratedImageAge(args: ImageAgeGateArgs): Promise<ImageAgeGateResult> {
@@ -30,6 +34,7 @@ export async function gateGeneratedImageAge(args: ImageAgeGateArgs): Promise<Ima
     imageUrl: args.imageUrl,
     width: args.width,
     height: args.height,
+    artStyle: args.artStyle,
   })
   if (!verdict.flagged) return { ok: true }
 

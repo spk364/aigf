@@ -397,6 +397,7 @@ export async function generatePreviewsAction(draftId: string): Promise<GenerateP
       height: img.height,
       userId: user.id,
       surface: 'builder',
+      artStyle: String(appearance.artStyle ?? 'realistic') === 'anime' ? 'anime' : 'realistic',
     })
     if (!ageGate.ok) continue
 
@@ -616,6 +617,10 @@ export async function fetchPreviewJobStatusAction(draftId: string): Promise<Fetc
   // ── status === 'completed' — mirror to R2 + persist ──────────────────────
   const result = status.result
   const previewGenerations = (Array.isArray(draft.previewGenerations) ? draft.previewGenerations : []) as Array<Record<string, unknown>>
+  // The age gate's soft floor is art-style-aware (anime 18 / realistic 21);
+  // read the style off the draft so a polled anime preview isn't judged at 21.
+  const pollAppearance = (draftData.appearance ?? {}) as Record<string, unknown>
+  const pollArtStyle = String(pollAppearance.artStyle ?? 'realistic') === 'anime' ? 'anime' : 'realistic'
 
   let persisted: Awaited<ReturnType<typeof persistGeneratedImage>> | null = null
   for (const img of result.images) {
@@ -633,6 +638,7 @@ export async function fetchPreviewJobStatusAction(draftId: string): Promise<Fetc
       height: img.height,
       userId: user.id,
       surface: 'builder-poll',
+      artStyle: pollArtStyle,
     })
     if (!ageGate.ok) continue
 

@@ -32,11 +32,16 @@ const TIMEOUT_MS = 45_000
 
 const PROMPT =
   'You are an age-verification classifier for an adults-only (18+) platform. ' +
-  'Look only at the human in this image and estimate their apparent age. ' +
+  'Estimate the apparent age of the person from their FACIAL and PHYSICAL ' +
+  'maturity ONLY — facial structure, body proportions, and adult features. ' +
+  'IGNORE the background, setting, location, props, and clothing entirely: a ' +
+  'classroom, school, bedroom, uniform, or costume must NOT lower your estimate. ' +
+  'Judge the body and face, not the scene around them. ' +
   'If several people are present, report the youngest. ' +
   'Reply with ONLY compact JSON, no prose: ' +
   '{"apparentAge": <integer>, "minorRisk": <true|false>}. ' +
-  'minorRisk is true if the person could plausibly be under 18. ' +
+  'minorRisk is true only if the PERSON THEMSELVES could plausibly be under 18 ' +
+  'based on their face and body. ' +
   'If there is no person, reply {"apparentAge": 99, "minorRisk": false}.'
 
 export type ApparentAgeEstimate = {

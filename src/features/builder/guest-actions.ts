@@ -362,6 +362,7 @@ export async function generateGuestPreviewAction(
       height: img.height,
       userId: null,
       surface: 'guest-builder',
+      artStyle: artStyle === 'anime' ? 'anime' : 'realistic',
     })
     if (!ageGate.ok) continue
 
