@@ -17,7 +17,8 @@ import {
   photoCapabilityInstructions,
   explicitPhotoRequestInstruction,
 } from '@/features/chat/photo-directive'
-import { buildImagePrompt, type CharacterAppearance } from '@/features/chat/image-prompt'
+import { type CharacterAppearance } from '@/features/chat/image-prompt'
+import { buildCharacterScenePrompt } from '@/features/chat/scene-prompt'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
 import { extractMemories } from '@/features/memory/extract-memories'
@@ -627,26 +628,58 @@ export async function POST(req: NextRequest) {
               })
               finishReason = 'insufficient_tokens'
             } else {
-              const characterSnapshot = (conversation.characterSnapshot ?? {}) as {
-                name?: string
-                backstory?: { occupation?: string; location?: string }
-                appearance?: CharacterAppearance | null
+              // Build the prompt the SAME way the admin "Generate scenes" flow
+              // does (Atlas WAN 2.6). The old SDXL/FLUX-style builder produced a
+              // prompt Atlas would sit on in `processing` forever; the admin
+              // template (clean subjectTokens, Atlas-friendly phrasing) completes
+              // fast. Read the live character for appearance + artStyle.
+              let sceneAppearance:
+                | {
+                    appearancePrompt?: string | null
+                    subjectTokens?: string | null
+                    negativePrompt?: string | null
+                    safetyAdultMarkers?: string[] | null
+                  }
+                | null = null
+              let artStyle: 'realistic' | 'anime' | undefined
+              try {
+                const liveChar = await payload.findByID({
+                  collection: 'characters',
+                  id: convCharacterId,
+                  overrideAccess: true,
+                })
+                if (liveChar) {
+                  const a = liveChar.appearance
+                  if (a && typeof a === 'object') sceneAppearance = a as typeof sceneAppearance
+                  const s = (liveChar as { artStyle?: unknown }).artStyle
+                  if (s === 'anime' || s === 'realistic') artStyle = s
+                }
+              } catch {
+                // Fall back to the conversation snapshot's appearance below.
               }
-              // Prefer the model's own scene hint from the directive; fall
-              // back to the user's message for the scene.
-              const sceneSource = parsed.scene && parsed.scene.length > 0 ? parsed.scene : message
-              const { prompt, negativePrompt } = buildImagePrompt({
-                characterSnapshot,
-                userMessage: sceneSource,
-                language: convLanguage,
+              if (!sceneAppearance) {
+                const snap = (conversation.characterSnapshot ?? {}) as {
+                  appearance?: CharacterAppearance | null
+                }
+                sceneAppearance = (snap.appearance as typeof sceneAppearance) ?? null
+              }
+
+              // Scene = the model's directive hint (e.g. "[SEND_PHOTO: red dress,
+              // on the bed]"); for a bare "send a selfie" there's no scene and the
+              // prompt is just the character's appearance (a portrait). We do NOT
+              // feed the raw user message in as a scene — it's not a description.
+              const scene = parsed.scene && parsed.scene.trim().length > 0 ? parsed.scene.trim() : ''
+              const { prompt, negativePrompt } = buildCharacterScenePrompt({
+                appearance: sceneAppearance,
+                artStyle,
+                scene,
               })
 
               // Chat always uses the admin DEFAULT model (Atlas WAN 2.6
               // text-to-image) — the same fast path the admin uses. We do NOT
               // use the character's pinned imageModel (can be a cold LoRA / FLUX
               // that stalls) nor Atlas image-edit (the reference path is far
-              // slower and was the source of the hang). Identity comes from the
-              // character's appearance prompt, exactly like admin gallery gen.
+              // slower and was the source of the hang).
               const submitResult = await submitChatImageJob({
                 payload,
                 conversationId,
