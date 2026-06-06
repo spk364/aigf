@@ -17,7 +17,6 @@ import {
   explicitPhotoRequestInstruction,
 } from '@/features/chat/photo-directive'
 import { buildImagePrompt, type CharacterAppearance } from '@/features/chat/image-prompt'
-import { resolveFalDispatch } from '@/features/builder/prompt-builder'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
 import { extractMemories } from '@/features/memory/extract-memories'
@@ -626,12 +625,39 @@ export async function POST(req: NextRequest) {
                 language: convLanguage,
               })
 
-              // Dispatch to the character's pinned model — the same warm native
-              // endpoint the builder/admin used to preview it (and which the
-              // user confirmed generates fast). Falls back to the RealVisXL
-              // default inside submitChatImageJob when no model is pinned.
-              const pinnedModel = characterSnapshot.imageModel?.primary
-              const dispatch = pinnedModel ? resolveFalDispatch(pinnedModel) : null
+              // Pull the live character for its reference image + pinned model,
+              // so chat photos are conditioned on the character's face and use
+              // the same model the admin does — mirroring the admin generate-
+              // image flow. Falls back to the snapshot's model and the admin
+              // default (Atlas WAN 2.6) inside submitChatImageJob.
+              let referenceImageUrl: string | null = null
+              let modelId: string | null =
+                (characterSnapshot.imageModel?.primary as string | undefined) ?? null
+              try {
+                const liveChar = await payload.findByID({
+                  collection: 'characters',
+                  id: convCharacterId,
+                  depth: 1,
+                  overrideAccess: true,
+                })
+                if (liveChar) {
+                  if (typeof liveChar.referenceImageUrl === 'string' && liveChar.referenceImageUrl) {
+                    referenceImageUrl = liveChar.referenceImageUrl
+                  } else {
+                    const primary = liveChar.primaryImageId
+                    if (primary && typeof primary === 'object' && 'publicUrl' in primary) {
+                      const u = (primary as { publicUrl?: unknown }).publicUrl
+                      if (typeof u === 'string' && u) referenceImageUrl = u
+                    }
+                  }
+                  if (!modelId && liveChar.imageModel && typeof liveChar.imageModel === 'object') {
+                    const pm = (liveChar.imageModel as { primary?: unknown }).primary
+                    if (typeof pm === 'string') modelId = pm
+                  }
+                }
+              } catch {
+                // Best-effort — fall back to snapshot model + no reference image.
+              }
 
               const submitResult = await submitChatImageJob({
                 payload,
@@ -640,9 +666,8 @@ export async function POST(req: NextRequest) {
                 userId: user.id,
                 prompt,
                 negativePrompt,
-                imageSize: 'portrait_4_3',
-                endpoint: dispatch?.endpoint,
-                modelName: dispatch?.modelName,
+                modelId: modelId ?? undefined,
+                referenceImageUrl,
               })
 
               if (!submitResult.ok) {
