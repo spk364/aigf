@@ -6,16 +6,24 @@
 --
 -- For each (user, character) group of live (non-deleted) conversations with
 -- more than one row it:
---   1. picks a canonical thread (most-recently-active, matching the app's
---      find-existing-conversation tiebreak: last_message_at, then created_at, then id),
---   2. re-points every message and memory-entry from the duplicates onto it,
---   3. soft-deletes + archives the now-empty duplicate threads,
---   4. recomputes the canonical's denormalized counters (message_count,
+--   1. re-points every message from the duplicates onto the canonical thread,
+--   2. re-points every memory-entry the same way,
+--   3. recomputes the canonical's denormalized counters (message_count,
 --      last_message_at, last_message_preview, days_active_count,
---      relationship_score — formula per spec §3.7 / relationship-score.ts).
+--      relationship_score — formula per spec §3.7 / relationship-score.ts),
+--   4. soft-deletes + archives the now-empty duplicate threads.
+-- Canonical = most-recently-active (last_message_at, then created_at, then id),
+-- matching the app's find-existing-conversation tiebreak.
 --
--- IDEMPOTENT: a second run finds no live duplicates (they were soft-deleted) and
--- is a no-op. Wrapped in a single transaction.
+-- NO TEMP TABLES: each statement recomputes the duplicate->canonical map via an
+-- inline CTE so this runs identically in the Supabase/Neon SQL editor (which
+-- auto-commits per statement and would drop ON COMMIT DROP temp tables), via
+-- psql, and via the pg runner. Statement order matters: re-point (1,2) and
+-- recompute (3) all run while the duplicates are still live (so the map is
+-- non-empty and recompute sees the moved messages); the soft-delete (4) is last.
+--
+-- IDEMPOTENT: after a full run the duplicates are soft-deleted, so every group
+-- has a single live row, the map is empty, and a re-run touches 0 rows.
 --
 -- Payload Postgres column naming: snake_case(fieldName) + '_id' for relations,
 -- so userId -> user_id_id, characterId -> character_id_id,
@@ -23,6 +31,7 @@
 --
 -- Run manually: psql $DATABASE_URL -f migrations/0012_merge_duplicate_conversations.sql
 -- Or via script: pnpm migrate:conversations
+-- Or paste this whole file into the Supabase/Neon SQL editor and run.
 --
 -- Dry-run (inspect affected groups without writing):
 --   SELECT user_id_id, character_id_id, count(*) AS threads
@@ -32,52 +41,66 @@
 
 BEGIN;
 
--- 1. Rank live conversations within each (user, character) group and capture the
---    canonical (rank 1) id alongside every row.
-CREATE TEMP TABLE conv_canonical ON COMMIT DROP AS
+-- 1. Re-point messages from duplicates onto the canonical thread.
 WITH ranked AS (
   SELECT
-    c.id,
-    row_number() OVER w  AS rn,
-    first_value(c.id) OVER w AS canonical_id
-  FROM conversations c
-  WHERE c.deleted_at IS NULL
+    id,
+    row_number() OVER w       AS rn,
+    first_value(id) OVER w    AS canonical_id
+  FROM conversations
+  WHERE deleted_at IS NULL
   WINDOW w AS (
-    PARTITION BY c.user_id_id, c.character_id_id
-    ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC NULLS LAST, c.id DESC
+    PARTITION BY user_id_id, character_id_id
+    ORDER BY last_message_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
   )
+),
+merge_map AS (
+  SELECT id AS dup_id, canonical_id FROM ranked WHERE rn > 1
 )
-SELECT id, canonical_id, rn FROM ranked;
-
--- Duplicate -> canonical map (only groups that actually have more than one thread).
-CREATE TEMP TABLE conv_merge_map ON COMMIT DROP AS
-SELECT id AS dup_id, canonical_id
-FROM conv_canonical
-WHERE rn > 1;
-
--- 2a. Re-point messages from duplicates onto the canonical thread.
 UPDATE messages m
 SET conversation_id_id = mm.canonical_id
-FROM conv_merge_map mm
+FROM merge_map mm
 WHERE m.conversation_id_id = mm.dup_id;
 
--- 2b. Re-point memory entries from duplicates onto the canonical thread.
+-- 2. Re-point memory entries from duplicates onto the canonical thread.
+WITH ranked AS (
+  SELECT
+    id,
+    row_number() OVER w       AS rn,
+    first_value(id) OVER w    AS canonical_id
+  FROM conversations
+  WHERE deleted_at IS NULL
+  WINDOW w AS (
+    PARTITION BY user_id_id, character_id_id
+    ORDER BY last_message_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+  )
+),
+merge_map AS (
+  SELECT id AS dup_id, canonical_id FROM ranked WHERE rn > 1
+)
 UPDATE memory_entries me
 SET conversation_id_id = mm.canonical_id
-FROM conv_merge_map mm
+FROM merge_map mm
 WHERE me.conversation_id_id = mm.dup_id;
 
--- 3. Soft-delete + archive the now-empty duplicate conversations.
-UPDATE conversations c
-SET deleted_at = now(), status = 'archived'
-FROM conv_merge_map mm
-WHERE c.id = mm.dup_id
-  AND c.deleted_at IS NULL;
-
--- 4. Recompute denormalized counters on canonicals that absorbed duplicates,
---    from the unified message set (user/assistant rows, non-deleted).
-WITH affected AS (
-  SELECT DISTINCT canonical_id AS conv_id FROM conv_merge_map
+-- 3. Recompute denormalized counters on canonicals that absorbed duplicates,
+--    from the unified message set (user/assistant rows, non-deleted). Runs
+--    before the soft-delete so the canonical set is still discoverable and the
+--    moved messages (committed in steps 1-2) are visible.
+WITH ranked AS (
+  SELECT
+    id,
+    row_number() OVER w       AS rn,
+    first_value(id) OVER w    AS canonical_id
+  FROM conversations
+  WHERE deleted_at IS NULL
+  WINDOW w AS (
+    PARTITION BY user_id_id, character_id_id
+    ORDER BY last_message_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+  )
+),
+affected AS (
+  SELECT DISTINCT canonical_id AS conv_id FROM ranked WHERE rn > 1
 ),
 agg AS (
   SELECT
@@ -120,5 +143,28 @@ FROM affected a
 LEFT JOIN agg         ON agg.conv_id = a.conv_id
 LEFT JOIN last_preview lp ON lp.conv_id = a.conv_id
 WHERE c.id = a.conv_id;
+
+-- 4. Soft-delete + archive the now-empty duplicate conversations (last, so the
+--    map above stays non-empty for steps 1-3).
+WITH ranked AS (
+  SELECT
+    id,
+    row_number() OVER w       AS rn,
+    first_value(id) OVER w    AS canonical_id
+  FROM conversations
+  WHERE deleted_at IS NULL
+  WINDOW w AS (
+    PARTITION BY user_id_id, character_id_id
+    ORDER BY last_message_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+  )
+),
+merge_map AS (
+  SELECT id AS dup_id, canonical_id FROM ranked WHERE rn > 1
+)
+UPDATE conversations c
+SET deleted_at = now(), status = 'archived'
+FROM merge_map mm
+WHERE c.id = mm.dup_id
+  AND c.deleted_at IS NULL;
 
 COMMIT;
