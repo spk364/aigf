@@ -185,7 +185,7 @@ export type FinalizeChatImageInput = {
 export type FinalizeChatImageResult =
   | {
       phase: 'pending'
-      progress: { phase: string; queuePosition?: number; lastLog?: string }
+      progress: { phase: string; queuePosition?: number; lastLog?: string; provider?: string; raw?: string }
     }
   | { phase: 'completed'; mediaAssetId: string | number; publicUrl: string; width: number; height: number }
   | { phase: 'failed'; error: string }
@@ -270,8 +270,37 @@ export async function finalizeChatImageJob(
     return { phase: 'failed', error: 'no_job_handles' }
   }
 
+  // Refund idempotency keys — same as the pre-async path. Safe to call
+  // multiple times because autoRefund dedupes on idempotencyKey.
+  const refundTechKey = `image:refund:tech:${input.messageId}`
+  const refundSafetyKey = `image:refund:safety:${input.messageId}`
+
+  // Server-side watchdog — checked BEFORE polling so a job that's stuck at the
+  // provider (or whose status poll keeps erroring) can't pend forever and
+  // silently burn the user's tokens. Past the deadline we fail + refund
+  // regardless of what the backend reports. 170s covers cold starts while
+  // staying under the client's ~180s poll budget.
+  const elapsedMs = Date.now() - new Date(falJob.submittedAt).getTime()
+  if (Number.isFinite(elapsedMs) && elapsedMs > IMAGE_JOB_TIMEOUT_MS) {
+    log.error({ msg: 'chat.image.timeout', messageId: input.messageId, elapsedMs, provider: falJob.provider })
+    await autoRefund(input.payload, {
+      userId: input.userId,
+      type: 'tech_refund',
+      amount: IMAGE_TOKEN_COST,
+      reason: `image_gen_timeout after ${Math.round(elapsedMs / 1000)}s`,
+      relatedMessageId: input.messageId,
+      idempotencyKey: refundTechKey,
+    })
+    await input.payload.update({
+      collection: 'messages',
+      id: input.messageId,
+      data: { status: 'failed', errorReason: 'generation_timeout', completedAt: new Date().toISOString() },
+    })
+    return { phase: 'failed', error: 'generation_timeout' }
+  }
+
   // Single poll against the same provider we submitted to. If still pending,
-  // return progress; the caller polls again.
+  // return progress; the caller polls again (the watchdog above bounds it).
   let status: ImageJobStatus
   try {
     const pollArgs = {
@@ -288,44 +317,22 @@ export async function finalizeChatImageJob(
         : await fetchImageJobStatus(pollArgs)
   } catch (pollErr) {
     const errMsg = pollErr instanceof Error ? pollErr.message : 'poll_failed'
-    log.warn({ msg: 'chat.image.poll_error', err: errMsg })
-    // Don't terminate on poll errors — let the next poll retry. fal occasionally
-    // blips with 5xx during long-running jobs.
-    return { phase: 'pending', progress: { phase: 'unknown', lastLog: errMsg } }
+    log.warn({ msg: 'chat.image.poll_error', provider: falJob.provider, err: errMsg })
+    // Transient — let the next poll retry; the watchdog above guarantees we
+    // don't spin past the deadline. Surface the error + provider for debugging.
+    return { phase: 'pending', progress: { phase: 'unknown', lastLog: errMsg, provider: falJob.provider } }
   }
 
-  // Refund idempotency keys — same as the pre-async path. Safe to call
-  // multiple times because autoRefund dedupes on idempotencyKey.
-  const refundTechKey = `image:refund:tech:${input.messageId}`
-  const refundSafetyKey = `image:refund:safety:${input.messageId}`
-
   if (status.status === 'pending') {
-    // Server-side watchdog: a job that never leaves the fal queue (stuck at
-    // IN_PROGRESS) would otherwise pend forever and silently burn the user's
-    // tokens. Past the deadline, fail it terminally and refund. Generous enough
-    // (170s) to cover cold LoRA starts while staying under the client's ~180s
-    // poll budget so the user gets a clean failure instead of an infinite spinner.
-    const elapsedMs = Date.now() - new Date(falJob.submittedAt).getTime()
-    if (elapsedMs > IMAGE_JOB_TIMEOUT_MS) {
-      log.error({ msg: 'chat.image.timeout', messageId: input.messageId, elapsedMs, lastPhase: status.phase })
-      await autoRefund(input.payload, {
-        userId: input.userId,
-        type: 'tech_refund',
-        amount: IMAGE_TOKEN_COST,
-        reason: `image_gen_timeout after ${Math.round(elapsedMs / 1000)}s`,
-        relatedMessageId: input.messageId,
-        idempotencyKey: refundTechKey,
-      })
-      await input.payload.update({
-        collection: 'messages',
-        id: input.messageId,
-        data: { status: 'failed', errorReason: 'generation_timeout', completedAt: new Date().toISOString() },
-      })
-      return { phase: 'failed', error: 'generation_timeout' }
-    }
     return {
       phase: 'pending',
-      progress: { phase: status.phase, queuePosition: status.queuePosition, lastLog: status.lastLog },
+      progress: {
+        phase: status.phase,
+        queuePosition: status.queuePosition,
+        lastLog: status.lastLog,
+        provider: falJob.provider,
+        raw: status.raw,
+      },
     }
   }
 

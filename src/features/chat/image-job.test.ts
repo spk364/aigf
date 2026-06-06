@@ -96,7 +96,9 @@ const baseHandles = {
   cancelUrl: 'https://fal/cancel',
   endpoint: 'fal-ai/realistic-vision',
   modelName: 'fal-ai/realistic-vision',
-  submittedAt: '2026-05-09T12:00:00Z',
+  // Fresh by default so the pre-poll timeout watchdog doesn't fire — tests that
+  // exercise the watchdog override this with a stale timestamp.
+  submittedAt: new Date().toISOString(),
 }
 
 beforeEach(() => {
