@@ -398,10 +398,35 @@ export async function finalizeChatImageJob(
     return { phase: 'failed', error: errMsg }
   }
 
+  // The apparent-age gate is art-style-aware (anime → 18, realistic → 21).
+  // Anime renders read young to the VLM by design, so without the style the
+  // strict 21 floor false-flags every anime character's chat photo as
+  // below_age_floor and silently deletes it ("photo won't generate"). Resolve
+  // the style from the character behind this conversation; fall back to the
+  // conservative realistic floor if it can't be determined.
+  let artStyle: 'realistic' | 'anime' | undefined
+  {
+    const charRef = conversation.characterId
+    const cid =
+      typeof charRef === 'object' && charRef !== null
+        ? (charRef as { id: string | number }).id
+        : charRef
+    if (cid) {
+      try {
+        const char = await input.payload.findByID({ collection: 'characters', id: cid })
+        const s = (char as { artStyle?: unknown } | null)?.artStyle
+        if (s === 'anime' || s === 'realistic') artStyle = s
+      } catch {
+        // Leave undefined → strict realistic floor.
+      }
+    }
+  }
+
   const verdict = await classifyImageSafety({
     imageUrl: persistResult.publicUrl,
     width: firstImage.width,
     height: firstImage.height,
+    artStyle,
   })
 
   if (verdict.flagged) {
