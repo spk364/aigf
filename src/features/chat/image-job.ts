@@ -36,8 +36,10 @@ import { createLogger } from '@/shared/lib/logger'
 export const IMAGE_TOKEN_COST = 2
 
 // Watchdog deadline for a single chat image job. Past this, finalize fails the
-// message and refunds the reserved tokens rather than pending forever.
-const IMAGE_JOB_TIMEOUT_MS = 170_000
+// message and refunds the reserved tokens rather than pending forever. Kept
+// just under the client's ~5 min poll window so a slow-but-real Atlas WAN job
+// has time to finish before we give up on it.
+const IMAGE_JOB_TIMEOUT_MS = 290_000
 
 type ChatImageGenerationMetadata = {
   falJob?: {
