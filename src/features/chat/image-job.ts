@@ -3,7 +3,7 @@ import type { BasePayload } from 'payload'
 import {
   submitImageJob,
   fetchImageJobStatus,
-  FAL_ENDPOINT_FLUX_SCHNELL,
+  FAL_IMAGE_ENDPOINT,
   type ImageJobStatus,
 } from '@/shared/ai/fal'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
@@ -27,6 +27,10 @@ import { createLogger } from '@/shared/lib/logger'
 // on cold starts or slow models.
 
 export const IMAGE_TOKEN_COST = 2
+
+// Watchdog deadline for a single chat image job. Past this, finalize fails the
+// message and refunds the reserved tokens rather than pending forever.
+const IMAGE_JOB_TIMEOUT_MS = 170_000
 
 type ChatImageGenerationMetadata = {
   falJob?: {
@@ -56,6 +60,12 @@ export type SubmitChatImageInput = {
   prompt: string
   negativePrompt?: string
   imageSize?: 'portrait_4_3' | 'square_hd' | 'square'
+  // fal endpoint + model to dispatch. Defaults to the warm native RealVisXL
+  // endpoint (FAL_IMAGE_ENDPOINT) — the same family the admin uses and which
+  // completes in seconds. Callers should pass the character's pinned imageModel
+  // so chat photos match the builder previews.
+  endpoint?: string
+  modelName?: string
 }
 
 export type SubmitChatImageResult =
@@ -76,17 +86,19 @@ export async function submitChatImageJob(
   const log = createLogger({ userId: String(input.userId) })
 
   try {
-    // FLUX schnell is the cheapest viable endpoint (~$0.003/image vs ~$0.05
-    // for RealVisXL). Prompts are SD-style comma-tokens which FLUX accepts
-    // with mild quality loss; negative_prompt is silently dropped by FLUX,
-    // but the post-gen NSFW classifier (see classifyImageSafety below) still
-    // refunds + deletes any unsafe output. See docs/payments-tokenomics-plan.md
-    // §2.3 HOLE-2 for the cost rationale.
+    // Dispatch to the character's pinned model (falls back to RealVisXL, a warm
+    // native endpoint). We previously hard-coded FLUX schnell here for cost, but
+    // it could stall at IN_PROGRESS on some accounts while the warm native
+    // endpoints the admin uses complete in seconds — visible to users as a
+    // photo that never arrives. The post-gen NSFW classifier still refunds +
+    // deletes any unsafe output regardless of endpoint.
+    const endpoint = input.endpoint ?? FAL_IMAGE_ENDPOINT
     const handles = await submitImageJob({
       prompt: input.prompt,
       negativePrompt: input.negativePrompt,
       imageSize: input.imageSize ?? 'portrait_4_3',
-      endpoint: FAL_ENDPOINT_FLUX_SCHNELL,
+      endpoint,
+      modelName: input.modelName,
     })
 
     const meta: ChatImageGenerationMetadata = {
@@ -231,17 +243,40 @@ export async function finalizeChatImageJob(
     return { phase: 'pending', progress: { phase: 'unknown', lastLog: errMsg } }
   }
 
+  // Refund idempotency keys — same as the pre-async path. Safe to call
+  // multiple times because autoRefund dedupes on idempotencyKey.
+  const refundTechKey = `image:refund:tech:${input.messageId}`
+  const refundSafetyKey = `image:refund:safety:${input.messageId}`
+
   if (status.status === 'pending') {
+    // Server-side watchdog: a job that never leaves the fal queue (stuck at
+    // IN_PROGRESS) would otherwise pend forever and silently burn the user's
+    // tokens. Past the deadline, fail it terminally and refund. Generous enough
+    // (170s) to cover cold LoRA starts while staying under the client's ~180s
+    // poll budget so the user gets a clean failure instead of an infinite spinner.
+    const elapsedMs = Date.now() - new Date(falJob.submittedAt).getTime()
+    if (elapsedMs > IMAGE_JOB_TIMEOUT_MS) {
+      log.error({ msg: 'chat.image.timeout', messageId: input.messageId, elapsedMs, lastPhase: status.phase })
+      await autoRefund(input.payload, {
+        userId: input.userId,
+        type: 'tech_refund',
+        amount: IMAGE_TOKEN_COST,
+        reason: `image_gen_timeout after ${Math.round(elapsedMs / 1000)}s`,
+        relatedMessageId: input.messageId,
+        idempotencyKey: refundTechKey,
+      })
+      await input.payload.update({
+        collection: 'messages',
+        id: input.messageId,
+        data: { status: 'failed', errorReason: 'generation_timeout', completedAt: new Date().toISOString() },
+      })
+      return { phase: 'failed', error: 'generation_timeout' }
+    }
     return {
       phase: 'pending',
       progress: { phase: status.phase, queuePosition: status.queuePosition, lastLog: status.lastLog },
     }
   }
-
-  // Refund idempotency keys — same as the pre-async path. Safe to call
-  // multiple times because autoRefund dedupes on idempotencyKey.
-  const refundTechKey = `image:refund:tech:${input.messageId}`
-  const refundSafetyKey = `image:refund:safety:${input.messageId}`
 
   if (status.status === 'failed') {
     log.error({ msg: 'chat.image.gen_failed', err: status.error })

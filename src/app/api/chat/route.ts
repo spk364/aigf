@@ -17,6 +17,7 @@ import {
   explicitPhotoRequestInstruction,
 } from '@/features/chat/photo-directive'
 import { buildImagePrompt, type CharacterAppearance } from '@/features/chat/image-prompt'
+import { resolveFalDispatch } from '@/features/builder/prompt-builder'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
 import { extractMemories } from '@/features/memory/extract-memories'
@@ -614,6 +615,7 @@ export async function POST(req: NextRequest) {
                 name?: string
                 backstory?: { occupation?: string; location?: string }
                 appearance?: CharacterAppearance | null
+                imageModel?: { primary?: string | null; fallback?: string | null } | null
               }
               // Prefer the model's own scene hint from the directive; fall
               // back to the user's message for the scene.
@@ -624,6 +626,13 @@ export async function POST(req: NextRequest) {
                 language: convLanguage,
               })
 
+              // Dispatch to the character's pinned model — the same warm native
+              // endpoint the builder/admin used to preview it (and which the
+              // user confirmed generates fast). Falls back to the RealVisXL
+              // default inside submitChatImageJob when no model is pinned.
+              const pinnedModel = characterSnapshot.imageModel?.primary
+              const dispatch = pinnedModel ? resolveFalDispatch(pinnedModel) : null
+
               const submitResult = await submitChatImageJob({
                 payload,
                 conversationId,
@@ -632,6 +641,8 @@ export async function POST(req: NextRequest) {
                 prompt,
                 negativePrompt,
                 imageSize: 'portrait_4_3',
+                endpoint: dispatch?.endpoint,
+                modelName: dispatch?.modelName,
               })
 
               if (!submitResult.ok) {
