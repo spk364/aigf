@@ -36,8 +36,10 @@ import { createLogger } from '@/shared/lib/logger'
 export const IMAGE_TOKEN_COST = 2
 
 // Watchdog deadline for a single chat image job. Past this, finalize fails the
-// message and refunds the reserved tokens rather than pending forever.
-const IMAGE_JOB_TIMEOUT_MS = 170_000
+// message and refunds the reserved tokens rather than pending forever. Kept
+// just under the client's ~5 min poll window so a slow-but-real Atlas WAN job
+// has time to finish before we give up on it.
+const IMAGE_JOB_TIMEOUT_MS = 290_000
 
 type ChatImageGenerationMetadata = {
   falJob?: {
@@ -185,7 +187,7 @@ export type FinalizeChatImageInput = {
 export type FinalizeChatImageResult =
   | {
       phase: 'pending'
-      progress: { phase: string; queuePosition?: number; lastLog?: string; provider?: string; raw?: string }
+      progress: { phase: string; queuePosition?: number; lastLog?: string; provider?: string; raw?: string; requestId?: string; endpoint?: string }
     }
   | { phase: 'completed'; mediaAssetId: string | number; publicUrl: string; width: number; height: number }
   | { phase: 'failed'; error: string }
@@ -324,6 +326,15 @@ export async function finalizeChatImageJob(
   }
 
   if (status.status === 'pending') {
+    log.info({
+      msg: 'chat.image.pending',
+      messageId: input.messageId,
+      provider: falJob.provider,
+      endpoint: falJob.endpoint,
+      requestId: falJob.requestId,
+      raw: status.raw,
+      elapsedMs,
+    })
     return {
       phase: 'pending',
       progress: {
@@ -332,6 +343,8 @@ export async function finalizeChatImageJob(
         lastLog: status.lastLog,
         provider: falJob.provider,
         raw: status.raw,
+        requestId: falJob.requestId,
+        endpoint: falJob.endpoint,
       },
     }
   }

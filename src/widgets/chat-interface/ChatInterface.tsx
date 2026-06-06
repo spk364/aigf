@@ -514,7 +514,7 @@ export function ChatInterface({
 
   useEffect(() => {
     const POLL_INTERVAL_MS = 2000
-    const MAX_ATTEMPTS = 90 // 90 × 2s = 3 min — covers cold-start + fal queue.
+    const MAX_ATTEMPTS = 150 // 150 × 2s = 5 min — covers slow/queued Atlas WAN jobs.
 
     const pendingImageMsgs = messages.filter(
       (m) => m.type === 'image' && m.imageStatus === 'pending' && !polledIdsRef.current.has(m.id),
