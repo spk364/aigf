@@ -21,8 +21,8 @@
     "builder:gen-option-images": "tsx --env-file-if-exists=.env.local scripts/generate-builder-option-images.ts",
     "seed:voice-previews": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/seed-voice-previews.ts",
     "migrate:memory": "node --env-file-if-exists=.env.local --experimental-vm-modules scripts/migrate-memory.mjs",
+    "migrate:conversations": "node --env-file-if-exists=.env.local --experimental-vm-modules scripts/migrate-merge-conversations.mjs",
     "tokens:validate": "tsx --env-file-if-exists=.env.local src/features/tokens/validate-cli.ts",
-    "merge:conversations": "tsx --env-file-if-exists=.env.local scripts/merge-duplicate-conversations.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
