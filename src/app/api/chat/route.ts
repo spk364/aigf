@@ -631,7 +631,6 @@ export async function POST(req: NextRequest) {
                 name?: string
                 backstory?: { occupation?: string; location?: string }
                 appearance?: CharacterAppearance | null
-                imageModel?: { primary?: string | null; fallback?: string | null } | null
               }
               // Prefer the model's own scene hint from the directive; fall
               // back to the user's message for the scene.
@@ -642,40 +641,12 @@ export async function POST(req: NextRequest) {
                 language: convLanguage,
               })
 
-              // Pull the live character for its reference image + pinned model,
-              // so chat photos are conditioned on the character's face and use
-              // the same model the admin does — mirroring the admin generate-
-              // image flow. Falls back to the snapshot's model and the admin
-              // default (Atlas WAN 2.6) inside submitChatImageJob.
-              let referenceImageUrl: string | null = null
-              let modelId: string | null =
-                (characterSnapshot.imageModel?.primary as string | undefined) ?? null
-              try {
-                const liveChar = await payload.findByID({
-                  collection: 'characters',
-                  id: convCharacterId,
-                  depth: 1,
-                  overrideAccess: true,
-                })
-                if (liveChar) {
-                  if (typeof liveChar.referenceImageUrl === 'string' && liveChar.referenceImageUrl) {
-                    referenceImageUrl = liveChar.referenceImageUrl
-                  } else {
-                    const primary = liveChar.primaryImageId
-                    if (primary && typeof primary === 'object' && 'publicUrl' in primary) {
-                      const u = (primary as { publicUrl?: unknown }).publicUrl
-                      if (typeof u === 'string' && u) referenceImageUrl = u
-                    }
-                  }
-                  if (!modelId && liveChar.imageModel && typeof liveChar.imageModel === 'object') {
-                    const pm = (liveChar.imageModel as { primary?: unknown }).primary
-                    if (typeof pm === 'string') modelId = pm
-                  }
-                }
-              } catch {
-                // Best-effort — fall back to snapshot model + no reference image.
-              }
-
+              // Chat always uses the admin DEFAULT model (Atlas WAN 2.6
+              // text-to-image) — the same fast path the admin uses. We do NOT
+              // use the character's pinned imageModel (can be a cold LoRA / FLUX
+              // that stalls) nor Atlas image-edit (the reference path is far
+              // slower and was the source of the hang). Identity comes from the
+              // character's appearance prompt, exactly like admin gallery gen.
               const submitResult = await submitChatImageJob({
                 payload,
                 conversationId,
@@ -683,8 +654,6 @@ export async function POST(req: NextRequest) {
                 userId: user.id,
                 prompt,
                 negativePrompt,
-                modelId: modelId ?? undefined,
-                referenceImageUrl,
               })
 
               if (!submitResult.ok) {
