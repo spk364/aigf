@@ -11,6 +11,7 @@ import { getRequestContext } from '@/shared/lib/request-context'
 import { createLogger } from '@/shared/lib/logger'
 import { track } from '@/shared/analytics/posthog'
 import { detectImageIntent } from '@/features/chat/intent-detection'
+import { findExistingConversation } from '@/features/chat/find-existing-conversation'
 import {
   makeDirectiveStreamFilter,
   photoCapabilityInstructions,
@@ -200,38 +201,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Character not found' }, { status: 404 })
     }
 
-    const conversation = await payload.create({
-      collection: 'conversations',
-      data: {
-        userId: user.id,
-        characterId: character.id,
-        characterSnapshot: {
-          systemPrompt: character.systemPrompt,
-          name: character.name,
-          personalityTraits: character.personalityTraits,
-          backstory: character.backstory,
-          appearance: character.appearance ?? null,
-          imageModel: character.imageModel ?? null,
+    // One thread per (user, character). Reuse the existing conversation if there
+    // is one so a first message posted without a conversationId joins the
+    // unified thread instead of forking a duplicate. The /chat/new page already
+    // redirects to the existing thread; this is the API-level safety net.
+    const existing = await findExistingConversation(payload, user.id, character.id)
+    if (existing) {
+      conversationId = existing.id
+    } else {
+      const conversation = await payload.create({
+        collection: 'conversations',
+        data: {
+          userId: user.id,
+          characterId: character.id,
+          characterSnapshot: {
+            systemPrompt: character.systemPrompt,
+            name: character.name,
+            personalityTraits: character.personalityTraits,
+            backstory: character.backstory,
+            appearance: character.appearance ?? null,
+            imageModel: character.imageModel ?? null,
+          },
+          snapshotVersion: character.systemPromptVersion ?? 1,
+          llmConfig: {
+            provider: 'openrouter',
+            model: LLM_MODEL,
+            tier: 'standard',
+            temperature: LLM_TEMPERATURE,
+            maxTokens: LLM_MAX_TOKENS,
+            snapshotAt: new Date().toISOString(),
+          },
+          language: locale,
+          status: 'active',
         },
-        snapshotVersion: character.systemPromptVersion ?? 1,
-        llmConfig: {
-          provider: 'openrouter',
-          model: LLM_MODEL,
-          tier: 'standard',
-          temperature: LLM_TEMPERATURE,
-          maxTokens: LLM_MAX_TOKENS,
-          snapshotAt: new Date().toISOString(),
-        },
-        language: locale,
-        status: 'active',
-      },
-    })
+      })
 
-    // Postgres collections use integer ids — keep the original numeric/string id
-    // returned by Payload, do NOT coerce to String. Relationship fields in v3
-    // reject string ids on integer-id collections with a ValidationError.
-    conversationId = conversation.id
-    isNewConversation = true
+      // Postgres collections use integer ids — keep the original numeric/string id
+      // returned by Payload, do NOT coerce to String. Relationship fields in v3
+      // reject string ids on integer-id collections with a ValidationError.
+      conversationId = conversation.id
+      isNewConversation = true
+    }
   }
 
   const conversation = await payload.findByID({ collection: 'conversations', id: conversationId })

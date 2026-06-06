@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
-import { ChatInterface } from '@/widgets/chat-interface/ChatInterface'
 import { getTranslations } from 'next-intl/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
+import { findExistingConversation } from '@/features/chat/find-existing-conversation'
 
 type Props = {
   params: Promise<{ locale: string }>
@@ -31,6 +31,15 @@ export default async function NewChatPage({ params, searchParams }: Props) {
   }
 
   const payload = await getPayload({ config })
+
+  // One thread per (user, character): if the user already has a conversation
+  // with this companion, re-open it instead of spawning a duplicate (and a
+  // duplicate greeting). All discovery / card entry points funnel through this
+  // page, so this is the single gate that keeps "your conversations" unique.
+  const existing = await findExistingConversation(payload, user.id, characterId)
+  if (existing) {
+    redirect(`/${locale}/chat/${existing.id}`)
+  }
 
   let character
   try {
