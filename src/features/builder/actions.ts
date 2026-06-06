@@ -17,7 +17,6 @@ import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
 import { generateImage, submitImageJob, fetchImageJobStatus } from '@/shared/ai/fal'
 import { submitAtlasImageJob, fetchAtlasImageJobStatus } from '@/shared/ai/atlas'
 import {
-  DEFAULT_IMAGE_MODEL_ID,
   detectImageProvider,
   findImageModel,
 } from '@/shared/ai/image-models'
@@ -520,18 +519,14 @@ export async function submitPreviewJobAction(draftId: string): Promise<SubmitPre
       ? buildUniquePrompt(uniqueDesc, appearance)
       : buildPreviewPrompt(appearance, identity, backstory)
   const negativePrompt = buildPreviewNegativePrompt(appearance)
-  // Builder previews use the Atlas default model (WAN 2.6) — same as the admin
-  // "Generate scenes" flow. fal's hardcoded NSFW classifier returns uniform
-  // black frames for spicy prompts (despite enable_safety_checker:false), which
-  // surfaced to users as "filtered every preview as unsafe". Atlas has no such
-  // prompt filter, so previews actually render. The model is still resolved
-  // generically so a future Atlas/fal picker keeps working.
+  // Use the user's explicit model pick, else the style-appropriate default
+  // (anime → Illustrious LoRA, realistic → RealVisXL). We do NOT force Atlas
+  // WAN 2.6 — it stalls in `processing` on these jobs. The anime LoRA is
+  // NSFW-strong (no fal black-frame filter), and the apparent-age gate is now
+  // art-style-aware, which together resolve the earlier "filtered as unsafe".
   const selectedModel =
     typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null
-  const pickedModel = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
-  const pickedProvider = findImageModel(pickedModel)?.provider ?? detectImageProvider(pickedModel)
-  // Force Atlas unless the user explicitly picked an Atlas model already.
-  const modelId = pickedProvider === 'atlas' ? pickedModel : DEFAULT_IMAGE_MODEL_ID
+  const modelId = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
   const provider = findImageModel(modelId)?.provider ?? detectImageProvider(modelId)
 
   let handles: Awaited<ReturnType<typeof submitImageJob>>
