@@ -47,7 +47,16 @@ export function buildCharacterScenePrompt(
   const scene = (input.scene ?? '').trim()
 
   let prompt: string
-  if (scene && appearance?.subjectTokens) {
+  if (isAnime) {
+    // Anime models (Illustrious / Pony SDXL) want the character's anime-styled
+    // appearancePrompt (or danbooru-ish subjectTokens) — never "RAW photo /
+    // photorealistic", which fights the model.
+    const base =
+      appearance?.appearancePrompt ||
+      appearance?.subjectTokens ||
+      'anime illustration, masterpiece, best quality, beautiful young woman, detailed'
+    prompt = [base, scene, safetyMarkers || ageMarkerPhrase].filter(Boolean).join(', ')
+  } else if (scene && appearance?.subjectTokens) {
     prompt = [
       'RAW photo',
       scene,

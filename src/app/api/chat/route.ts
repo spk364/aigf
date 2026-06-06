@@ -19,6 +19,7 @@ import {
 } from '@/features/chat/photo-directive'
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { buildCharacterScenePrompt } from '@/features/chat/scene-prompt'
+import { pickModelIdForStyle } from '@/features/builder/prompt-builder'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
 import { extractMemories } from '@/features/memory/extract-memories'
@@ -675,11 +676,12 @@ export async function POST(req: NextRequest) {
                 scene,
               })
 
-              // Chat always uses the admin DEFAULT model (Atlas WAN 2.6
-              // text-to-image) — the same fast path the admin uses. We do NOT
-              // use the character's pinned imageModel (can be a cold LoRA / FLUX
-              // that stalls) nor Atlas image-edit (the reference path is far
-              // slower and was the source of the hang).
+              // Pick a style-appropriate model (anime → Illustrious LoRA,
+              // realistic → RealVisXL) — the same curated defaults the builder
+              // uses. We do NOT force Atlas WAN 2.6 here: it stalls in
+              // `processing` for these jobs. submitChatImageJob is provider-aware
+              // and dispatches fal/Atlas based on the resolved model id.
+              const modelId = pickModelIdForStyle(artStyle ?? 'realistic')
               const submitResult = await submitChatImageJob({
                 payload,
                 conversationId,
@@ -687,6 +689,7 @@ export async function POST(req: NextRequest) {
                 userId: user.id,
                 prompt,
                 negativePrompt,
+                modelId,
               })
 
               if (!submitResult.ok) {
