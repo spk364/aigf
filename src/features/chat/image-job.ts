@@ -185,7 +185,7 @@ export type FinalizeChatImageInput = {
 export type FinalizeChatImageResult =
   | {
       phase: 'pending'
-      progress: { phase: string; queuePosition?: number; lastLog?: string; provider?: string; raw?: string }
+      progress: { phase: string; queuePosition?: number; lastLog?: string; provider?: string; raw?: string; requestId?: string; endpoint?: string }
     }
   | { phase: 'completed'; mediaAssetId: string | number; publicUrl: string; width: number; height: number }
   | { phase: 'failed'; error: string }
@@ -324,6 +324,15 @@ export async function finalizeChatImageJob(
   }
 
   if (status.status === 'pending') {
+    log.info({
+      msg: 'chat.image.pending',
+      messageId: input.messageId,
+      provider: falJob.provider,
+      endpoint: falJob.endpoint,
+      requestId: falJob.requestId,
+      raw: status.raw,
+      elapsedMs,
+    })
     return {
       phase: 'pending',
       progress: {
@@ -332,6 +341,8 @@ export async function finalizeChatImageJob(
         lastLog: status.lastLog,
         provider: falJob.provider,
         raw: status.raw,
+        requestId: falJob.requestId,
+        endpoint: falJob.endpoint,
       },
     }
   }
