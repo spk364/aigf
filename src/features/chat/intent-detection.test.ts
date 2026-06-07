@@ -63,4 +63,16 @@ describe('detectImageIntent', () => {
     expect(detectImageIntent('send me a photo', 'de')).toBe(true)
     expect(detectImageIntent('how are you', 'de')).toBe(false)
   })
+
+  it('detects a request regardless of the thread locale (cross-language)', () => {
+    // The reported bug: an English request in a Russian thread was missed, so
+    // the photo was never forced and the model declined.
+    expect(
+      detectImageIntent('Send me a photo of you lying on the bed, in lingerie', 'ru'),
+    ).toBe(true)
+    expect(detectImageIntent('отправь фото', 'en')).toBe(true)
+    expect(detectImageIntent('mándame una foto', 'ru')).toBe(true)
+    // A non-request stays false no matter the locale.
+    expect(detectImageIntent('how are you today?', 'ru')).toBe(false)
+  })
 })
