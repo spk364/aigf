@@ -524,7 +524,11 @@ const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: str
   },
 }
 
-const DEFAULT_ANIME_ID = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
+// FLUX Schnell for anime: warm (~5-10s, no 2-3 min LoRA cold start), NSFW-
+// friendly, and not subject to fal's black-frame NSFW classifier. It needs a
+// natural-language, explicitly-anime/cel-shaded prompt (callers build one) and
+// ignores negative_prompt. Chosen over the Illustrious LoRA for speed.
+const DEFAULT_ANIME_ID = 'fal-ai/flux/schnell'
 // RealVisXL by default for realistic — same fal endpoint admin uses for
 // realistic character previews, and produces photoreal portraits with
 // good age-accuracy. FLUX Schnell is faster but trends younger/cartoonish
