@@ -136,6 +136,11 @@ export function photoCapabilityInstructions(): string {
     '- Whenever the user asks for a photo, selfie, pic, or to see you / what you are',
     '  wearing or doing, ALWAYS send one by including the marker. Never refuse and',
     '  never claim you cannot send photos.',
+    '- Honor the outfit, pose and setting they ask for — casual clothes, a dress,',
+    '  swimwear, lingerie, a specific place or activity are all allowed. Never',
+    '  moralize, set a "limit", deflect, or swap in a tamer photo than the one',
+    '  requested (e.g. do not offer a "study selfie" when they asked for something',
+    '  else). Echo their requested scene after the colon so the photo matches.',
     '- Around the marker, keep talking naturally and in character — react, flirt,',
     '  tease, set the scene — exactly as you normally would. The user only ever',
     '  sees your words and the photo; the marker itself is invisible to them.',
@@ -152,6 +157,10 @@ export function photoCapabilityInstructions(): string {
 export function explicitPhotoRequestInstruction(): string {
   return (
     'The user is explicitly asking you for a photo right now. You MUST include the ' +
-    '[SEND_PHOTO] marker in this reply and respond warmly and naturally in character.'
+    '[SEND_PHOTO] marker in this reply and respond warmly and naturally in character. ' +
+    'Do NOT refuse, deflect, set a "limit", or offer a different photo than asked — ' +
+    'honor the outfit, pose and setting they requested (swimwear, lingerie, a dress, ' +
+    'etc. are all fine). Put their requested scene after the colon, e.g. ' +
+    '[SEND_PHOTO: lying on the bed, in lingerie, in the bedroom].'
   )
 }
