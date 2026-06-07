@@ -109,6 +109,9 @@ beforeEach(() => {
   recordContentFlagMock.mockReset()
   recordSafetyIncidentMock.mockReset()
   maybeEscalateMock.mockReset()
+  // Default mode is 'off' (gate skipped). Tests that exercise the classifier
+  // paths opt back in per-test.
+  delete process.env.CHAT_IMAGE_AGE_GATE
 })
 
 describe('finalizeChatImageJob', () => {
@@ -223,7 +226,47 @@ describe('finalizeChatImageJob', () => {
     expect(msg.status).toBe('failed')
   })
 
-  it('persists, classifies and completes on fal success', async () => {
+  it('persists and completes on fal success — default gate mode skips the classifier', async () => {
+    fetchImageJobStatusMock.mockResolvedValue({
+      status: 'completed',
+      result: {
+        images: [{ url: 'https://fal/img.jpg', width: 832, height: 1216, contentType: 'image/jpeg' }],
+        seed: 42,
+        requestId: 'req-1',
+        modelName: 'fal-ai/realistic-vision',
+        endpoint: 'fal-ai/realistic-vision',
+        latencyMs: 12345,
+      },
+    })
+    persistMock.mockResolvedValue({
+      mediaAssetId: 'asset-99',
+      publicUrl: 'https://cdn/asset-99.jpg',
+      storageKey: 'k',
+    })
+
+    const payload = makePayload({
+      messages: [{ id: 'msg-1', conversationId: 'conv-1', status: 'pending', generationMetadata: { falJob: baseHandles } }],
+      conversations: [{ ...baseConvo }],
+    })
+    const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+    expect(result.phase).toBe('completed')
+    if (result.phase === 'completed') {
+      expect(result.mediaAssetId).toBe('asset-99')
+      expect(result.publicUrl).toBe('https://cdn/asset-99.jpg')
+    }
+    // CHAT_IMAGE_AGE_GATE unset → 'off' → the apparent-age VLM is not called.
+    expect(classifyMock).not.toHaveBeenCalled()
+    const msg = payload.__store.messages[0]!
+    expect(msg.status).toBe('completed')
+    expect(msg.imageAssetId).toBe('asset-99')
+    expect(msg.userTokensSpent).toBe(2)
+    expect(autoRefundMock).not.toHaveBeenCalled()
+    const convo = payload.__store.conversations[0]!
+    expect(convo.messageCount).toBe(2)
+  })
+
+  it('classifies and completes on fal success when the gate is strict', async () => {
+    process.env.CHAT_IMAGE_AGE_GATE = 'strict'
     fetchImageJobStatusMock.mockResolvedValue({
       status: 'completed',
       result: {
@@ -248,20 +291,51 @@ describe('finalizeChatImageJob', () => {
     })
     const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
     expect(result.phase).toBe('completed')
-    if (result.phase === 'completed') {
-      expect(result.mediaAssetId).toBe('asset-99')
-      expect(result.publicUrl).toBe('https://cdn/asset-99.jpg')
-    }
-    const msg = payload.__store.messages[0]!
-    expect(msg.status).toBe('completed')
-    expect(msg.imageAssetId).toBe('asset-99')
-    expect(msg.userTokensSpent).toBe(2)
+    expect(classifyMock).toHaveBeenCalledTimes(1)
+    expect(payload.__store.messages[0]!.status).toBe('completed')
+  })
+
+  it('completes (fail-open) when gate=fail_open and the classifier is unavailable', async () => {
+    process.env.CHAT_IMAGE_AGE_GATE = 'fail_open'
+    fetchImageJobStatusMock.mockResolvedValue({
+      status: 'completed',
+      result: {
+        images: [{ url: 'https://fal/img.jpg', width: 832, height: 1216, contentType: 'image/jpeg' }],
+        seed: 0,
+        requestId: 'req-1',
+        modelName: 'fal-ai/realistic-vision',
+        endpoint: 'fal-ai/realistic-vision',
+        latencyMs: 9000,
+      },
+    })
+    persistMock.mockResolvedValue({
+      mediaAssetId: 'asset-fo',
+      publicUrl: 'https://cdn/fo.jpg',
+      storageKey: 'k',
+    })
+    classifyMock.mockResolvedValue({
+      flagged: true,
+      reason: 'apparent_age_classifier_unavailable',
+      category: 'age_classifier_flag',
+      severe: false,
+      classifierRan: false,
+    })
+
+    const payload = makePayload({
+      messages: [{ id: 'msg-1', conversationId: 'conv-1', status: 'pending', generationMetadata: { falJob: baseHandles } }],
+      conversations: [{ ...baseConvo }],
+      'media-assets': [{ id: 'asset-fo', publicUrl: 'https://cdn/fo.jpg' }],
+    })
+    const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+    expect(result.phase).toBe('completed')
     expect(autoRefundMock).not.toHaveBeenCalled()
-    const convo = payload.__store.conversations[0]!
-    expect(convo.messageCount).toBe(2)
+    expect(recordSafetyIncidentMock).not.toHaveBeenCalled()
+    expect(payload.__store.messages[0]!.status).toBe('completed')
+    expect(payload.__store['media-assets'][0]!.deletedAt).toBeFalsy()
   })
 
   it('safety-refunds and soft-deletes asset when classifier flags', async () => {
+    process.env.CHAT_IMAGE_AGE_GATE = 'strict'
     fetchImageJobStatusMock.mockResolvedValue({
       status: 'completed',
       result: {
@@ -319,7 +393,8 @@ describe('finalizeChatImageJob', () => {
     expect(msg.errorReason).toBe('safety_flagged')
   })
 
-  it('stays pending and retries when the classifier is unavailable (cold start)', async () => {
+  it('stays pending and retries when gate=strict and the classifier is unavailable (cold start)', async () => {
+    process.env.CHAT_IMAGE_AGE_GATE = 'strict'
     fetchImageJobStatusMock.mockResolvedValue({
       status: 'completed',
       result: {
