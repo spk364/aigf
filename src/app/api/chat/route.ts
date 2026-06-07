@@ -19,6 +19,7 @@ import {
 } from '@/features/chat/photo-directive'
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { buildCharacterScenePrompt } from '@/features/chat/scene-prompt'
+import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { pickModelIdForStyle } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
@@ -678,11 +679,15 @@ export async function POST(req: NextRequest) {
               const isFluxModel = findImageModel(modelId)?.isFlux ?? false
 
               const scene = parsed.scene && parsed.scene.trim().length > 0 ? parsed.scene.trim() : ''
+              // Pick the shot framing once and feed it to both the prompt
+              // builder (composition tokens) and the job (resolution bucket).
+              const shot = classifyShot(scene)
               const { prompt, negativePrompt } = buildCharacterScenePrompt({
                 appearance: sceneAppearance,
                 artStyle,
                 scene,
                 isFlux: isFluxModel,
+                shot,
               })
               const submitResult = await submitChatImageJob({
                 payload,
@@ -692,6 +697,7 @@ export async function POST(req: NextRequest) {
                 prompt,
                 negativePrompt,
                 modelId,
+                imageSize: shotImageSize(shot),
               })
 
               if (!submitResult.ok) {

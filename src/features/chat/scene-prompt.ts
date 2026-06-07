@@ -10,6 +10,7 @@
 // completes fast. Mirroring it here removes the prompt as a variable.
 
 import { getSafetyAdultMarkerString, type ArtStyleHint } from '@/shared/ai/age-safety'
+import { classifyShot, shotFramingTokens, type ShotType } from './shot-framing'
 
 const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
@@ -34,6 +35,9 @@ export type BuildScenePromptInput = {
   /** True when the target model is FLUX — needs natural-language prompts and
       ignores negative prompts. */
   isFlux?: boolean
+  /** Shot framing (selfie / full body / …). Defaults to classifying the scene
+      text so callers that don't compute it still get sensible framing. */
+  shot?: ShotType
 }
 
 /**
@@ -49,6 +53,12 @@ export function buildCharacterScenePrompt(
   const safetyMarkers = appearance?.safetyAdultMarkers?.join(', ') ?? ''
   const scene = (input.scene ?? '').trim()
 
+  // Framing tokens steer how much of the body is shown so the photo matches the
+  // request (a selfie stays a close-up; "lying on the bed in a dress" comes back
+  // full-body, not a cropped headshot). Defaults to classifying the scene text.
+  const shot = input.shot ?? classifyShot(scene)
+  const framing = shotFramingTokens(shot, { isFlux: !!input.isFlux, isAnime })
+
   let prompt: string
   if (input.isFlux) {
     // FLUX wants natural language, not SD tokens, and ignores negative prompts.
@@ -58,8 +68,8 @@ export function buildCharacterScenePrompt(
     const adultPhrase = isAnime ? '18+ adult woman' : '21+ adult woman'
     const scenePart = scene ? `${scene}. ` : ''
     prompt = isAnime
-      ? `${scenePart}2D anime illustration, japanese anime art style, cel-shaded, clean lineart, vibrant anime colors. The character is ${subjectDesc}. ${adultPhrase}.`
-      : `${scenePart}Photorealistic portrait. The woman is ${subjectDesc}. High quality, soft natural lighting, ${adultPhrase}.`
+      ? `${scenePart}${framing.positive} 2D anime illustration, japanese anime art style, cel-shaded, clean lineart, vibrant anime colors. The character is ${subjectDesc}. ${adultPhrase}.`
+      : `${scenePart}${framing.positive} Photorealistic. The woman is ${subjectDesc}. High quality, soft natural lighting, ${adultPhrase}.`
   } else if (isAnime) {
     // Anime SDXL models (Illustrious / Pony) want the character's anime-styled
     // appearancePrompt (or danbooru-ish subjectTokens) — never "RAW photo /
@@ -68,10 +78,14 @@ export function buildCharacterScenePrompt(
       appearance?.appearancePrompt ||
       appearance?.subjectTokens ||
       'anime illustration, masterpiece, best quality, beautiful young woman, detailed'
-    prompt = [base, scene, safetyMarkers || ageMarkerPhrase].filter(Boolean).join(', ')
+    prompt = [base, framing.positive, scene, safetyMarkers || ageMarkerPhrase]
+      .filter(Boolean)
+      .join(', ')
   } else if (scene && appearance?.subjectTokens) {
+    // Framing leads so SDXL weighs composition over the face-heavy subject tokens.
     prompt = [
       'RAW photo',
+      framing.positive,
       scene,
       appearance.subjectTokens,
       safetyMarkers,
@@ -80,10 +94,13 @@ export function buildCharacterScenePrompt(
       .filter(Boolean)
       .join(', ')
   } else if (appearance?.appearancePrompt) {
-    prompt = [appearance.appearancePrompt, safetyMarkers, scene].filter(Boolean).join(', ')
+    prompt = [appearance.appearancePrompt, framing.positive, safetyMarkers, scene]
+      .filter(Boolean)
+      .join(', ')
   } else {
     prompt = [
-      scene || 'portrait of a beautiful young woman, photorealistic, high detail, soft natural lighting',
+      framing.positive,
+      scene || 'a beautiful young woman, photorealistic, high detail, soft natural lighting',
       safetyMarkers || ageMarkerPhrase,
       '8k uhd, photorealistic, realistic skin texture',
     ]
@@ -91,9 +108,10 @@ export function buildCharacterScenePrompt(
       .join(', ')
   }
 
-  const negativePrompt = appearance?.negativePrompt
+  const baseNegative = appearance?.negativePrompt
     ? `${appearance.negativePrompt}, ${SAFETY_NEGATIVE}`
     : `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}`
+  const negativePrompt = framing.negative ? `${baseNegative}, ${framing.negative}` : baseNegative
 
   return { prompt, negativePrompt }
 }
