@@ -458,129 +458,151 @@ export async function finalizeChatImageJob(
     })
   }
 
-  // The apparent-age gate is art-style-aware (anime → 18, realistic → 21).
-  // Anime renders read young to the VLM by design, so without the style the
-  // strict 21 floor false-flags every anime character's chat photo as
-  // below_age_floor and silently deletes it ("photo won't generate"). Resolve
-  // the style from the character behind this conversation; fall back to the
-  // conservative realistic floor if it can't be determined.
-  let artStyle: 'realistic' | 'anime' | undefined
-  {
-    const charRef = conversation.characterId
-    const cid =
-      typeof charRef === 'object' && charRef !== null
-        ? (charRef as { id: string | number }).id
-        : charRef
-    if (cid) {
-      try {
-        const char = await input.payload.findByID({ collection: 'characters', id: cid })
-        const s = (char as { artStyle?: unknown } | null)?.artStyle
-        if (s === 'anime' || s === 'realistic') artStyle = s
-      } catch {
-        // Leave undefined → strict realistic floor.
+  // Output-side apparent-age gate, env-switchable via CHAT_IMAGE_AGE_GATE.
+  // The fal-hosted LLaVA-NeXT classifier scales to zero and cold-boots in
+  // 60–100s (measured live 2026-06-07), past its own 45s call timeout — so a
+  // synchronous gate stalled or failed nearly every "first photo after idle".
+  // Modes:
+  //   off       (default) — skip the output gate for chat photos. Prompt-side
+  //             age controls (age-safety.ts shaping, negative prompts, input
+  //             filter) still apply at generation time.
+  //   fail_open — run the classifier; let the image through when it can't
+  //             answer, still block on real flags.
+  //   strict    — fail-closed per spec §3.10 Layer 6: keep the message pending
+  //             and retry while the classifier warms; watchdog bounds the wait.
+  const ageGateMode =
+    process.env.CHAT_IMAGE_AGE_GATE === 'strict'
+      ? 'strict'
+      : process.env.CHAT_IMAGE_AGE_GATE === 'fail_open'
+        ? 'fail_open'
+        : 'off'
+
+  if (ageGateMode !== 'off') {
+    // The apparent-age gate is art-style-aware (anime → 18, realistic → 21).
+    // Anime renders read young to the VLM by design, so without the style the
+    // strict 21 floor false-flags every anime character's chat photo as
+    // below_age_floor and silently deletes it ("photo won't generate"). Resolve
+    // the style from the character behind this conversation; fall back to the
+    // conservative realistic floor if it can't be determined.
+    let artStyle: 'realistic' | 'anime' | undefined
+    {
+      const charRef = conversation.characterId
+      const cid =
+        typeof charRef === 'object' && charRef !== null
+          ? (charRef as { id: string | number }).id
+          : charRef
+      if (cid) {
+        try {
+          const char = await input.payload.findByID({ collection: 'characters', id: cid })
+          const s = (char as { artStyle?: unknown } | null)?.artStyle
+          if (s === 'anime' || s === 'realistic') artStyle = s
+        } catch {
+          // Leave undefined → strict realistic floor.
+        }
       }
     }
-  }
 
-  const verdict = await classifyImageSafety({
-    imageUrl: persistResult.publicUrl,
-    width: firstImage.width,
-    height: firstImage.height,
-    artStyle,
-  })
+    const verdict = await classifyImageSafety({
+      imageUrl: persistResult.publicUrl,
+      width: firstImage.width,
+      height: firstImage.height,
+      artStyle,
+    })
 
-  if (verdict.flagged) {
-    // Classifier couldn't run and we failed closed (production). Not a user
-    // violation and usually not permanent either: the LLaVA-NeXT cold start
-    // takes 60–90s — past the classifier's own 45s call timeout — so failing
-    // terminally here turned every post-idle photo into a refunded
-    // "safety_unavailable". Keep the message pending and re-run the gate on
-    // the next poll (the asset is already persisted and recorded in metadata,
-    // so retries don't duplicate it). The watchdog above bounds total wait and
-    // soft-deletes the unclassified asset if the classifier never comes back.
-    if (!verdict.classifierRan) {
-      log.warn({ msg: 'chat.image.age_classifier_unavailable_retrying', elapsedMs })
-      return {
-        phase: 'pending',
-        progress: {
-          phase: 'safety_check',
-          lastLog: 'age classifier warming up, retrying',
-          provider: falJob.provider,
-          requestId: falJob.requestId,
-          endpoint: falJob.endpoint,
+    if (verdict.flagged && !verdict.classifierRan) {
+      // Classifier couldn't run and failed closed (production). Not a user
+      // violation and usually not permanent — most often the cold start.
+      if (ageGateMode === 'fail_open') {
+        log.warn({ msg: 'chat.image.age_classifier_unavailable_failing_open', elapsedMs })
+        // Fall through to completion below.
+      } else {
+        // strict: keep the message pending and re-run the gate on the next
+        // poll (the asset is already persisted and recorded in metadata, so
+        // retries don't duplicate it). The watchdog above bounds total wait
+        // and soft-deletes the unclassified asset if it never comes back.
+        log.warn({ msg: 'chat.image.age_classifier_unavailable_retrying', elapsedMs })
+        return {
+          phase: 'pending',
+          progress: {
+            phase: 'safety_check',
+            lastLog: 'age classifier warming up, retrying',
+            provider: falJob.provider,
+            requestId: falJob.requestId,
+            endpoint: falJob.endpoint,
+          },
+        }
+      }
+    } else if (verdict.flagged) {
+      // Real flag: pull the asset (soft-delete keeps the row for forensics)
+      // and fail the message.
+      await input.payload.update({
+        collection: 'media-assets',
+        id: String(persistResult.mediaAssetId),
+        data: { deletedAt: new Date().toISOString() },
+      }).catch(() => {})
+
+      log.warn({
+        msg: 'chat.image.safety_flagged',
+        mediaAssetId: persistResult.mediaAssetId,
+        reason: verdict.reason,
+        severe: verdict.severe,
+        apparentAge: verdict.apparentAge,
+      })
+
+      const charRef = conversation.characterId
+      const characterId =
+        typeof charRef === 'object' && charRef !== null
+          ? (charRef as { id: string | number }).id
+          : charRef
+
+      await autoRefund(input.payload, {
+        userId: input.userId,
+        type: 'safety_refund',
+        amount: IMAGE_TOKEN_COST,
+        reason: `safety_flagged: ${verdict.reason}`.slice(0, 240),
+        relatedMessageId: input.messageId,
+        idempotencyKey: refundSafetyKey,
+      })
+
+      await recordContentFlag(input.payload, {
+        userId: input.userId,
+        flagType: 'blocked_image',
+        context: {
+          category: verdict.category,
+          reason: verdict.reason,
+          apparentAge: verdict.apparentAge ?? null,
+          minorRisk: verdict.minorRisk ?? null,
+          source: 'web',
         },
-      }
+      })
+
+      await recordSafetyIncident(input.payload, {
+        userId: input.userId,
+        severity: verdict.severe ? 'critical' : 'high',
+        category: 'age_classifier_flag',
+        triggeredAt: 'apparent_age_classifier',
+        detectionMethod: 'vision_model',
+        relatedMessageId: input.messageId,
+        relatedImageId: persistResult.mediaAssetId,
+        relatedCharacterId: characterId ?? null,
+        evidenceSnapshot: {
+          reason: verdict.reason,
+          apparentAge: verdict.apparentAge ?? null,
+          minorRisk: verdict.minorRisk ?? null,
+          model: result.modelName,
+          endpoint: result.endpoint,
+        },
+      })
+
+      await maybeEscalate(input.payload, input.userId, { severe: verdict.severe })
+
+      await input.payload.update({
+        collection: 'messages',
+        id: input.messageId,
+        data: { status: 'failed', errorReason: 'safety_flagged', completedAt: new Date().toISOString() },
+      })
+      return { phase: 'failed', error: 'safety_flagged' }
     }
-
-    // Real flag: pull the asset (soft-delete keeps the row for forensics) and
-    // fail the message in every flagged branch below.
-    await input.payload.update({
-      collection: 'media-assets',
-      id: String(persistResult.mediaAssetId),
-      data: { deletedAt: new Date().toISOString() },
-    }).catch(() => {})
-
-    log.warn({
-      msg: 'chat.image.safety_flagged',
-      mediaAssetId: persistResult.mediaAssetId,
-      reason: verdict.reason,
-      severe: verdict.severe,
-      apparentAge: verdict.apparentAge,
-    })
-
-    const charRef = conversation.characterId
-    const characterId =
-      typeof charRef === 'object' && charRef !== null
-        ? (charRef as { id: string | number }).id
-        : charRef
-
-    await autoRefund(input.payload, {
-      userId: input.userId,
-      type: 'safety_refund',
-      amount: IMAGE_TOKEN_COST,
-      reason: `safety_flagged: ${verdict.reason}`.slice(0, 240),
-      relatedMessageId: input.messageId,
-      idempotencyKey: refundSafetyKey,
-    })
-
-    await recordContentFlag(input.payload, {
-      userId: input.userId,
-      flagType: 'blocked_image',
-      context: {
-        category: verdict.category,
-        reason: verdict.reason,
-        apparentAge: verdict.apparentAge ?? null,
-        minorRisk: verdict.minorRisk ?? null,
-        source: 'web',
-      },
-    })
-
-    await recordSafetyIncident(input.payload, {
-      userId: input.userId,
-      severity: verdict.severe ? 'critical' : 'high',
-      category: 'age_classifier_flag',
-      triggeredAt: 'apparent_age_classifier',
-      detectionMethod: 'vision_model',
-      relatedMessageId: input.messageId,
-      relatedImageId: persistResult.mediaAssetId,
-      relatedCharacterId: characterId ?? null,
-      evidenceSnapshot: {
-        reason: verdict.reason,
-        apparentAge: verdict.apparentAge ?? null,
-        minorRisk: verdict.minorRisk ?? null,
-        model: result.modelName,
-        endpoint: result.endpoint,
-      },
-    })
-
-    await maybeEscalate(input.payload, input.userId, { severe: verdict.severe })
-
-    await input.payload.update({
-      collection: 'messages',
-      id: input.messageId,
-      data: { status: 'failed', errorReason: 'safety_flagged', completedAt: new Date().toISOString() },
-    })
-    return { phase: 'failed', error: 'safety_flagged' }
   }
 
   // Successful completion. Write back image asset, fold completion details
