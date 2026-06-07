@@ -319,7 +319,7 @@ describe('finalizeChatImageJob', () => {
     expect(msg.errorReason).toBe('safety_flagged')
   })
 
-  it('fails closed as a tech refund (no incident) when the classifier is unavailable', async () => {
+  it('stays pending and retries when the classifier is unavailable (cold start)', async () => {
     fetchImageJobStatusMock.mockResolvedValue({
       status: 'completed',
       result: {
@@ -336,7 +336,9 @@ describe('finalizeChatImageJob', () => {
       publicUrl: 'https://cdn/unavail.jpg',
       storageKey: 'k',
     })
-    // classifierRan:false → fail-closed branch (production behaviour).
+    // classifierRan:false → fail-closed verdict (production behaviour), but the
+    // job must NOT fail terminally: the classifier cold start (60–90s) exceeds
+    // its 45s call timeout, so we keep pending and retry on the next poll.
     classifyMock.mockResolvedValue({
       flagged: true,
       reason: 'apparent_age_classifier_unavailable',
@@ -351,15 +353,52 @@ describe('finalizeChatImageJob', () => {
       'media-assets': [{ id: 'asset-unavail', publicUrl: 'https://cdn/unavail.jpg' }],
     })
     const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
-    expect(result.phase).toBe('failed')
-    if (result.phase === 'failed') expect(result.error).toBe('safety_unavailable')
+    expect(result.phase).toBe('pending')
+    if (result.phase === 'pending') expect(result.progress.phase).toBe('safety_check')
 
-    // Infra gap, not a user violation: tech refund, no incident, no escalation.
-    expect(autoRefundMock.mock.calls[0]![1]).toMatchObject({ type: 'tech_refund' })
+    // No refund, no incident, asset kept — this is a transient infra gap.
+    expect(autoRefundMock).not.toHaveBeenCalled()
     expect(recordSafetyIncidentMock).not.toHaveBeenCalled()
     expect(maybeEscalateMock).not.toHaveBeenCalled()
+    const asset = payload.__store['media-assets'][0]!
+    expect(asset.deletedAt).toBeFalsy()
     const msg = payload.__store.messages[0]!
-    expect(msg.errorReason).toBe('safety_unavailable')
+    expect(msg.status).toBe('pending')
+    // Persisted asset recorded in metadata so the retry skips re-persisting.
+    expect((msg.generationMetadata as { persistedAsset?: { mediaAssetId: string } }).persistedAsset)
+      .toMatchObject({ mediaAssetId: 'asset-unavail' })
+
+    // Second poll: classifier is back and clears the image — the job completes
+    // without a duplicate persist.
+    classifyMock.mockResolvedValue({ flagged: false })
+    const retry = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+    expect(retry.phase).toBe('completed')
+    if (retry.phase === 'completed') expect(retry.mediaAssetId).toBe('asset-unavail')
+    expect(persistMock).toHaveBeenCalledTimes(1)
+    expect(msg.status).toBe('completed')
+  })
+
+  it('watchdog soft-deletes the persisted-but-unclassified asset on timeout', async () => {
+    const payload = makePayload({
+      messages: [{
+        id: 'msg-1',
+        conversationId: 'conv-1',
+        status: 'pending',
+        generationMetadata: {
+          falJob: { ...baseHandles, submittedAt: new Date(Date.now() - 400_000).toISOString() },
+          persistedAsset: { mediaAssetId: 'asset-stale', publicUrl: 'https://cdn/stale.jpg', width: 832, height: 1216 },
+        },
+      }],
+      conversations: [baseConvo],
+      'media-assets': [{ id: 'asset-stale', publicUrl: 'https://cdn/stale.jpg' }],
+    })
+    const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+    expect(result.phase).toBe('failed')
+    if (result.phase === 'failed') expect(result.error).toBe('generation_timeout')
+    expect(autoRefundMock.mock.calls[0]![1]).toMatchObject({ type: 'tech_refund' })
+    const asset = payload.__store['media-assets'][0]!
+    expect(asset.deletedAt).toBeTruthy()
+    expect(fetchImageJobStatusMock).not.toHaveBeenCalled()
   })
 
   it('treats missing fal handles as failed (defensive)', async () => {
