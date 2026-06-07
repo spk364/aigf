@@ -27,7 +27,7 @@ export type ShotType =
 // "understand"); RU/ES tokens are distinctive enough to match as substrings,
 // which also sidesteps \b being ASCII-only in JS regex.
 const RECLINING =
-  /\b(lying|laying|lie down|reclin\w*|sprawled|sunbathing|in bed|on (?:the|a) (?:bed|couch|sofa|floor))\b|лёжа|лежа|лежу|лежит|лежать|разлёгш|на кровати|на диване|на полу|загора|tumbad[ao]|acostad[ao]|recostad[ao]|echad[ao]|en la cama|en el sof|en el suelo|tomando el sol/i
+  /\b(lying|laying|lie down|reclin\w*|sprawled|sunbathing|in bed|on (?:the|a) (?:bed|couch|sofa|floor))\b|лёжа|лежа|лежу|лежишь|лежит|лежим|лежать|лежащ|приля?г|разлёгш|на кровати|на диване|на полу|загора|tumbad[ao]|acostad[ao]|recostad[ao]|echad[ao]|en la cama|en el sof|en el suelo|tomando el sol/i
 
 const FULL_BODY =
   /\b(full[\s-]?body|full[\s-]?length|head[\s-]?to[\s-]?toe|whole body|entire body|standing|stands?|walking|dancing|twirling|posing|mirror selfie|outfit|what (?:i'?m|i am|you'?re|you are) wearing|show (?:me )?(?:your|the) (?:outfit|dress|look))\b|в полный рост|во весь рост|полный рост|стою|стоя|стоит|иду|идёт|шагаю|танцу|кружусь|наряд|во что .{0,6}одет|что на тебе надето|в зеркал|cuerpo entero|cuerpo completo|de pie|parad[ao]|caminando|bailando|selfie en el espejo|atuendo|qué llevas puesto/i

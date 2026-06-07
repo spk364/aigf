@@ -84,3 +84,43 @@ export function fragmentFor(group: string, key: string): string | undefined {
   const g = PHOTO_OPTION_GROUPS.find((x) => x.group === group)
   return g?.options.find((o) => o.key === key)?.prompt
 }
+
+// Counterpart to buildPhotoRequest: recover the scene description from a user's
+// photo request. The chat route normally takes the scene from the model's
+// [SEND_PHOTO: …] hint, but the model frequently emits a bare [SEND_PHOTO] even
+// when the user gave a detailed request — and then the whole request ("…lying on
+// the bed, in swimwear, on the beach at sunset") is dropped and the photo
+// defaults to a portrait. This strips the leading request clause and returns the
+// descriptive remainder so the framing survives. Only called for explicit photo
+// requests, so the input is known to be about a photo.
+
+// Cut everything up to and including the subject ("…of you", "…de ti").
+const REQUEST_SUBJECT_CUT = /^.*?\b(?:of\s+your?self|of\s+you|yourself|de\s+ti(?:\s+mism[ao])?)\b[\s,:.-]*/i
+
+// Otherwise strip a leading send/show verb + optional "me", article and photo
+// noun: "Send me a photo", "Отправь мне фото", "Mándame una foto".
+const REQUEST_VERB_LEAD =
+  /^\s*(?:please\s+|por\s+favor[,\s]+|пожалуйста[,\s]+)?(?:(?:can|could|would|will)\s+you\s+)?(?:send|show|share|take|snap|gimme|give\s+me|m[aá]nda(?:me)?|env[ií]ame|mu[eé]stra(?:me|te)|manda|env[ií]a|отправь?|пришли(?:те)?|скинь?|кинь?|шли|покажи(?:сь)?|сделай|сфоткай(?:ся)?)\s+(?:me\s+|мне\s+)?(?:a\s+|an\s+|una\s+|un\s+)?(?:photos?|pictures?|pics?|images?|selfies?|fotos?|fotito|im[aá]gen|сним[оккаи]+|фотк[ауи]|фото|селфи|картинк[ау])?\s*/i
+
+// A leftover bare subject word after the cuts above ("you", "себя"). Uses a
+// unicode letter lookahead instead of \b — JS \b is ASCII-only and never fires
+// after a Cyrillic letter.
+const DANGLING_SUBJECT = /^(?:you|yourself|тебя|себя|ti)(?![\p{L}])[\s,:.-]*/iu
+
+// Nothing descriptive remains — a plain "send me a selfie".
+const GENERIC_PHOTO_NOUN =
+  /^(?:a\s+)?(?:photos?|pictures?|pics?|images?|selfies?|fotos?|im[aá]gen|сним[оккаи]+|фото|селфи|фотк[ауи])$/i
+
+export function sceneFromPhotoRequest(message: string): string {
+  let s = message.trim()
+  const subjectCut = s.match(REQUEST_SUBJECT_CUT)
+  if (subjectCut) {
+    s = s.slice(subjectCut[0].length)
+  } else {
+    s = s.replace(REQUEST_VERB_LEAD, '')
+  }
+  s = s.replace(DANGLING_SUBJECT, '')
+  s = s.replace(/^[\s,.!?:;-]+/u, '').replace(/[\s,.!?:;-]+$/u, '').trim()
+  if (!s || GENERIC_PHOTO_NOUN.test(s)) return ''
+  return s
+}

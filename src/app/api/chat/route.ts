@@ -20,6 +20,7 @@ import {
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { buildCharacterScenePrompt } from '@/features/chat/scene-prompt'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
+import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
 import { pickModelIdForStyle } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
@@ -667,10 +668,6 @@ export async function POST(req: NextRequest) {
                 sceneAppearance = (snap.appearance as typeof sceneAppearance) ?? null
               }
 
-              // Scene = the model's directive hint (e.g. "[SEND_PHOTO: red dress,
-              // on the bed]"); for a bare "send a selfie" there's no scene and the
-              // prompt is just the character's appearance (a portrait). We do NOT
-              // feed the raw user message in as a scene — it's not a description.
               // Pick a style-appropriate model (anime → FLUX schnell,
               // realistic → RealVisXL) — the curated per-style defaults. We do
               // NOT force Atlas WAN 2.6: it stalls in `processing` on SD-token
@@ -678,7 +675,17 @@ export async function POST(req: NextRequest) {
               const modelId = pickModelIdForStyle(artStyle ?? 'realistic')
               const isFluxModel = findImageModel(modelId)?.isFlux ?? false
 
-              const scene = parsed.scene && parsed.scene.trim().length > 0 ? parsed.scene.trim() : ''
+              // Scene = the model's [SEND_PHOTO: …] hint. The model often emits a
+              // bare [SEND_PHOTO] even when the user gave a detailed request, so
+              // when the directive carries no scene AND the user explicitly asked
+              // for a photo this turn, recover the scene from their message —
+              // otherwise their framing ("lying on the bed, in swimwear…") is lost
+              // and the photo defaults to a portrait. A model-initiated photo (no
+              // explicit request) keeps no scene: the user's message isn't a
+              // photo description.
+              const directiveScene = parsed.scene?.trim() ?? ''
+              const scene =
+                directiveScene || (explicitPhotoRequest ? sceneFromPhotoRequest(message) : '')
               // Pick the shot framing once and feed it to both the prompt
               // builder (composition tokens) and the job (resolution bucket).
               const shot = classifyShot(scene)
