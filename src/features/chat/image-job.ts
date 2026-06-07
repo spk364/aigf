@@ -88,6 +88,10 @@ export type SubmitChatImageInput = {
   // generation on it for identity consistency — Atlas image-edit takes it as
   // the source image; fal uses IP-Adapter Face-ID. Mirrors the admin route.
   referenceImageUrl?: string | null
+  // Output resolution bucket. Derived from the requested shot framing (see
+  // shot-framing.ts) so full-body/reclining shots get a fitting aspect ratio.
+  // Defaults to the SDXL-native portrait bucket when omitted.
+  imageSize?: { width: number; height: number }
 }
 
 export type SubmitChatImageResult =
@@ -115,8 +119,9 @@ export async function submitChatImageJob(
     const provider = modelMeta?.provider ?? detectImageProvider(modelId)
     const isFlux = modelMeta?.isFlux ?? false
     const ref = input.referenceImageUrl?.trim() || null
-    // SDXL-native portrait bucket; Atlas reads it as "832*1216".
-    const imageSize = { width: 832, height: 1216 } as const
+    // Resolution bucket from the requested shot framing; falls back to the
+    // SDXL-native portrait bucket (Atlas reads it as "832*1216").
+    const imageSize = input.imageSize ?? { width: 832, height: 1216 }
 
     let handles: Awaited<ReturnType<typeof submitImageJob>>
 
