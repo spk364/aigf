@@ -55,6 +55,16 @@ type ChatImageGenerationMetadata = {
   }
   prompt?: string
   negativePrompt?: string
+  // Set once the generated image has been persisted to storage. Lets a poll
+  // that died between persist and the final message update (most commonly the
+  // age classifier failing closed during its 60–90s cold start) retry the
+  // safety gate on the next poll without re-persisting a duplicate asset.
+  persistedAsset?: {
+    mediaAssetId: string | number
+    publicUrl: string
+    width: number
+    height: number
+  }
   // Final completion fields populated by finalizeChatImageJob.
   model?: string
   endpoint?: string
@@ -285,6 +295,16 @@ export async function finalizeChatImageJob(
   const elapsedMs = Date.now() - new Date(falJob.submittedAt).getTime()
   if (Number.isFinite(elapsedMs) && elapsedMs > IMAGE_JOB_TIMEOUT_MS) {
     log.error({ msg: 'chat.image.timeout', messageId: input.messageId, elapsedMs, provider: falJob.provider })
+    // If the image was persisted but never cleared the safety gate (classifier
+    // outage ran out the clock), pull the orphaned asset so an unclassified
+    // image can't leak through the gallery or direct URL.
+    if (meta.persistedAsset) {
+      await input.payload.update({
+        collection: 'media-assets',
+        id: String(meta.persistedAsset.mediaAssetId),
+        data: { deletedAt: new Date().toISOString() },
+      }).catch(() => {})
+    }
     await autoRefund(input.payload, {
       userId: input.userId,
       type: 'tech_refund',
@@ -387,35 +407,55 @@ export async function finalizeChatImageJob(
     return { phase: 'failed', error: 'fal_no_images' }
   }
 
-  let persistResult: Awaited<ReturnType<typeof persistGeneratedImage>>
-  try {
-    persistResult = await persistGeneratedImage({
-      payload: input.payload,
-      fromUrl: firstImage.url,
+  // Persist exactly once across polls: a retry after a classifier stall finds
+  // the asset in metadata and skips the duplicate storage write.
+  let persistResult: { mediaAssetId: string | number; publicUrl: string }
+  if (meta.persistedAsset) {
+    persistResult = meta.persistedAsset
+  } else {
+    try {
+      persistResult = await persistGeneratedImage({
+        payload: input.payload,
+        fromUrl: firstImage.url,
+        width: firstImage.width,
+        height: firstImage.height,
+        contentType: firstImage.contentType,
+        kind: 'message-image',
+        ownerUserId: input.userId,
+        relatedMessageId: input.messageId,
+      })
+    } catch (persistErr) {
+      const errMsg = persistErr instanceof Error ? persistErr.message : 'persist_failed'
+      log.error({ msg: 'chat.image.persist_failed', err: errMsg })
+      await autoRefund(input.payload, {
+        userId: input.userId,
+        type: 'tech_refund',
+        amount: IMAGE_TOKEN_COST,
+        reason: `image_persist_failed: ${errMsg}`.slice(0, 240),
+        relatedMessageId: input.messageId,
+        idempotencyKey: refundTechKey,
+      })
+      await input.payload.update({
+        collection: 'messages',
+        id: input.messageId,
+        data: { status: 'failed', errorReason: errMsg.slice(0, 240), completedAt: new Date().toISOString() },
+      })
+      return { phase: 'failed', error: errMsg }
+    }
+
+    // Record the persisted asset before the safety gate runs, so a gate retry
+    // (or a crash between classify and the final update) stays idempotent.
+    meta.persistedAsset = {
+      mediaAssetId: persistResult.mediaAssetId,
+      publicUrl: persistResult.publicUrl,
       width: firstImage.width,
       height: firstImage.height,
-      contentType: firstImage.contentType,
-      kind: 'message-image',
-      ownerUserId: input.userId,
-      relatedMessageId: input.messageId,
-    })
-  } catch (persistErr) {
-    const errMsg = persistErr instanceof Error ? persistErr.message : 'persist_failed'
-    log.error({ msg: 'chat.image.persist_failed', err: errMsg })
-    await autoRefund(input.payload, {
-      userId: input.userId,
-      type: 'tech_refund',
-      amount: IMAGE_TOKEN_COST,
-      reason: `image_persist_failed: ${errMsg}`.slice(0, 240),
-      relatedMessageId: input.messageId,
-      idempotencyKey: refundTechKey,
-    })
+    }
     await input.payload.update({
       collection: 'messages',
       id: input.messageId,
-      data: { status: 'failed', errorReason: errMsg.slice(0, 240), completedAt: new Date().toISOString() },
+      data: { generationMetadata: meta },
     })
-    return { phase: 'failed', error: errMsg }
   }
 
   // The apparent-age gate is art-style-aware (anime → 18, realistic → 21).
@@ -450,34 +490,35 @@ export async function finalizeChatImageJob(
   })
 
   if (verdict.flagged) {
-    // Pull the flagged asset (soft-delete keeps the row for forensics) and
+    // Classifier couldn't run and we failed closed (production). Not a user
+    // violation and usually not permanent either: the LLaVA-NeXT cold start
+    // takes 60–90s — past the classifier's own 45s call timeout — so failing
+    // terminally here turned every post-idle photo into a refunded
+    // "safety_unavailable". Keep the message pending and re-run the gate on
+    // the next poll (the asset is already persisted and recorded in metadata,
+    // so retries don't duplicate it). The watchdog above bounds total wait and
+    // soft-deletes the unclassified asset if the classifier never comes back.
+    if (!verdict.classifierRan) {
+      log.warn({ msg: 'chat.image.age_classifier_unavailable_retrying', elapsedMs })
+      return {
+        phase: 'pending',
+        progress: {
+          phase: 'safety_check',
+          lastLog: 'age classifier warming up, retrying',
+          provider: falJob.provider,
+          requestId: falJob.requestId,
+          endpoint: falJob.endpoint,
+        },
+      }
+    }
+
+    // Real flag: pull the asset (soft-delete keeps the row for forensics) and
     // fail the message in every flagged branch below.
     await input.payload.update({
       collection: 'media-assets',
       id: String(persistResult.mediaAssetId),
       data: { deletedAt: new Date().toISOString() },
     }).catch(() => {})
-
-    // Classifier couldn't run and we failed closed (production). This is an
-    // infrastructure gap, not a user violation — refund as tech, no incident,
-    // no escalation, and surface a distinct error so it's diagnosable.
-    if (!verdict.classifierRan) {
-      log.error({ msg: 'chat.image.age_classifier_unavailable', reason: verdict.reason })
-      await autoRefund(input.payload, {
-        userId: input.userId,
-        type: 'tech_refund',
-        amount: IMAGE_TOKEN_COST,
-        reason: 'age_classifier_unavailable',
-        relatedMessageId: input.messageId,
-        idempotencyKey: refundTechKey,
-      })
-      await input.payload.update({
-        collection: 'messages',
-        id: input.messageId,
-        data: { status: 'failed', errorReason: 'safety_unavailable', completedAt: new Date().toISOString() },
-      })
-      return { phase: 'failed', error: 'safety_unavailable' }
-    }
 
     log.warn({
       msg: 'chat.image.safety_flagged',
