@@ -31,6 +31,9 @@ export type BuildScenePromptInput = {
   artStyle?: ArtStyleHint
   /** Free-form scene description (outfit / pose / setting). */
   scene?: string
+  /** True when the target model is FLUX — needs natural-language prompts and
+      ignores negative prompts. */
+  isFlux?: boolean
 }
 
 /**
@@ -47,8 +50,18 @@ export function buildCharacterScenePrompt(
   const scene = (input.scene ?? '').trim()
 
   let prompt: string
-  if (isAnime) {
-    // Anime models (Illustrious / Pony SDXL) want the character's anime-styled
+  if (input.isFlux) {
+    // FLUX wants natural language, not SD tokens, and ignores negative prompts.
+    const subjectDesc = appearance?.subjectTokens
+      ? appearance.subjectTokens.replace(/, /g, ' with ')
+      : 'a beautiful young woman'
+    const adultPhrase = isAnime ? '18+ adult woman' : '21+ adult woman'
+    const scenePart = scene ? `${scene}. ` : ''
+    prompt = isAnime
+      ? `${scenePart}2D anime illustration, japanese anime art style, cel-shaded, clean lineart, vibrant anime colors. The character is ${subjectDesc}. ${adultPhrase}.`
+      : `${scenePart}Photorealistic portrait. The woman is ${subjectDesc}. High quality, soft natural lighting, ${adultPhrase}.`
+  } else if (isAnime) {
+    // Anime SDXL models (Illustrious / Pony) want the character's anime-styled
     // appearancePrompt (or danbooru-ish subjectTokens) — never "RAW photo /
     // photorealistic", which fights the model.
     const base =

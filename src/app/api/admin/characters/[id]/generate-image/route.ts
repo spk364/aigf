@@ -135,11 +135,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       ? appearance.subjectTokens.replace(/, /g, ' with ')
       : 'a beautiful young woman'
     const adultPhrase = isAnimeChar ? '18+ adult woman' : '21+ adult woman'
-    if (scene) {
-      prompt = `${scene}. The woman is ${subjectDesc}. Photorealistic, high quality, ${adultPhrase}.`
+    const scenePart = scene ? `${scene}. ` : ''
+    if (isAnimeChar) {
+      // FLUX + anime must read as drawn anime, not a photo.
+      prompt = `${scenePart}2D anime illustration, japanese anime art style, cel-shaded, clean lineart, vibrant anime colors. The character is ${subjectDesc}. ${adultPhrase}.`
     } else {
-      prompt = `Portrait of ${subjectDesc}. Photorealistic, high quality, soft natural lighting, ${adultPhrase}.`
+      prompt = scene
+        ? `${scene}. The woman is ${subjectDesc}. Photorealistic, high quality, ${adultPhrase}.`
+        : `Portrait of ${subjectDesc}. Photorealistic, high quality, soft natural lighting, ${adultPhrase}.`
     }
+  } else if (isAnimeChar) {
+    // Anime characters must render as drawn anime, not a photo. The realistic
+    // "RAW photo / photorealistic" template below produces photorealistic
+    // output even for anime, so anime gets its own branch (matches the
+    // reference-image flow that already renders correctly).
+    const animeBase =
+      appearance?.appearancePrompt ||
+      ['anime style, masterpiece, best quality, ultra-detailed, cel-shaded', appearance?.subjectTokens, 'clean lines, vibrant colors']
+        .filter(Boolean)
+        .join(', ')
+    prompt = [animeBase, scene, safetyMarkers].filter(Boolean).join(', ')
   } else if (scene && appearance?.subjectTokens) {
     prompt = [
       'RAW photo',

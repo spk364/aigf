@@ -20,6 +20,7 @@ import {
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { buildCharacterScenePrompt } from '@/features/chat/scene-prompt'
 import { pickModelIdForStyle } from '@/features/builder/prompt-builder'
+import { findImageModel } from '@/shared/ai/image-models'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
 import { extractMemories } from '@/features/memory/extract-memories'
@@ -669,19 +670,20 @@ export async function POST(req: NextRequest) {
               // on the bed]"); for a bare "send a selfie" there's no scene and the
               // prompt is just the character's appearance (a portrait). We do NOT
               // feed the raw user message in as a scene — it's not a description.
+              // Pick a style-appropriate model (anime → FLUX schnell,
+              // realistic → RealVisXL) — the curated per-style defaults. We do
+              // NOT force Atlas WAN 2.6: it stalls in `processing` on SD-token
+              // prompts. submitChatImageJob is provider-aware.
+              const modelId = pickModelIdForStyle(artStyle ?? 'realistic')
+              const isFluxModel = findImageModel(modelId)?.isFlux ?? false
+
               const scene = parsed.scene && parsed.scene.trim().length > 0 ? parsed.scene.trim() : ''
               const { prompt, negativePrompt } = buildCharacterScenePrompt({
                 appearance: sceneAppearance,
                 artStyle,
                 scene,
+                isFlux: isFluxModel,
               })
-
-              // Pick a style-appropriate model (anime → Illustrious LoRA,
-              // realistic → RealVisXL) — the same curated defaults the builder
-              // uses. We do NOT force Atlas WAN 2.6 here: it stalls in
-              // `processing` for these jobs. submitChatImageJob is provider-aware
-              // and dispatches fal/Atlas based on the resolved model id.
-              const modelId = pickModelIdForStyle(artStyle ?? 'realistic')
               const submitResult = await submitChatImageJob({
                 payload,
                 conversationId,
