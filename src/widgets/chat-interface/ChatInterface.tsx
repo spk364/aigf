@@ -511,6 +511,20 @@ export function ChatInterface({
   // route per-message until terminal. polledIdsRef prevents duplicate polling
   // across rerenders without forcing a useState→re-render cycle.
   const polledIdsRef = useRef<Set<string>>(new Set())
+  // Cancellers for in-flight polls, keyed by message id. We deliberately do
+  // NOT cancel these in the polling effect's cleanup: the poll loop calls
+  // setMessages() on every `pending` tick to surface progress, which mutates
+  // `messages` → re-runs the effect → would fire the cleanup and kill the very
+  // poll that triggered it (polledIdsRef then prevents a restart, so polling
+  // dies after one tick). Instead we cancel only on unmount.
+  const pollCancellersRef = useRef<Map<string, () => void>>(new Map())
+
+  useEffect(() => {
+    const cancellers = pollCancellersRef.current
+    return () => {
+      for (const cancel of cancellers.values()) cancel()
+    }
+  }, [])
 
   useEffect(() => {
     const POLL_INTERVAL_MS = 2000
@@ -521,8 +535,6 @@ export function ChatInterface({
     )
 
     if (pendingImageMsgs.length === 0) return
-
-    const cancellers: Array<() => void> = []
 
     for (const msg of pendingImageMsgs) {
       polledIdsRef.current.add(msg.id)
@@ -602,13 +614,14 @@ export function ChatInterface({
       }
 
       void poll()
-      cancellers.push(() => {
+      pollCancellersRef.current.set(msg.id, () => {
         cancelled = true
+        // Forget the id so a future effect run can restart polling — matters
+        // in dev StrictMode, where React mounts → unmounts → remounts with the
+        // same refs: without this, the remounted effect sees the id as already
+        // polled and never resumes, leaving a forever-spinner.
+        polledIdsRef.current.delete(msg.id)
       })
-    }
-
-    return () => {
-      for (const cancel of cancellers) cancel()
     }
   }, [messages, refreshBalance])
 
