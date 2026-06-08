@@ -498,10 +498,23 @@ export type ModelOption = {
 // Removed (do NOT re-add without re-verifying):
 //   - fal-ai/fast-sdxl — model-level NSFW filter returns
 //     "has_nsfw_concepts" on the default outfit prompt.
-//   - fal-ai/flux/dev — fal platform NSFW classifier blocks adult prompts.
 //   - John6666/pony-realism-v22-main-sdxl — fal 422 "Invalid URL or
 //     repository key"; the slug doesn't resolve on fal-ai/lora.
+//
+// fal-ai/flux/dev was previously removed for "platform NSFW classifier
+// blocks adult prompts", but re-verified live 2026-06-08: on the natural-
+// language clothed-sexy prompts the chat/builder actually send (e.g. "in
+// lingerie, on the bed") it returns a clean photoreal frame in ~7 s,
+// has_nsfw_concepts:false — whereas RealVisXL black-frames the SAME prompt
+// (its model-level NSFW filter fires) and frequently cold-stalls past the
+// poll budget. flux/dev is now the realistic default; very explicit prompts
+// can still trip its classifier, for which CyberRealistic Pony stays the
+// opt-in NSFW-strong (cold-start) alternative.
 const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: string }> = {
+  'fal-ai/flux/dev': {
+    labelKey: 'builder.models.fluxDev.label',
+    descriptionKey: 'builder.models.fluxDev.description',
+  },
   'fal-ai/realistic-vision': {
     labelKey: 'builder.models.realisticVision.label',
     descriptionKey: 'builder.models.realisticVision.description',
@@ -529,20 +542,18 @@ const BUILDER_MODEL_KEYS: Record<string, { labelKey: string; descriptionKey: str
 // natural-language, explicitly-anime/cel-shaded prompt (callers build one) and
 // ignores negative_prompt. Chosen over the Illustrious LoRA for speed.
 const DEFAULT_ANIME_ID = 'fal-ai/flux/schnell'
-// RealVisXL by default for realistic — same fal endpoint admin uses for
-// realistic character previews, and produces photoreal portraits with
-// good age-accuracy. FLUX Schnell is faster but trends younger/cartoonish
-// at small step counts, ignores negative_prompt (we rely on adversarial
-// negatives for the body-size axes), and made realistic + anime previews
-// look nearly identical in user testing. CyberRealistic Pony stays as
-// the opt-in NSFW-strong photoreal alternative.
-//
-// RealVisXL has fal's NSFW classifier on it (catalogue marks it
-// nsfwFriendly:false), but with the product's clothed-sexy default
-// outfit + occupation outfits the failure rate is acceptable;
-// safety-filtered frames already short-circuit via
-// detectSafetyFilteredFrame.
-const DEFAULT_REALISTIC_ID = 'fal-ai/realistic-vision'
+// FLUX Dev by default for realistic. RealVisXL (the previous default) carries
+// fal's model-level NSFW classifier (catalogue nsfwFriendly:false): on spicy-
+// but-clothed scenes like "in lingerie, on the bed" it returns an all-black
+// frame (has_nsfw_concepts fires) which fal.ts then reports as "NSFW filter
+// blocked every output", and it also cold-stalls past the poll budget. FLUX
+// Dev serves the same prompt clean and photoreal in ~7 s (verified live
+// 2026-06-08). It's a FLUX endpoint, so callers build natural-language prompts
+// and it ignores negative_prompt — we rely on the positive prompt's adult
+// markers plus the input filter. CyberRealistic Pony stays the opt-in NSFW-
+// strong (2-3 min cold) alternative for very explicit prompts that can still
+// trip FLUX's lighter classifier.
+const DEFAULT_REALISTIC_ID = 'fal-ai/flux/dev'
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
   .filter((m) =>

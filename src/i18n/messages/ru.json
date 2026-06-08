@@ -585,8 +585,8 @@
     },
     "models": {
       "realisticVision": {
-        "label": "RealVisXL (рекомендуется для реалистичного)",
-        "description": "~$0.025/изобр · ~20-50 сек · фотореалистичные портреты. Та же модель, что в админке."
+        "label": "RealVisXL",
+        "description": "~$0.025/изобр · ~20-50 сек · фотореалистичные портреты. ⚠ NSFW-фильтр выдаёт чёрный кадр на пикантных сценах."
       },
       "fastSdxl": {
         "label": "Fast SDXL",
@@ -597,8 +597,8 @@
         "description": "~$0.003/изобр · ~5-10 сек · быстрый фотореализм. Без negative prompt."
       },
       "fluxDev": {
-        "label": "FLUX dev",
-        "description": "~$0.025/изобр · ~30-60 сек · качественный FLUX. Без negative prompt."
+        "label": "FLUX dev (рекомендуется для реалистичного)",
+        "description": "~$0.025/изобр · ~7-30 сек · фотореализм, тянет пикантные сцены в одежде без чёрных кадров. Без negative prompt."
       },
       "cyberrealisticPony": {
         "label": "CyberRealistic Pony",
