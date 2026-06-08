@@ -3,6 +3,7 @@
 import type { CollectionConfig } from 'payload'
 import { ValidationError } from 'payload'
 import { ensureBalanceRow } from '@/features/tokens/ledger'
+import { SESSION_TOKEN_EXPIRATION_SECONDS } from '@/shared/auth/session'
 
 function computeAge(dob: Date): number {
   const now = new Date()
@@ -35,6 +36,10 @@ export const Users: CollectionConfig = {
     // Falling back to JWT-only auth (stateless) keeps OAuth + email login both working.
     // TODO(phase-3-auth): re-enable sessions and add an OAuth-side session creation hook.
     useSessions: false,
+    // Without this Payload signs JWTs with its 2h default, so users were logged
+    // out two hours after login even though the cookie lived 7 days. Pin the
+    // JWT lifetime to the same constant the login/signup cookies use.
+    tokenExpiration: SESSION_TOKEN_EXPIRATION_SECONDS,
     verify: {
       generateEmailSubject: ({ user }) => {
         const locale = (user as { locale?: string }).locale ?? 'en'

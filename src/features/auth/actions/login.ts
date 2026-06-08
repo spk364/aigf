@@ -6,6 +6,7 @@ import config from '@payload-config'
 import { loginSchema } from '../schemas'
 import { checkRateLimit } from '@/shared/rate-limit/limiter'
 import { AUTH_LOGIN_LIMIT, readClientIp } from '@/shared/rate-limit/presets'
+import { SESSION_TOKEN_EXPIRATION_SECONDS } from '@/shared/auth/session'
 
 export type LoginState =
   | { success: true }
@@ -49,7 +50,7 @@ export async function loginAction(formData: FormData): Promise<LoginState> {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: SESSION_TOKEN_EXPIRATION_SECONDS, // keep in lockstep with the JWT exp
     })
 
     return { success: true }

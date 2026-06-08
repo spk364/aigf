@@ -103,8 +103,9 @@ export default async function ConversationPage({ params }: Props) {
     }
   }
 
-  // Fetch media-assets for image and audio messages.
-  const assetMap = new Map<string, string>()
+  // Fetch media-assets for image and audio messages. Carry width/height too so
+  // the chat can lay out and zoom restored images without a client round-trip.
+  const assetMap = new Map<string, { url: string; width?: number; height?: number }>()
   const allAssetIds = [...imageAssetIds, ...audioAssetIds]
   if (allAssetIds.length > 0) {
     const assetsResult = await payload.find({
@@ -115,7 +116,11 @@ export default async function ConversationPage({ params }: Props) {
     })
     for (const asset of assetsResult.docs) {
       if (asset.publicUrl) {
-        assetMap.set(String(asset.id), asset.publicUrl as string)
+        assetMap.set(String(asset.id), {
+          url: asset.publicUrl as string,
+          width: typeof asset.width === 'number' ? asset.width : undefined,
+          height: typeof asset.height === 'number' ? asset.height : undefined,
+        })
       }
     }
   }
@@ -129,7 +134,7 @@ export default async function ConversationPage({ params }: Props) {
       audioRel && typeof audioRel === 'object' && 'id' in audioRel
         ? ((audioRel as { id: string | number }).id)
         : (audioRel as string | number | undefined)
-    const audioUrl = audioAssetId ? assetMap.get(String(audioAssetId)) : undefined
+    const audioUrl = audioAssetId ? assetMap.get(String(audioAssetId))?.url : undefined
 
     const base = {
       id: String(msg.id),
@@ -143,11 +148,24 @@ export default async function ConversationPage({ params }: Props) {
         typeof msg.imageAssetId === 'object' && msg.imageAssetId !== null
           ? (msg.imageAssetId as { id: string | number }).id
           : msg.imageAssetId
-      const imageUrl = assetId ? assetMap.get(String(assetId)) : undefined
+      const asset = assetId ? assetMap.get(String(assetId)) : undefined
+      // Mirror the message's own lifecycle so the client renders the right
+      // state on reload: completed → show the image; pending → show the
+      // spinner AND let the polling effect resume (it keys on
+      // imageStatus==='pending'); failed → show the error bubble. Without this
+      // a left-and-returned conversation rendered every non-text message as a
+      // blank bubble and stranded any still-pending generation.
+      const rawStatus = msg.status as string | undefined
+      const imageStatus: 'pending' | 'completed' | 'failed' =
+        asset?.url ? 'completed' : rawStatus === 'failed' ? 'failed' : rawStatus === 'pending' ? 'pending' : 'failed'
       return {
         ...base,
         type: 'image' as const,
-        imageUrl,
+        imageStatus,
+        imageUrl: asset?.url,
+        imageWidth: asset?.width,
+        imageHeight: asset?.height,
+        ...(typeof msg.errorReason === 'string' ? { imageError: msg.errorReason } : {}),
         mediaAssetId: assetId as string | number | undefined,
       }
     }
