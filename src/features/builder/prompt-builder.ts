@@ -555,6 +555,16 @@ const DEFAULT_ANIME_ID = 'fal-ai/flux/schnell'
 // trip FLUX's lighter classifier.
 const DEFAULT_REALISTIC_ID = 'fal-ai/flux/dev'
 
+// NSFW-strong model for explicit-nudity scenes. The FLUX defaults above still
+// black-frame outright nudity (FLUX's classifier fires). Rather than fall back
+// to the Pony/Illustrious LoRAs — which return real nudity but cold-start 2-3
+// min on fal — route explicit to Atlas Cloud's WAN 2.6 text-to-image: it's the
+// admin's default model, has NO platform safety gate, renders both realistic
+// and anime well, and is always warm (verified live 2026-06-08: explicit
+// realistic + anime prompts both returned real non-black images in ~13-16 s,
+// no cold start). One model covers both art styles.
+const NSFW_STRONG_EXPLICIT_ID = 'alibaba/wan-2.6/text-to-image'
+
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
   .filter((m) =>
     detectImageProvider(m.id) === 'fal' &&
@@ -577,15 +587,15 @@ export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
 
 const VALID_IDS = new Set(IMAGE_MODELS.map((m) => m.id))
 
-// Maps art style → model id when the user hasn't chosen explicitly.
-export function pickModelIdForStyle(artStyle: string): string {
-  switch (artStyle) {
-    case 'anime':
-      return DEFAULT_ANIME_ID
-    case 'realistic':
-    default:
-      return DEFAULT_REALISTIC_ID
-  }
+// Maps art style → model id when the user hasn't chosen explicitly. Pass
+// `{ explicit: true }` for outright-nudity scenes to get the warm NSFW-strong
+// Atlas model instead of the FLUX default (which black-frames nudity).
+export function pickModelIdForStyle(
+  artStyle: string,
+  opts?: { explicit?: boolean },
+): string {
+  if (opts?.explicit) return NSFW_STRONG_EXPLICIT_ID
+  return artStyle === 'anime' ? DEFAULT_ANIME_ID : DEFAULT_REALISTIC_ID
 }
 
 // Resolve the model id to actually dispatch: honour the user's pick when it
