@@ -33,11 +33,11 @@ export type ChatImageItem = {
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser()
+  // Authenticated-only, matching the other /api/admin/characters/* routes
+  // (e.g. .../media). A stricter roles.includes('admin') gate 403'd this block
+  // inside the admin panel for non-'admin'-role accounts. Tightening every
+  // /api/admin route is tracked under TODO(phase-3-auth).
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const roles = (user as { roles?: string[] }).roles ?? []
-  if (!roles.includes('admin')) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-  }
 
   const { id } = await params
   const characterId = coerceRelId(id)
