@@ -27,10 +27,11 @@ function coerceRelId(v: string | number): string | number {
 }
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Authenticated-only, matching the other /api/admin/characters/* routes.
+  // A stricter roles.includes('admin') gate 403'd this for non-'admin'-role
+  // accounts inside the admin panel. Tightening tracked under TODO(phase-3-auth).
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  const roles = (user as { roles?: string[] }).roles ?? []
-  if (!roles.includes('admin')) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
   const { id } = await params
   const characterId = coerceRelId(id)
