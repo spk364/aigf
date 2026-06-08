@@ -72,6 +72,13 @@
     "imageQueuePosition": "Posicion en cola: {n}",
     "imageFailed": "No se pudo generar la foto. Intentalo de nuevo.",
     "noConversationsYet": "Aun no hay conversaciones — elige a alguien para empezar.",
+    "clearHistory": "Borrar historial del chat",
+    "clearConfirm": {
+      "title": "¿Borrar el historial del chat?",
+      "body": "Esto elimina el texto de esta conversación para empezar de cero. Tus fotos generadas se mantienen en la galería.",
+      "confirm": "Borrar historial",
+      "cancel": "Cancelar"
+    },
     "quickActions": {
       "askPhoto": "Enviame una foto",
       "askVoice": "Oir respuesta",
