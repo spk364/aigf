@@ -1,6 +1,9 @@
 import type { Payload } from 'payload'
 import { PERSONAS, buildSystemPrompt, type Persona, type Language } from './preset-personas'
+import { EXTRA_PERSONAS } from './preset-personas-extra'
 import { buildAppearanceFromParams } from '@/shared/ai/appearance-prompt'
+
+const ALL_PERSONAS: Persona[] = [...PERSONAS, ...EXTRA_PERSONAS]
 
 const LANGUAGES: Language[] = ['en', 'ru', 'es']
 
@@ -89,8 +92,18 @@ async function upsertPersona(payload: Payload, persona: Persona): Promise<void> 
 }
 
 export async function seedPresetCharacters(payload: Payload): Promise<void> {
-  for (const persona of PERSONAS) {
+  for (const persona of ALL_PERSONAS) {
     await upsertPersona(payload, persona)
   }
-  payload.logger.info(`[seed] Done — ${PERSONAS.length} personas × 3 locales.`)
+  payload.logger.info(`[seed] Done — ${ALL_PERSONAS.length} personas × 3 locales.`)
+}
+
+// Seeds ONLY the additional personas (preset-personas-extra.ts), leaving the
+// base catalog untouched — so adding new characters to a live deployment can't
+// overwrite curation/edits on the existing ones.
+export async function seedExtraCharacters(payload: Payload): Promise<void> {
+  for (const persona of EXTRA_PERSONAS) {
+    await upsertPersona(payload, persona)
+  }
+  payload.logger.info(`[seed] Done — ${EXTRA_PERSONAS.length} extra personas × 3 locales.`)
 }
