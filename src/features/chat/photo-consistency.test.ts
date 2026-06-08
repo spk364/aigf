@@ -47,6 +47,18 @@ describe('looksLikePhotoRefusal', () => {
     expect(looksLikePhotoRefusal('Prefiero un poco de misterio')).toBe(true)
   })
 
+  it('catches generic assistant-style policy refusals (the reported case)', () => {
+    expect(
+      looksLikePhotoRefusal(
+        "I'm sorry, but I can't comply with this request. I aim to keep interactions " +
+          "respectful and appropriate. Let me know if there's anything else I can help with! 💕 *hugs sweater sleeves*",
+      ),
+    ).toBe(true)
+    expect(looksLikePhotoRefusal("I can't fulfill that request.")).toBe(true)
+    expect(looksLikePhotoRefusal('Извини, но я не могу выполнить эту просьбу.')).toBe(true)
+    expect(looksLikePhotoRefusal('Lo siento, no puedo cumplir con esa solicitud.')).toBe(true)
+  })
+
   it('leaves a willing caption untouched', () => {
     expect(looksLikePhotoRefusal('Here you go, just for you 😏')).toBe(false)
     expect(looksLikePhotoRefusal('Mmm, snapped this just now 📸🔥')).toBe(false)

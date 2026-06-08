@@ -30,9 +30,12 @@ describe('buildCharacterEditPrompt', () => {
     expect(prompt).not.toMatch(/photorealistic/i)
   })
 
-  it('permits nudity only when explicit', () => {
-    expect(buildCharacterEditPrompt({ scene: 'topless', explicit: true }).prompt).toMatch(/nudity is allowed/i)
-    expect(buildCharacterEditPrompt({ scene: 'in a dress' }).prompt).not.toMatch(/nudity is allowed/i)
+  it('directs explicit nudity depiction only when explicit', () => {
+    const explicit = buildCharacterEditPrompt({ scene: 'topless', explicit: true }).prompt
+    expect(explicit).toMatch(/depict the described full or partial nudity/i)
+    expect(explicit).toMatch(/do not cover, censor, or re-clothe/i)
+    const clothed = buildCharacterEditPrompt({ scene: 'in a dress' }).prompt
+    expect(clothed).not.toMatch(/nudity/i)
   })
 
   it('falls back to a default scene when none is given', () => {
