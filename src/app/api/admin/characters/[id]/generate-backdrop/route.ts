@@ -9,12 +9,15 @@ import { removeBackground } from '@/shared/ai/fal'
 import { buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 
-// Admin-only: generate the chat "standee" — a full-body, revealing, transparent
-// PNG of the character shown in the chat window. Pipeline:
+// Admin-only: generate a chat "standee" candidate — a full-body, transparent
+// PNG of the character (in a revealing outfit / lingerie + heels, posing and
+// smiling) shown in the chat window. Pipeline:
 //   1. Atlas WAN 2.6 image-edit on the reference (identity-preserving) → full
-//      body nude on a plain background.
+//      body, posing, on a plain background.
 //   2. fal BiRefNet → cut the background out (transparent PNG).
-//   3. Persist to R2 and store the URL on the character (chatBackdropUrl).
+//   3. Persist to R2 as a character_backdrop asset. The first one auto-activates
+//      (sets chatBackdropUrl); later ones are candidates the admin picks from
+//      via the backdrop gallery (set-backdrop route).
 
 const ATLAS_IMAGE_EDIT_MODEL_ID = 'alibaba/wan-2.6/image-edit'
 const POLL_INTERVAL_MS = 2500
@@ -72,14 +75,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       ? (character.artStyle as 'anime' | 'realistic')
       : undefined
 
-  // Full-body nude on a plain background (so the cutout is clean), conditioned
-  // on the reference for identity. Reuses the chat edit-prompt builder.
+  // Full-body, posing, on a plain background (so the cutout is clean),
+  // conditioned on the reference for identity. Revealing outfit / lingerie +
+  // heels, an alluring pose and a smile — NOT nude (explicit:false).
   const { prompt } = buildCharacterEditPrompt({
     scene:
-      'standing upright, full body from head to toe, the entire body visible, facing the camera, ' +
-      'plain flat light-grey studio background, completely nude, fully naked, no clothing',
+      'full body from head to toe, the entire body and the high-heeled shoes visible, ' +
+      'wearing sexy lingerie (or a skimpy revealing outfit) and high heels, ' +
+      'striking an alluring confident pose, smiling warmly at the camera, ' +
+      'plain flat light-grey studio background',
     artStyle,
-    explicit: true,
+    explicit: false,
   })
 
   try {
@@ -129,14 +135,26 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       generationMetadata: { source: 'chat-backdrop', model: ATLAS_IMAGE_EDIT_MODEL_ID },
     })
 
-    await payload.update({
-      collection: 'characters',
-      id: characterId,
-      data: { chatBackdropUrl: persisted.publicUrl },
-      overrideAccess: true,
-    })
+    // Auto-activate only the first backdrop; otherwise keep it as a candidate
+    // for the admin to pick via the gallery (set-backdrop route).
+    const currentActive =
+      typeof character.chatBackdropUrl === 'string' ? character.chatBackdropUrl.trim() : ''
+    const activated = currentActive.length === 0
+    if (activated) {
+      await payload.update({
+        collection: 'characters',
+        id: characterId,
+        data: { chatBackdropUrl: persisted.publicUrl },
+        overrideAccess: true,
+      })
+    }
 
-    return NextResponse.json({ ok: true, url: persisted.publicUrl })
+    return NextResponse.json({
+      ok: true,
+      url: persisted.publicUrl,
+      mediaAssetId: persisted.mediaAssetId,
+      activated,
+    })
   } catch (err) {
     return NextResponse.json(
       { error: 'backdrop_failed', message: err instanceof Error ? err.message : String(err) },
