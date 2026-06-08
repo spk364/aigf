@@ -1,6 +1,6 @@
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { seedPresetCharacters } from './seed-preset-characters'
+import { seedPresetCharacters, seedExtraCharacters } from './seed-preset-characters'
 import { seedPresetBoys } from './seed-preset-boys'
 import { seedDevUser } from './seed-dev-user'
 import { seedTokenPackages } from './seed-token-packages'
@@ -13,6 +13,12 @@ async function main() {
 
   if (all || TARGETS.has('characters')) {
     await seedPresetCharacters(payload)
+  }
+
+  // Extras-only: create the additional personas without re-upserting the base
+  // catalog. Use on live deployments. `all` does NOT include this.
+  if (TARGETS.has('characters-extra')) {
+    await seedExtraCharacters(payload)
   }
 
   if (all || TARGETS.has('boys')) {
