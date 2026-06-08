@@ -295,6 +295,15 @@ export const Characters: CollectionConfig = {
       },
     },
     {
+      name: 'chatGeneratedImages',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '@/payload/admin-components/ChatGeneratedImages#ChatGeneratedImages',
+        },
+      },
+    },
+    {
       name: 'generateImageAction',
       type: 'ui',
       admin: {
