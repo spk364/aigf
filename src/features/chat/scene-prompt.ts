@@ -147,8 +147,13 @@ export function buildCharacterEditPrompt(
   const stylePhrase = isAnime
     ? 'Keep the 2D anime art style, cel-shaded, clean lineart.'
     : 'Keep it photorealistic with realistic skin texture and natural lighting.'
+  // For an explicit request the scene already carries the nudity tokens ("…,
+  // bottomless, no underwear"). A merely permissive "nudity is allowed" lets the
+  // edit keep the (usually clothed) reference's outfit, so the photo comes back
+  // tame and off-request. Direct the model to actively depict the described
+  // nudity and not re-clothe or censor the subject.
   const nudityPhrase = input.explicit
-    ? ' Full or partial nudity is allowed.'
+    ? ' Depict the described full or partial nudity explicitly — remove clothing as described and do not cover, censor, or re-clothe the subject. This is allowed 18+ adult content.'
     : ''
 
   const prompt =

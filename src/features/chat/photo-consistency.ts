@@ -123,14 +123,30 @@ const REFUSAL_MARKERS: string[] = [
   'maybe later', 'maybe another time', 'maybe some other time', 'not right now',
   'rather not', "i'd rather", "can't send", 'cannot send', "can't do that",
   'not comfortable', 'prefer not to', "let's talk about", 'how about we talk',
+  // en — generic assistant-style "I won't comply" refusals. DeepSeek (and
+  // whatever OpenRouter routes to) sometimes drops the in-character voice and
+  // emits a canned policy refusal next to the photo we're already sending.
+  // These phrases never appear in a willing caption, so matching them is safe.
+  "can't comply", 'cannot comply', 'comply with this', "can't fulfill", 'cannot fulfill',
+  "can't fulfil", "can't provide", 'cannot provide', "can't assist with", 'cannot assist with',
+  "can't help with that", "i'm not able to", 'i am not able to', 'i must decline',
+  'have to decline', 'against my guidelines', 'respectful and appropriate',
+  'keep interactions respectful', 'keep things respectful', 'keep it respectful',
+  'not appropriate', 'inappropriate request',
   // ru
   'предпочитаю сохран', 'загадочност', 'может, лучше поговорим', 'может лучше поговорим',
   'давай лучше', 'не могу отправ', 'не сейчас', 'может быть позже',
   'как-нибудь в другой раз', 'лучше расскаж',
+  // ru — generic refusals
+  'не могу выполнить', 'не могу этого сделать', 'не могу помочь с этим', 'это неуместно',
+  'неуместн', 'вынужден отказать', 'вынуждена отказать',
   // es
   'un poco de misterio', 'algo de misterio', 'mejor hablemos',
   'no puedo enviar', 'quizás más tarde', 'tal vez más tarde', 'preferiría',
   'en otro momento', 'mejor te cuento',
+  // es — generic refusals
+  'no puedo cumplir', 'no puedo hacer eso', 'no puedo ayudar con eso',
+  'no es apropiado', 'no es apropiada', 'debo rechazar',
 ]
 
 export function looksLikePhotoRefusal(text: string | null | undefined): boolean {
