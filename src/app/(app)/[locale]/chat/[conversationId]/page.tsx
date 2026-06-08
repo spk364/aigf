@@ -61,6 +61,7 @@ export default async function ConversationPage({ params }: Props) {
       : (conversation.characterId as string | number | undefined)
 
   let characterPhotoUrl: string | undefined
+  let characterBackdropUrl: string | undefined
   if (conversationCharacterId) {
     try {
       const character = await payload.findByID({
@@ -75,6 +76,10 @@ export default async function ConversationPage({ params }: Props) {
         if (typeof url === 'string' && url.length > 0) {
           characterPhotoUrl = url
         }
+      }
+      const backdrop = (character as { chatBackdropUrl?: unknown } | null)?.chatBackdropUrl
+      if (typeof backdrop === 'string' && backdrop.length > 0) {
+        characterBackdropUrl = backdrop
       }
     } catch {
       // ignore — photo is non-critical
@@ -273,6 +278,7 @@ export default async function ConversationPage({ params }: Props) {
       locale={locale}
       characterName={snapshot?.name ?? 'Anna'}
       characterPhotoUrl={characterPhotoUrl}
+      characterBackdropUrl={characterBackdropUrl}
       paywall={{
         upgradeUrl,
         tokensUrl,

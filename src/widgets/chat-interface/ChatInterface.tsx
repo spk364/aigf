@@ -68,6 +68,9 @@ type Props = {
   locale: string
   characterName?: string
   characterPhotoUrl?: string
+  /** Transparent full-body PNG shown as a standee pinned to the right edge of
+      the chat, behind the messages. Omit to show no standee. */
+  characterBackdropUrl?: string
   strings?: Partial<ChatStrings>
   /** Optional — when provided, the photo chip opens the outfit/pose/setting
       composer instead of sending a plain selfie. */
@@ -452,6 +455,7 @@ export function ChatInterface({
   locale,
   characterName = 'Anna',
   characterPhotoUrl,
+  characterBackdropUrl,
   strings: stringsProp,
   photoComposer,
   paywall,
@@ -1029,6 +1033,27 @@ export function ChatInterface({
             className="h-full w-full scale-110 object-cover opacity-[0.07] blur-2xl"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-bg)]/40 via-transparent to-[var(--color-bg)]" />
+        </div>
+      )}
+
+      {/* Full-length character standee pinned to the right edge, behind the
+          messages (z-0 < message list z-10). Transparent PNG, faded on its left
+          so it blends into the chat. Desktop only — no room on mobile. */}
+      {characterBackdropUrl && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 right-0 top-14 z-0 hidden w-[42%] max-w-md items-end justify-end lg:flex"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={characterBackdropUrl}
+            alt=""
+            className="h-full w-full object-contain object-bottom"
+            style={{
+              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, black 38%)',
+              maskImage: 'linear-gradient(to right, transparent 0%, black 38%)',
+            }}
+          />
         </div>
       )}
 

@@ -6,6 +6,7 @@ import { GenerateVideoButton as GenerateVideoButton_a89af66c0ea5f4aab86f330bd738
 import { CharacterVideos as CharacterVideos_599f4ffe111e301229e3a849f2681cec } from '@/payload/admin-components/CharacterVideos'
 import { VoicePicker as VoicePicker_4207250f5b25aca529973b1159f5bfb2 } from '@/payload/admin-components/VoicePicker'
 import { GenerateGreetingButton as GenerateGreetingButton_2931e7205feeeaeda5bd1d65af655ad4 } from '@/payload/admin-components/GenerateGreetingButton'
+import { GenerateBackdropButton as GenerateBackdropButton_backdrop } from '@/payload/admin-components/GenerateBackdropButton'
 import { MediaAssetThumbnailCell as MediaAssetThumbnailCell_d46259805b66e332680f45377c9652bd } from '@/payload/admin-components/MediaAssetThumbnailCell'
 import { CollectionCards as CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1 } from '@payloadcms/next/rsc'
 
@@ -19,6 +20,7 @@ export const importMap = {
   "@/payload/admin-components/CharacterVideos#CharacterVideos": CharacterVideos_599f4ffe111e301229e3a849f2681cec,
   "@/payload/admin-components/VoicePicker#VoicePicker": VoicePicker_4207250f5b25aca529973b1159f5bfb2,
   "@/payload/admin-components/GenerateGreetingButton#GenerateGreetingButton": GenerateGreetingButton_2931e7205feeeaeda5bd1d65af655ad4,
+  "@/payload/admin-components/GenerateBackdropButton#GenerateBackdropButton": GenerateBackdropButton_backdrop,
   "@/payload/admin-components/MediaAssetThumbnailCell#MediaAssetThumbnailCell": MediaAssetThumbnailCell_d46259805b66e332680f45377c9652bd,
   "@payloadcms/next/rsc#CollectionCards": CollectionCards_f9c02e79a4aed9a3924487c0cd4cafb1
 }
