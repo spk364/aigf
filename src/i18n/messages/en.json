@@ -585,8 +585,8 @@
     },
     "models": {
       "realisticVision": {
-        "label": "RealVisXL (recommended for realistic)",
-        "description": "~$0.025/img · ~20-50 s · photorealistic portraits. Same model used in admin."
+        "label": "RealVisXL",
+        "description": "~$0.025/img · ~20-50 s · photorealistic portraits. ⚠ NSFW filter black-frames spicy scenes."
       },
       "fastSdxl": {
         "label": "Fast SDXL",
@@ -597,8 +597,8 @@
         "description": "~$0.003/img · ~5-10 s · fastest realistic. No negative prompt."
       },
       "fluxDev": {
-        "label": "FLUX dev",
-        "description": "~$0.025/img · ~30-60 s · higher-quality FLUX. No negative prompt."
+        "label": "FLUX dev (recommended for realistic)",
+        "description": "~$0.025/img · ~7-30 s · photoreal, handles spicy-clothed scenes without black frames. No negative prompt."
       },
       "cyberrealisticPony": {
         "label": "CyberRealistic Pony",

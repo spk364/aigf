@@ -585,8 +585,8 @@
     },
     "models": {
       "realisticVision": {
-        "label": "RealVisXL (recomendado para realista)",
-        "description": "~$0.025/img · ~20-50 s · retratos fotorrealistas. Mismo modelo usado en admin."
+        "label": "RealVisXL",
+        "description": "~$0.025/img · ~20-50 s · retratos fotorrealistas. ⚠ El filtro NSFW devuelve fotograma negro en escenas atrevidas."
       },
       "fastSdxl": {
         "label": "Fast SDXL",
@@ -597,8 +597,8 @@
         "description": "~$0.003/img · ~5-10 s · realismo rápido. Sin negative prompt."
       },
       "fluxDev": {
-        "label": "FLUX dev",
-        "description": "~$0.025/img · ~30-60 s · FLUX de mayor calidad. Sin negative prompt."
+        "label": "FLUX dev (recomendado para realista)",
+        "description": "~$0.025/img · ~7-30 s · fotorrealista, soporta escenas atrevidas con ropa sin fotogramas negros. Sin negative prompt."
       },
       "cyberrealisticPony": {
         "label": "CyberRealistic Pony",
