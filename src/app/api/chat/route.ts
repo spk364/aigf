@@ -18,13 +18,14 @@ import {
   explicitPhotoRequestInstruction,
 } from '@/features/chat/photo-directive'
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
-import { buildCharacterScenePrompt } from '@/features/chat/scene-prompt'
+import { buildCharacterScenePrompt, buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
 import {
   isExplicitPhotoScene,
   looksLikePhotoRefusal,
   photoSendCaption,
+  resolveExplicitScene,
 } from '@/features/chat/photo-consistency'
 import { pickModelIdForStyle } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
@@ -40,6 +41,11 @@ import { checkAssistantOutput } from '@/features/safety/output-filter'
 import { getAccountState } from '@/shared/auth/account-status'
 
 const LLM_MODEL = OPENROUTER_MODEL
+// Atlas WAN 2.6 image-edit — reference-conditioned generation used for chat
+// photos when the character has a reference/primary image, so the face and
+// tattoos stay consistent across photos. submitChatImageJob passes the source
+// image when referenceImageUrl is set.
+const ATLAS_IMAGE_EDIT_MODEL_ID = 'alibaba/wan-2.6/image-edit'
 // DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
 // which pushes the sampler into the low-probability tail and produces
 // hallucinated biographical facts and broken character consistency. 0.85 keeps
@@ -662,10 +668,17 @@ export async function POST(req: NextRequest) {
                   }
                 | null = null
               let artStyle: 'realistic' | 'anime' | undefined
+              // Face/identity anchor: the character's reference image (or its
+              // primary gallery image). Conditioning on it keeps the face AND
+              // tattoos consistent across photos — without it every photo is a
+              // fresh text-to-image roll, so only the described traits (hair,
+              // body) stay stable while the face/tattoos change each time.
+              let referenceImageUrl: string | null = null
               try {
                 const liveChar = await payload.findByID({
                   collection: 'characters',
                   id: convCharacterId,
+                  depth: 1,
                   overrideAccess: true,
                 })
                 if (liveChar) {
@@ -673,6 +686,18 @@ export async function POST(req: NextRequest) {
                   if (a && typeof a === 'object') sceneAppearance = a as typeof sceneAppearance
                   const s = (liveChar as { artStyle?: unknown }).artStyle
                   if (s === 'anime' || s === 'realistic') artStyle = s
+
+                  const denormRef = (liveChar as { referenceImageUrl?: unknown }).referenceImageUrl
+                  if (typeof denormRef === 'string' && denormRef.trim()) {
+                    referenceImageUrl = denormRef.trim()
+                  } else {
+                    const primary = (liveChar as { primaryImageId?: unknown }).primaryImageId
+                    const url =
+                      primary && typeof primary === 'object'
+                        ? (primary as { publicUrl?: unknown }).publicUrl
+                        : null
+                    if (typeof url === 'string' && url.trim()) referenceImageUrl = url.trim()
+                  }
                 }
               } catch {
                 // Fall back to the conversation snapshot's appearance below.
@@ -693,28 +718,47 @@ export async function POST(req: NextRequest) {
               // explicit request) keeps no scene: the user's message isn't a
               // photo description.
               const directiveScene = parsed.scene?.trim() ?? ''
-              const scene =
+              const rawScene =
                 directiveScene || (explicitPhotoRequest ? sceneFromPhotoRequest(message) : '')
 
-              // Outright nudity (scene or the user's words) → route to the warm
-              // NSFW-strong Atlas model. The FLUX defaults black-frame nudity
-              // ("fal NSFW filter blocked every output"); Atlas WAN 2.6 has no
-              // platform filter and is always warm. Clothed-sexy stays on the
-              // fast FLUX path.
-              const explicit = isExplicitPhotoScene(scene) || isExplicitPhotoScene(message)
-              const modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
-              const isFluxModel = findImageModel(modelId)?.isFlux ?? false
+              const explicit = isExplicitPhotoScene(rawScene) || isExplicitPhotoScene(message)
+              const shot = classifyShot(rawScene)
+              // For explicit requests, drop embedded "send me a … photo"
+              // imperatives (models read them as a request, not a depiction, so
+              // "naked" buried in one leaves the subject clothed) and fold in
+              // clean nudity tokens recovered from the request. No-op otherwise.
+              const scene = resolveExplicitScene({ scene: rawScene, message, explicit })
 
-              // Pick the shot framing once and feed it to both the prompt
-              // builder (composition tokens) and the job (resolution bucket).
-              const shot = classifyShot(scene)
-              const { prompt, negativePrompt } = buildCharacterScenePrompt({
-                appearance: sceneAppearance,
-                artStyle,
-                scene,
-                isFlux: isFluxModel,
-                shot,
-              })
+              // Two dispatch paths:
+              //   A. Reference image available → Atlas WAN 2.6 image-edit,
+              //      conditioned on it. Keeps the same face/tattoos across photos
+              //      while the prompt changes only the outfit/pose/setting. Warm
+              //      (~12 s), no platform filter, so explicit edits work too.
+              //   B. No reference → text-to-image fallback: explicit → warm Atlas,
+              //      clothed → fast FLUX. Identity is only as stable as the
+              //      appearance description (face/tattoos still drift).
+              let modelId: string
+              let prompt: string
+              let negativePrompt: string
+              if (referenceImageUrl) {
+                modelId = ATLAS_IMAGE_EDIT_MODEL_ID
+                ;({ prompt, negativePrompt } = buildCharacterEditPrompt({
+                  scene,
+                  artStyle,
+                  explicit,
+                }))
+              } else {
+                modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
+                const isFluxModel = findImageModel(modelId)?.isFlux ?? false
+                ;({ prompt, negativePrompt } = buildCharacterScenePrompt({
+                  appearance: sceneAppearance,
+                  artStyle,
+                  scene,
+                  isFlux: isFluxModel,
+                  shot,
+                }))
+              }
+
               const submitResult = await submitChatImageJob({
                 payload,
                 conversationId,
@@ -724,6 +768,7 @@ export async function POST(req: NextRequest) {
                 negativePrompt,
                 modelId,
                 imageSize: shotImageSize(shot),
+                referenceImageUrl,
               })
 
               if (!submitResult.ok) {

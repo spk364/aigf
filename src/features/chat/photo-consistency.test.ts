@@ -3,6 +3,9 @@ import {
   isExplicitPhotoScene,
   looksLikePhotoRefusal,
   photoSendCaption,
+  stripPhotoImperatives,
+  explicitNudityTokens,
+  resolveExplicitScene,
 } from './photo-consistency'
 
 describe('isExplicitPhotoScene', () => {
@@ -62,5 +65,47 @@ describe('photoSendCaption', () => {
 
   it('falls back to English for unknown locales', () => {
     expect(photoSendCaption('zz', 1).length).toBeGreaterThan(0)
+  })
+})
+
+describe('stripPhotoImperatives', () => {
+  it('removes an embedded "send me … photo" clause', () => {
+    expect(
+      stripPhotoImperatives('lying on the bed, relaxed, in the bedroom, send me your full naked photo'),
+    ).toBe('lying on the bed, relaxed, in the bedroom')
+  })
+  it('leaves a plain descriptive scene untouched', () => {
+    expect(stripPhotoImperatives('lying on the bed in lingerie')).toBe('lying on the bed in lingerie')
+  })
+})
+
+describe('explicitNudityTokens', () => {
+  it('maps full-nudity requests to a clear depiction', () => {
+    expect(explicitNudityTokens('send me your full naked photo')).toMatch(/completely nude, fully naked/)
+    expect(explicitNudityTokens('покажи себя голой')).toMatch(/completely nude/)
+  })
+  it('maps partial nudity to specific parts', () => {
+    expect(explicitNudityTokens('topless, no bra')).toMatch(/topless, bare breasts/)
+    expect(explicitNudityTokens('bottomless, no panties')).toMatch(/bottomless/)
+  })
+  it('returns empty for non-nude text', () => {
+    expect(explicitNudityTokens('in a red dress on the bed')).toBe('')
+  })
+})
+
+describe('resolveExplicitScene', () => {
+  it('reproduces the reported case: imperative stripped, nudity depicted', () => {
+    const out = resolveExplicitScene({
+      scene: 'lying on the bed, relaxed, in the bedroom, send me your full naked photo',
+      message: 'Send me a photo of you lying on the bed, relaxed, in the bedroom, send me your full naked photo',
+      explicit: true,
+    })
+    expect(out).toContain('lying on the bed, relaxed, in the bedroom')
+    expect(out).toMatch(/completely nude, fully naked/)
+    expect(out).not.toMatch(/send me/i)
+  })
+  it('is a no-op when not explicit', () => {
+    expect(resolveExplicitScene({ scene: 'in a dress at a cafe', message: 'x', explicit: false }))
+      .toBe('in a dress at a cafe')
   })
 })

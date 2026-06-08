@@ -49,6 +49,70 @@ export function isExplicitPhotoScene(text: string | null | undefined): boolean {
   return EXPLICIT_MARKERS.some((m) => containsMarker(lower, m))
 }
 
+// Photo-request imperatives embedded in a scene ("…, send me your full naked
+// photo"). Image models read these as a request, not a depiction, so a buried
+// "naked" leaves the subject clothed. Strip them; the nudity intent is recovered
+// separately by explicitNudityTokens before stripping.
+const EMBEDDED_PHOTO_IMPERATIVE =
+  /\b(?:please\s+)?(?:can|could|would|will)?\s*(?:you\s+)?(?:send|show|share|take|snap|give)\s+(?:me\s+)?(?:your\s+|a\s+|an\s+)?(?:full\s+|fully\s+)?(?:naked\s+|nude\s+)?(?:photos?|pics?|pictures?|selfies?|images?)\b/gi
+
+export function stripPhotoImperatives(scene: string | null | undefined): string {
+  if (!scene) return ''
+  return scene
+    .replace(EMBEDDED_PHOTO_IMPERATIVE, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s*,\s*,/g, ', ')
+    .replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, '')
+    .trim()
+}
+
+// Turn an explicit request into clean depiction tokens the image model will
+// actually render — "send me your full naked photo" → "completely nude, fully
+// naked, …". Full nudity wins over partial; otherwise emit the specific parts.
+export function explicitNudityTokens(text: string | null | undefined): string {
+  const t = (text ?? '').toLowerCase()
+  const fullNude =
+    /\b(?:fully|full|completely|totally)\s+(?:naked|nude)\b/.test(t) ||
+    /\b(?:naked|nude|nudes)\b/.test(t) ||
+    /\bno\s+clothes\b/.test(t) ||
+    /\bwithout\s+clothes\b/.test(t) ||
+    /\bundress(?:ed)?\b/.test(t) ||
+    /голая|голую|голой|обнаж|раздет|desnud/.test(t)
+  if (fullNude) return 'completely nude, fully naked, no clothing, bare skin'
+
+  const parts: string[] = []
+  const topless =
+    /\btopless\b/.test(t) ||
+    /\bno\s+bra\b/.test(t) ||
+    /\b(?:bare|naked|exposed)\s+(?:tits|breasts|boobs|chest)\b/.test(t) ||
+    /\bnipples?\b/.test(t) ||
+    /сиськи|соски|без\s+лифчика|без\s+бюстг|tetas|pezones/.test(t)
+  const bottomless =
+    /\bbottomless\b/.test(t) ||
+    /\bno\s+(?:panties|underwear)\b/.test(t) ||
+    /\b(?:pussy|vagina)\b/.test(t) ||
+    /без\s+трусиков|без\s+белья|sin\s+bragas/.test(t)
+  if (topless) parts.push('topless, bare breasts, exposed nipples')
+  if (bottomless) parts.push('bottomless, no underwear')
+  return parts.join(', ')
+}
+
+/**
+ * Build the final scene string for an explicit photo: drop embedded request
+ * imperatives and fold in clean nudity depiction tokens. Returns the scene
+ * unchanged when not explicit.
+ */
+export function resolveExplicitScene(args: {
+  scene: string
+  message: string
+  explicit: boolean
+}): string {
+  if (!args.explicit) return args.scene
+  const nudity = explicitNudityTokens(`${args.scene} ${args.message}`)
+  const cleaned = stripPhotoImperatives(args.scene)
+  return [cleaned, nudity].filter(Boolean).join(', ')
+}
+
 // Refusal / deflection markers. Conservative on purpose — these are phrases a
 // flirty caption would not normally contain, so a real "here you go" reply is
 // left untouched. Matching any one while a photo is attached triggers the swap.
