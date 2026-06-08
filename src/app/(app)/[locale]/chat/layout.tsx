@@ -45,7 +45,7 @@ export default async function ChatLayout({ children, params }: Props) {
             iOS URL-bar collapse so the composer stays reachable.
           - md+: no top bar, so we take the full viewport.
           `min-h-0` lets nested flex children scroll instead of stretching us. */}
-      <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 overflow-hidden md:h-[100dvh]">
+      <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 overflow-hidden overscroll-none md:h-[100dvh]">
         <aside
           aria-label="Conversations"
           className="hidden w-80 shrink-0 border-r border-[var(--color-border)] md:block"
