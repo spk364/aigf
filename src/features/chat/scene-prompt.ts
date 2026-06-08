@@ -115,3 +115,44 @@ export function buildCharacterScenePrompt(
 
   return { prompt, negativePrompt }
 }
+
+export type BuildEditPromptInput = {
+  /** Free-form scene description (outfit / pose / setting). */
+  scene?: string
+  artStyle?: ArtStyleHint
+  /** True when the request is explicitly for nudity. */
+  explicit?: boolean
+}
+
+/**
+ * Prompt for the reference-conditioned (Atlas WAN image-edit) path. The source
+ * image carries the identity — face, hair and tattoos — so the prompt's job is
+ * the OPPOSITE of the text-to-image builder: it must NOT re-describe the subject
+ * (that re-rolls a new person), only instruct the model to keep the same person
+ * and restyle the scene. Verified live 2026-06-08: this phrasing holds the face
+ * across very different scenes. Atlas drops negative_prompt, so it's advisory.
+ */
+export function buildCharacterEditPrompt(
+  input: BuildEditPromptInput,
+): { prompt: string; negativePrompt: string } {
+  const isAnime = input.artStyle === 'anime'
+  const scene = (input.scene ?? '').trim() || 'a natural selfie, looking at the camera'
+  const stylePhrase = isAnime
+    ? 'Keep the 2D anime art style, cel-shaded, clean lineart.'
+    : 'Keep it photorealistic with realistic skin texture and natural lighting.'
+  const nudityPhrase = input.explicit
+    ? ' Full or partial nudity is allowed.'
+    : ''
+
+  const prompt =
+    'Keep the exact same person and identity from the reference image — identical ' +
+    'face, hairstyle, hair color, skin and tattoos. Do not change who they are. ' +
+    `Change only the outfit, pose and setting to: ${scene}. ${stylePhrase}` +
+    `${nudityPhrase} Adults only, 18+ content.`
+
+  // Advisory only on Atlas (image-edit ignores negative_prompt), kept for any
+  // future SDXL edit backend.
+  const negativePrompt = `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}, (different person:1.4), (different face:1.4)`
+
+  return { prompt, negativePrompt }
+}
