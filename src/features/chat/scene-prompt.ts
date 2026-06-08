@@ -131,12 +131,13 @@ export type BuildEditPromptInput = {
  * new person), only instruct the model to keep the same person and restyle the
  * scene.
  *
- * Crucially it must NOT list specific features to "keep" (e.g. "…and tattoos") —
- * naming a feature primes the model to ADD it, so "keep their tattoos" gave
- * tattoo-free references full sleeves (verified live 2026-06-08). Instead we
- * tell it to preserve body markings exactly as they appear and explicitly not
- * to add or remove tattoos/scars/piercings — which keeps real tattoos (Jade's
- * sleeve) while leaving clean skin clean. Atlas drops negative_prompt, advisory.
+ * Crucially it must NOT mention body markings AT ALL — not even to forbid them.
+ * Diffusion models ignore negation and latch onto the noun, so both "keep their
+ * tattoos" AND "do NOT add tattoos" gave tattoo-free references full sleeves.
+ * The image-edit conditioning already preserves whatever is in the reference, so
+ * we just say "same skin, same body" and stay silent on tattoos/scars/piercings.
+ * Verified live 2026-06-08: clean references stay clean across samples while a
+ * tattooed reference (Jade) keeps her sleeve. Atlas drops negative_prompt.
  */
 export function buildCharacterEditPrompt(
   input: BuildEditPromptInput,
@@ -151,9 +152,8 @@ export function buildCharacterEditPrompt(
     : ''
 
   const prompt =
-    'Keep the exact same person and identity from the reference image — keep their ' +
-    'face, hair, skin and body markings exactly as they appear in the reference; do ' +
-    'NOT add or remove tattoos, scars, or piercings. Do not change who they are. ' +
+    'Keep the exact same person and identity from the reference image — same face, ' +
+    'same hair, same skin and same body. Do not change who they are. ' +
     `Change only the outfit, pose and setting to: ${scene}. ${stylePhrase}` +
     `${nudityPhrase} Adults only, 18+ content.`
 

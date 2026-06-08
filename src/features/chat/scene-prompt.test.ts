@@ -14,12 +14,14 @@ describe('buildCharacterEditPrompt', () => {
     expect(prompt).not.toMatch(/RAW photo/i)
   })
 
-  it('forbids adding/removing tattoos rather than naming them as a feature to keep', () => {
-    // Naming "tattoos" as something to keep primed the model to ADD them to
-    // tattoo-free references. The instruction must be preservation-only.
+  it('never mentions body markings (mentioning them — even to forbid — primes the model to add them)', () => {
     const { prompt } = buildCharacterEditPrompt({ scene: 'at a cafe', artStyle: 'realistic' })
-    expect(prompt).toMatch(/do not add or remove tattoos/i)
-    expect(prompt).not.toMatch(/and tattoos\b/i)
+    expect(prompt).not.toMatch(/tattoo/i)
+    expect(prompt).not.toMatch(/piercing/i)
+    expect(prompt).not.toMatch(/\bscars?\b/i)
+    expect(prompt).not.toMatch(/marking/i)
+    // Identity is still preserved via the generic "same … body" wording.
+    expect(prompt).toMatch(/same skin and same body/i)
   })
 
   it('uses the anime style phrase for anime characters', () => {
