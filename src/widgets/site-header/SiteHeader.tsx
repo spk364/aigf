@@ -21,18 +21,18 @@ export async function SiteHeader({ locale }: Props) {
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-[var(--color-bg)]/70 backdrop-blur-md">
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:gap-4 sm:px-6">
         <Link
           href={`/${locale}`}
-          className="flex items-center gap-2 text-[var(--color-text)] transition-opacity hover:opacity-80"
+          className="flex min-w-0 items-center gap-2 text-[var(--color-text)] transition-opacity hover:opacity-80"
         >
           <span
             aria-hidden
-            className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-strong)] text-sm font-black text-[var(--color-bg)]"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-strong)] text-sm font-black text-[var(--color-bg)]"
           >
             G
           </span>
-          <span className="text-lg font-bold tracking-tight">girlfriend.ai</span>
+          <span className="truncate text-lg font-bold tracking-tight">girlfriend.ai</span>
         </Link>
 
         <ul className="hidden items-center gap-1 md:flex">
@@ -48,7 +48,7 @@ export async function SiteHeader({ locale }: Props) {
           ))}
         </ul>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <LocaleSwitcher currentLocale={locale} />
           {isAuthed ? (
             <Link
