@@ -8,11 +8,18 @@ describe('buildCharacterEditPrompt', () => {
       artStyle: 'realistic',
     })
     expect(prompt).toMatch(/same person and identity/i)
-    expect(prompt).toMatch(/tattoos/i)
     expect(prompt).toContain('lying on the bed, in lingerie')
     expect(prompt).toMatch(/photorealistic/i)
     // Must NOT re-describe a fresh subject (that re-rolls a new face).
     expect(prompt).not.toMatch(/RAW photo/i)
+  })
+
+  it('forbids adding/removing tattoos rather than naming them as a feature to keep', () => {
+    // Naming "tattoos" as something to keep primed the model to ADD them to
+    // tattoo-free references. The instruction must be preservation-only.
+    const { prompt } = buildCharacterEditPrompt({ scene: 'at a cafe', artStyle: 'realistic' })
+    expect(prompt).toMatch(/do not add or remove tattoos/i)
+    expect(prompt).not.toMatch(/and tattoos\b/i)
   })
 
   it('uses the anime style phrase for anime characters', () => {
