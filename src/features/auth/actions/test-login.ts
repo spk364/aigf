@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../test-login-config'
+import { SESSION_TOKEN_EXPIRATION_SECONDS } from '@/shared/auth/session'
 
 export async function loginAsTestUserAction(): Promise<{ success: boolean; error?: string }> {
   const payload = await getPayload({ config })
@@ -52,7 +53,7 @@ export async function loginAsTestUserAction(): Promise<{ success: boolean; error
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: SESSION_TOKEN_EXPIRATION_SECONDS, // keep in lockstep with the JWT exp
     })
 
     return { success: true }

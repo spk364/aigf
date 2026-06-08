@@ -227,6 +227,22 @@ function IconGallery() {
   )
 }
 
+function IconClose() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className="h-5 w-5"
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+    </svg>
+  )
+}
+
 function IconCamera() {
   return (
     <svg
@@ -455,6 +471,9 @@ export function ChatInterface({
   // so a user who closes the modal still has the contextual nudge.
   const [paywallReason, setPaywallReason] = useState<ChatPaywallReason | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  // Full-screen image viewer. Set when a chat photo is tapped; cleared on
+  // backdrop click or Escape.
+  const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null)
   // TTS playback state. Only one assistant clip plays at a time; clicking ▶
   // on another message stops the current one. `pendingTtsId` covers the
   // round-trip to /api/chat/messages/:id/tts (3-15 s on first click).
@@ -494,6 +513,21 @@ export function ChatInterface({
       }
     }
   }, [])
+
+  // Close the image viewer on Escape; lock body scroll while it's open.
+  useEffect(() => {
+    if (!lightbox) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightbox(null)
+    }
+    window.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [lightbox])
 
   useEffect(() => {
     // Scroll the message list directly (not via scrollIntoView). With
@@ -1109,6 +1143,9 @@ export function ChatInterface({
                       width={msg.imageWidth}
                       height={msg.imageHeight}
                       loading="eager"
+                      onClick={() =>
+                        setLightbox({ url: msg.imageUrl!, alt: `Photo from ${characterName}` })
+                      }
                       className="h-auto w-full cursor-zoom-in rounded-3xl object-cover shadow-lg ring-1 ring-white/5 transition-transform duration-300 hover:scale-[1.01] active:scale-[0.99]"
                     />
                   </div>
@@ -1373,6 +1410,33 @@ export function ChatInterface({
           </button>
         </div>
       </form>
+
+      {/* Full-screen image viewer. Tap anywhere (or press Esc) to close. */}
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={lightbox.alt}
+          onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-fade-in"
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            aria-label="Close"
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+          >
+            <IconClose />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox.url}
+            alt={lightbox.alt}
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[90vh] max-w-[95vw] rounded-2xl object-contain shadow-2xl"
+          />
+        </div>
+      )}
     </div>
   )
 }

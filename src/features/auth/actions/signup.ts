@@ -8,6 +8,7 @@ import { track } from '@/shared/analytics/posthog'
 import { claimGuestDraftForUser } from '@/features/builder/guest-claim'
 import { checkRateLimit } from '@/shared/rate-limit/limiter'
 import { AUTH_REGISTER_LIMIT, readClientIp } from '@/shared/rate-limit/presets'
+import { SESSION_TOKEN_EXPIRATION_SECONDS } from '@/shared/auth/session'
 
 export type SignupState =
   | { success: true; claimedDraftId?: string }
@@ -90,7 +91,7 @@ export async function signupAction(formData: FormData): Promise<SignupState> {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: SESSION_TOKEN_EXPIRATION_SECONDS, // keep in lockstep with the JWT exp
     })
   } catch {
     // If auto-login fails, user can still log in manually
