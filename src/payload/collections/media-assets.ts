@@ -32,6 +32,7 @@ export const MediaAssets: CollectionConfig = {
         { label: 'Character Reference', value: 'character_reference' },
         { label: 'Character Gallery', value: 'character_gallery' },
         { label: 'Character Preview', value: 'character_preview' },
+        { label: 'Character Backdrop', value: 'character_backdrop' },
         { label: 'Generated Message', value: 'generated_message' },
         { label: 'Generated Video', value: 'generated_video' },
         { label: 'Video Source Image', value: 'video_source_image' },

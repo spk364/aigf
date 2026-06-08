@@ -126,6 +126,14 @@ export const Characters: CollectionConfig = {
       hasMany: true,
     },
     {
+      name: 'chatBackdropUrl',
+      type: 'text',
+      admin: {
+        description:
+          'Transparent full-body PNG shown as a standee in the chat window. Generate it with the "Generate chat backdrop" button below.',
+      },
+    },
+    {
       name: 'artStyle',
       type: 'select',
       options: [
@@ -300,6 +308,15 @@ export const Characters: CollectionConfig = {
       admin: {
         components: {
           Field: '@/payload/admin-components/ChatGeneratedImages#ChatGeneratedImages',
+        },
+      },
+    },
+    {
+      name: 'generateBackdropAction',
+      type: 'ui',
+      admin: {
+        components: {
+          Field: '@/payload/admin-components/GenerateBackdropButton#GenerateBackdropButton',
         },
       },
     },

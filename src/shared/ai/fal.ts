@@ -387,6 +387,47 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
   throw new Error(`fal job timeout after ${POLL_TIMEOUT_MS}ms (request ${job.requestId})`)
 }
 
+// ── Background removal ──────────────────────────────────────────────────────
+
+export type RemoveBackgroundResult = {
+  url: string
+  contentType: string
+  width: number
+  height: number
+}
+
+// Cuts the subject out of an image and returns a transparent PNG. Uses fal's
+// BiRefNet v2 (verified 2026-06-08: ~3 s, clean alpha edges on hair). Called
+// synchronously via fal.run — it returns in a few seconds, no queue/poll needed.
+export async function removeBackground(imageUrl: string): Promise<RemoveBackgroundResult> {
+  const key = process.env.FAL_KEY
+  if (!key) throw new Error('FAL_KEY is not set')
+  const endpoint = process.env.BG_REMOVAL_FAL_ENDPOINT || 'fal-ai/birefnet/v2'
+
+  const res = await fetch(`https://fal.run/${endpoint}`, {
+    method: 'POST',
+    headers: { Authorization: `Key ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image_url: imageUrl }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`fal background removal failed: ${res.status} ${text.slice(0, 300)}`)
+  }
+  const data = (await res.json()) as {
+    image?: { url?: string; content_type?: string; width?: number; height?: number }
+  }
+  const img = data.image
+  if (!img?.url) {
+    throw new Error(`fal background removal returned no image: ${JSON.stringify(data).slice(0, 300)}`)
+  }
+  return {
+    url: img.url,
+    contentType: img.content_type ?? 'image/png',
+    width: img.width ?? 0,
+    height: img.height ?? 0,
+  }
+}
+
 // ── Image-to-video (WAN 2.2) ────────────────────────────────────────────────
 
 export type VideoResolution = '480p' | '580p' | '720p'

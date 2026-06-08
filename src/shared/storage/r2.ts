@@ -115,6 +115,7 @@ export type R2KeyKind =
   | 'character-reference'
   | 'character-gallery'
   | 'character-preview'
+  | 'character-backdrop'
   | 'character-video'
   | 'character-voice-greeting'
   | 'message-image'

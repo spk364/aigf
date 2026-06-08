@@ -8,7 +8,7 @@ export type PersistGeneratedImageInput = {
   width: number
   height: number
   contentType: string
-  kind: 'character-reference' | 'character-gallery' | 'character-preview' | 'message-image'
+  kind: 'character-reference' | 'character-gallery' | 'character-preview' | 'character-backdrop' | 'message-image'
   ownerUserId?: string | number
   ownerCharacterId?: string | number
   relatedMessageId?: string | number
@@ -26,6 +26,7 @@ const KIND_MAP = {
   'character-reference': 'character_reference',
   'character-gallery': 'character_gallery',
   'character-preview': 'character_preview',
+  'character-backdrop': 'character_backdrop',
   'message-image': 'generated_message',
 } as const satisfies Record<PersistGeneratedImageInput['kind'], string>
 
