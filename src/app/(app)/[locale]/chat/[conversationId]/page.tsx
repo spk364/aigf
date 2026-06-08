@@ -251,9 +251,23 @@ export default async function ConversationPage({ params }: Props) {
     cancel: tPhoto('cancel'),
   }
 
+  // Gallery overlay strings — resolved server-side so the gallery opens over the
+  // chat (no navigation). countLabel must reach the client as a "{n} photos"
+  // template; next-intl resolves ICU eagerly, so we interpolate a sentinel and
+  // swap it back to {n} for the client to fill in the live count.
+  const tGallery = await getTranslations('gallery')
+  const galleryStrings = {
+    title: tGallery('title', { name: snapshot?.name ?? 'Companion' }),
+    countLabel: tGallery('countLabel', { n: 999777 }).replace('999777', '{n}'),
+    empty: tGallery('empty'),
+    emptyHint: tGallery('emptyHint'),
+    close: tGallery('close'),
+  }
+
   return (
     <ChatInterface
       photoComposer={photoComposer}
+      gallery={galleryStrings}
       initialConversationId={conversationId}
       initialMessages={initialMessages}
       locale={locale}
