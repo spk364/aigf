@@ -126,11 +126,17 @@ export type BuildEditPromptInput = {
 
 /**
  * Prompt for the reference-conditioned (Atlas WAN image-edit) path. The source
- * image carries the identity — face, hair and tattoos — so the prompt's job is
- * the OPPOSITE of the text-to-image builder: it must NOT re-describe the subject
- * (that re-rolls a new person), only instruct the model to keep the same person
- * and restyle the scene. Verified live 2026-06-08: this phrasing holds the face
- * across very different scenes. Atlas drops negative_prompt, so it's advisory.
+ * image carries the identity, so the prompt's job is the OPPOSITE of the
+ * text-to-image builder: it must NOT re-describe the subject (that re-rolls a
+ * new person), only instruct the model to keep the same person and restyle the
+ * scene.
+ *
+ * Crucially it must NOT list specific features to "keep" (e.g. "…and tattoos") —
+ * naming a feature primes the model to ADD it, so "keep their tattoos" gave
+ * tattoo-free references full sleeves (verified live 2026-06-08). Instead we
+ * tell it to preserve body markings exactly as they appear and explicitly not
+ * to add or remove tattoos/scars/piercings — which keeps real tattoos (Jade's
+ * sleeve) while leaving clean skin clean. Atlas drops negative_prompt, advisory.
  */
 export function buildCharacterEditPrompt(
   input: BuildEditPromptInput,
@@ -145,8 +151,9 @@ export function buildCharacterEditPrompt(
     : ''
 
   const prompt =
-    'Keep the exact same person and identity from the reference image — identical ' +
-    'face, hairstyle, hair color, skin and tattoos. Do not change who they are. ' +
+    'Keep the exact same person and identity from the reference image — keep their ' +
+    'face, hair, skin and body markings exactly as they appear in the reference; do ' +
+    'NOT add or remove tattoos, scars, or piercings. Do not change who they are. ' +
     `Change only the outfit, pose and setting to: ${scene}. ${stylePhrase}` +
     `${nudityPhrase} Adults only, 18+ content.`
 
