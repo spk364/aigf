@@ -696,15 +696,14 @@ export async function POST(req: NextRequest) {
               const scene =
                 directiveScene || (explicitPhotoRequest ? sceneFromPhotoRequest(message) : '')
 
-              // Outright nudity (scene or the user's words) → route to the
-              // NSFW-strong LoRA. The FLUX defaults black-frame nudity ("fal NSFW
-              // filter blocked every output"); the Pony/Illustrious checkpoints
-              // have no platform filter. Clothed-sexy stays on the fast FLUX path.
+              // Outright nudity (scene or the user's words) → route to the warm
+              // NSFW-strong Atlas model. The FLUX defaults black-frame nudity
+              // ("fal NSFW filter blocked every output"); Atlas WAN 2.6 has no
+              // platform filter and is always warm. Clothed-sexy stays on the
+              // fast FLUX path.
               const explicit = isExplicitPhotoScene(scene) || isExplicitPhotoScene(message)
               const modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
-              const modelMeta = findImageModel(modelId)
-              const isFluxModel = modelMeta?.isFlux ?? false
-              const isPonyModel = modelMeta?.isPony ?? false
+              const isFluxModel = findImageModel(modelId)?.isFlux ?? false
 
               // Pick the shot framing once and feed it to both the prompt
               // builder (composition tokens) and the job (resolution bucket).
@@ -714,7 +713,6 @@ export async function POST(req: NextRequest) {
                 artStyle,
                 scene,
                 isFlux: isFluxModel,
-                isPony: isPonyModel,
                 shot,
               })
               const submitResult = await submitChatImageJob({

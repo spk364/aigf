@@ -20,10 +20,6 @@ const SAFETY_NEGATIVE =
 const BASE_NEGATIVE =
   'low quality, blurry, deformed, bad anatomy, extra limbs, watermark, text, signature'
 
-// Pony/Illustrious SDXL checkpoints are trained on these aesthetic score tags;
-// without them output quality collapses. Mirrors the admin generate-image route.
-const PONY_PREFIX = 'score_9, score_8_up, score_7_up, score_6_up'
-
 export type SceneAppearance = {
   appearancePrompt?: string | null
   subjectTokens?: string | null
@@ -39,9 +35,6 @@ export type BuildScenePromptInput = {
   /** True when the target model is FLUX — needs natural-language prompts and
       ignores negative prompts. */
   isFlux?: boolean
-  /** True when the target model is a Pony/Illustrious SDXL checkpoint — prepend
-      the score_* aesthetic tags it was trained on. */
-  isPony?: boolean
   /** Shot framing (selfie / full body / …). Defaults to classifying the scene
       text so callers that don't compute it still get sensible framing. */
   shot?: ShotType
@@ -113,12 +106,6 @@ export function buildCharacterScenePrompt(
     ]
       .filter(Boolean)
       .join(', ')
-  }
-
-  // Pony/Illustrious need the score tags up front. FLUX ignores them (and wants
-  // natural language), so only prepend on the SDXL-checkpoint path.
-  if (input.isPony && !input.isFlux) {
-    prompt = `${PONY_PREFIX}, ${prompt}`
   }
 
   const baseNegative = appearance?.negativePrompt
