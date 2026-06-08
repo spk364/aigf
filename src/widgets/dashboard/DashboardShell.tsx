@@ -317,7 +317,11 @@ export async function DashboardShell({
   )
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]">
+    // min-h-dvh (not 100vh): on iOS Safari 100vh is the *large* viewport, which
+    // is taller than the visible area while the URL bar is showing. With the
+    // chat layout sizing itself in dvh, a vh-based shell left a scrollable gap
+    // of empty space below the chat. dvh keeps the shell exactly viewport-tall.
+    <div className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-text)]">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]/60 backdrop-blur-sm md:flex">
         <Link

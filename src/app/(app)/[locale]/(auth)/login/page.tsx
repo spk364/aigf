@@ -4,6 +4,7 @@ import { loginAction } from '@/features/auth/actions/login'
 import { loginAsTestUserAction } from '@/features/auth/actions/test-login'
 import { TEST_USER_EMAIL, TEST_USER_PASSWORD } from '@/features/auth/test-login-config'
 import { safeNextPath } from '@/shared/auth/safe-next'
+import { SiteHeader } from '@/widgets/site-header/SiteHeader'
 import Link from 'next/link'
 
 type Props = {
@@ -45,31 +46,29 @@ export default async function LoginPage({ params, searchParams }: Props) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-4">
-      {/* Subtle background glow */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 flex items-start justify-center"
-      >
-        <div
-          style={{
-            width: '500px',
-            height: '400px',
-            marginTop: '-100px',
-            background:
-              'radial-gradient(ellipse at center, rgba(192, 116, 255, 0.1) 0%, rgba(11, 10, 16, 0) 70%)',
-            borderRadius: '50%',
-          }}
-        />
-      </div>
+    <div className="flex min-h-screen flex-col bg-[var(--color-bg)]">
+      <SiteHeader locale={locale} />
 
-      <div className="relative z-10 w-full max-w-md">
-        {/* Wordmark */}
-        <div className="mb-8 text-center">
-          <span className="text-2xl font-bold text-[var(--color-text)]">AI Companion</span>
+      <main className="relative flex flex-1 items-center justify-center px-4 pb-10 pt-24">
+        {/* Subtle background glow */}
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 flex items-start justify-center"
+        >
+          <div
+            style={{
+              width: '500px',
+              height: '400px',
+              marginTop: '-100px',
+              background:
+                'radial-gradient(ellipse at center, rgba(192, 116, 255, 0.1) 0%, rgba(11, 10, 16, 0) 70%)',
+              borderRadius: '50%',
+            }}
+          />
         </div>
 
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 shadow-2xl">
+        <div className="relative z-10 w-full max-w-md">
+          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 shadow-2xl">
           <h1 className="mb-6 text-xl font-semibold text-[var(--color-text)]">
             {t('login.title')}
           </h1>
@@ -200,8 +199,9 @@ export default async function LoginPage({ params, searchParams }: Props) {
               {t('login.createAccount')}
             </Link>
           </p>
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }
