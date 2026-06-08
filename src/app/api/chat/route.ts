@@ -21,6 +21,11 @@ import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { buildCharacterScenePrompt } from '@/features/chat/scene-prompt'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
+import {
+  isExplicitPhotoScene,
+  looksLikePhotoRefusal,
+  photoSendCaption,
+} from '@/features/chat/photo-consistency'
 import { pickModelIdForStyle } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
@@ -503,6 +508,17 @@ export async function POST(req: NextRequest) {
           photoRequested = false
         }
 
+        // Consistency backstop: we send a photo whenever the user explicitly
+        // asked and paid — independent of the LLM's words. DeepSeek sometimes
+        // still refuses/deflects in the visible text ("I prefer to keep some
+        // mystery…") while we charge and generate, leaving a refusal bubble next
+        // to a real photo. When that happens, drop the refusal for a short
+        // willing caption so words and image agree. Only triggers when a photo
+        // is actually going out and the text reads like a refusal.
+        if (photoRequested && looksLikePhotoRefusal(finalContent)) {
+          finalContent = photoSendCaption(convLanguage, Number(assistantMsgId) || 0)
+        }
+
         const hasText = finalContent.trim().length > 0
 
         // The streamed text (directive stripped) can drift from finalContent via
@@ -668,13 +684,6 @@ export async function POST(req: NextRequest) {
                 sceneAppearance = (snap.appearance as typeof sceneAppearance) ?? null
               }
 
-              // Pick a style-appropriate model (anime → FLUX schnell,
-              // realistic → RealVisXL) — the curated per-style defaults. We do
-              // NOT force Atlas WAN 2.6: it stalls in `processing` on SD-token
-              // prompts. submitChatImageJob is provider-aware.
-              const modelId = pickModelIdForStyle(artStyle ?? 'realistic')
-              const isFluxModel = findImageModel(modelId)?.isFlux ?? false
-
               // Scene = the model's [SEND_PHOTO: …] hint. The model often emits a
               // bare [SEND_PHOTO] even when the user gave a detailed request, so
               // when the directive carries no scene AND the user explicitly asked
@@ -686,6 +695,17 @@ export async function POST(req: NextRequest) {
               const directiveScene = parsed.scene?.trim() ?? ''
               const scene =
                 directiveScene || (explicitPhotoRequest ? sceneFromPhotoRequest(message) : '')
+
+              // Outright nudity (scene or the user's words) → route to the
+              // NSFW-strong LoRA. The FLUX defaults black-frame nudity ("fal NSFW
+              // filter blocked every output"); the Pony/Illustrious checkpoints
+              // have no platform filter. Clothed-sexy stays on the fast FLUX path.
+              const explicit = isExplicitPhotoScene(scene) || isExplicitPhotoScene(message)
+              const modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
+              const modelMeta = findImageModel(modelId)
+              const isFluxModel = modelMeta?.isFlux ?? false
+              const isPonyModel = modelMeta?.isPony ?? false
+
               // Pick the shot framing once and feed it to both the prompt
               // builder (composition tokens) and the job (resolution bucket).
               const shot = classifyShot(scene)
@@ -694,6 +714,7 @@ export async function POST(req: NextRequest) {
                 artStyle,
                 scene,
                 isFlux: isFluxModel,
+                isPony: isPonyModel,
                 shot,
               })
               const submitResult = await submitChatImageJob({
