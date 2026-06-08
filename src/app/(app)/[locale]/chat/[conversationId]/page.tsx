@@ -315,6 +315,11 @@ export default async function ConversationPage({ params }: Props) {
         videoCost: t('quickActions.videoCost'),
         tokensRemaining: t('quickActions.tokensRemaining'),
         videoSoon: t('quickActions.videoSoon'),
+        clearHistory: t('clearHistory'),
+        clearConfirmTitle: t('clearConfirm.title'),
+        clearConfirmBody: t('clearConfirm.body'),
+        clearConfirmConfirm: t('clearConfirm.confirm'),
+        clearConfirmCancel: t('clearConfirm.cancel'),
       }}
     />
   )

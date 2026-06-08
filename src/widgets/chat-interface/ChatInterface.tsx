@@ -59,6 +59,11 @@ export type ChatStrings = {
   videoCost: string
   tokensRemaining: string
   videoSoon: string
+  clearHistory: string
+  clearConfirmTitle: string
+  clearConfirmBody: string
+  clearConfirmConfirm: string
+  clearConfirmCancel: string
 }
 
 type Props = {
@@ -114,6 +119,12 @@ const defaultStrings: ChatStrings = {
   videoCost: '{n} tokens',
   tokensRemaining: '{n} tokens',
   videoSoon: 'Soon',
+  clearHistory: 'Clear chat history',
+  clearConfirmTitle: 'Clear chat history?',
+  clearConfirmBody:
+    'This deletes the text of this conversation so you start with a clean slate. Your generated photos are kept in the gallery.',
+  clearConfirmConfirm: 'Clear history',
+  clearConfirmCancel: 'Cancel',
 }
 
 // Per-action token costs — single source of truth lives in
@@ -229,6 +240,26 @@ function IconGallery() {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+      />
+    </svg>
+  )
+}
+
+function IconTrash() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.8}
+      stroke="currentColor"
+      className="h-4 w-4"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
       />
     </svg>
   )
@@ -485,6 +516,9 @@ export function ChatInterface({
   const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null)
   // In-chat gallery overlay (opens over the chat instead of navigating).
   const [galleryOpen, setGalleryOpen] = useState(false)
+  // Clear-history confirmation dialog + in-flight guard.
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false)
+  const [clearing, setClearing] = useState(false)
   // TTS playback state. Only one assistant clip plays at a time; clicking ▶
   // on another message stops the current one. `pendingTtsId` covers the
   // round-trip to /api/chat/messages/:id/tts (3-15 s on first click).
@@ -930,6 +964,32 @@ export function ChatInterface({
     }
   }, [])
 
+  const handleClearHistory = useCallback(async () => {
+    const convId = conversationIdRef.current
+    if (!convId || clearing) return
+    setClearing(true)
+    try {
+      const res = await fetch(
+        `/api/chat/conversations/${encodeURIComponent(convId)}/clear`,
+        { method: 'POST' },
+      )
+      if (!res.ok) {
+        setError(s.errorGeneric)
+        return
+      }
+      // Keep generated photos (still in the gallery); drop the text transcript
+      // locally so the UI matches the now-cleared server context.
+      setMessages((prev) => prev.filter((m) => m.type === 'image'))
+      setDraft('')
+      setError(null)
+      setClearConfirmOpen(false)
+    } catch {
+      setError(s.errorGeneric)
+    } finally {
+      setClearing(false)
+    }
+  }, [clearing, s.errorGeneric])
+
   const stopPlayback = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause()
@@ -1131,6 +1191,19 @@ export function ChatInterface({
                 <IconGallery />
               </Link>
             ))}
+          {/* Clear chat history — only on an existing conversation. Opens a
+              confirmation dialog; generated photos are preserved. */}
+          {initialConversationId && (
+            <button
+              type="button"
+              onClick={() => setClearConfirmOpen(true)}
+              aria-label={s.clearHistory}
+              title={s.clearHistory}
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-danger)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+            >
+              <IconTrash />
+            </button>
+          )}
           <Link
             href={`/${locale}/dashboard`}
             aria-label={s.dashboard}
@@ -1221,7 +1294,7 @@ export function ChatInterface({
                         : 'rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 text-[var(--color-text)] backdrop-blur-sm'
                     }`}
                   >
-                    <span className="whitespace-pre-wrap">{msg.content}</span>
+                    <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</span>
 
                     {!isUser && (
                       <div className="mt-1.5 flex items-center gap-1 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
@@ -1283,7 +1356,7 @@ export function ChatInterface({
                 />
               </div>
               <div className="max-w-[80%] rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-2.5 text-[15px] leading-snug text-[var(--color-text)] shadow-sm backdrop-blur-sm sm:max-w-[70%]">
-                <span className="whitespace-pre-wrap">{draft}</span>
+                <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{draft}</span>
               </div>
             </div>
           )}
@@ -1433,7 +1506,7 @@ export function ChatInterface({
             disabled={isStreaming}
             rows={1}
             placeholder={isStreaming ? '' : s.inputPlaceholder}
-            className="flex-1 resize-none bg-transparent px-4 py-2.5 text-[15px] text-[var(--color-text)] placeholder-[var(--color-text-muted)]/60 outline-none disabled:opacity-50"
+            className="min-w-0 flex-1 resize-none bg-transparent px-4 py-2.5 text-[15px] text-[var(--color-text)] placeholder-[var(--color-text-muted)]/60 outline-none disabled:opacity-50"
             style={{ maxHeight: '160px', overflowY: 'auto' }}
             onInput={(e) => {
               const el = e.currentTarget
@@ -1463,6 +1536,53 @@ export function ChatInterface({
           conversationId={initialConversationId}
           strings={gallery}
         />
+      )}
+
+      {/* Clear-history confirmation dialog. */}
+      {clearConfirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={s.clearConfirmTitle}
+          onClick={() => !clearing && setClearConfirmOpen(false)}
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm animate-fade-in sm:items-center"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-3xl border border-white/10 bg-[var(--color-surface)] p-5 shadow-2xl"
+          >
+            <div className="mb-3 flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-danger)]/15 text-[var(--color-danger)]">
+                <IconTrash />
+              </span>
+              <h2 className="text-base font-semibold text-[var(--color-text)]">
+                {s.clearConfirmTitle}
+              </h2>
+            </div>
+            <p className="mb-5 text-sm leading-relaxed text-[var(--color-text-muted)]">
+              {s.clearConfirmBody}
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setClearConfirmOpen(false)}
+                disabled={clearing}
+                className="cursor-pointer rounded-full px-4 py-2 text-sm font-medium text-[var(--color-text-muted)] transition-colors hover:bg-white/5 hover:text-[var(--color-text)] disabled:opacity-50"
+              >
+                {s.clearConfirmCancel}
+              </button>
+              <button
+                type="button"
+                onClick={handleClearHistory}
+                disabled={clearing}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-[var(--color-danger)] px-4 py-2 text-sm font-bold text-white transition-all duration-200 hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {clearing && <IconLoader />}
+                {s.clearConfirmConfirm}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Full-screen image viewer. Tap anywhere (or press Esc) to close. */}

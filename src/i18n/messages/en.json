@@ -72,6 +72,13 @@
     "imageQueuePosition": "Queue position: {n}",
     "imageFailed": "Couldn't generate the image. Try again.",
     "noConversationsYet": "No conversations yet — pick someone to start chatting.",
+    "clearHistory": "Clear chat history",
+    "clearConfirm": {
+      "title": "Clear chat history?",
+      "body": "This deletes the text of this conversation so you can start with a clean slate. Your generated photos stay in the gallery.",
+      "confirm": "Clear history",
+      "cancel": "Cancel"
+    },
     "quickActions": {
       "askPhoto": "Send me a photo",
       "askVoice": "Hear last reply",
