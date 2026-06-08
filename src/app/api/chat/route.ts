@@ -489,13 +489,14 @@ export async function POST(req: NextRequest) {
         // Pull the [SEND_PHOTO] directive (if any) out of the assembled reply.
         const parsed = directiveFilter.finish()
         let finalContent = parsed.cleaned
-        // Send a photo when EITHER the model emitted the directive (spontaneous
-        // photo) OR the user explicitly asked and can pay. The explicit-request
-        // regex is the deterministic trigger — DeepSeek doesn't reliably emit the
-        // marker under strong in-character prompts, so we must not depend on it
-        // for the primary "send me a selfie" flow.
-        let photoRequested =
-          parsed.requested || (explicitPhotoRequest && photoEligibility.eligible)
+        // Send a photo ONLY when the user explicitly asked this turn and can pay.
+        // We deliberately do NOT honour a bare model-emitted [SEND_PHOTO]: under
+        // the strong photo-capability prompt DeepSeek would spontaneously send
+        // (and charge IMAGE_TOKEN_COST for) photos on a plain "hi", which users
+        // never requested. The directive is still stripped from the text below
+        // either way, so the marker never leaks. The explicit-request regex
+        // (detectImageIntent) is the deterministic, user-initiated trigger.
+        let photoRequested = explicitPhotoRequest && photoEligibility.eligible
 
         // ── Output safety filter (post-LLM) ──────────────────────────────────
         // Backstop for CSAM-class model drift, run over the user-visible text. A
