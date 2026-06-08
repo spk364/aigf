@@ -25,6 +25,7 @@ import {
   isExplicitPhotoScene,
   looksLikePhotoRefusal,
   photoSendCaption,
+  resolveExplicitScene,
 } from '@/features/chat/photo-consistency'
 import { pickModelIdForStyle } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
@@ -717,11 +718,16 @@ export async function POST(req: NextRequest) {
               // explicit request) keeps no scene: the user's message isn't a
               // photo description.
               const directiveScene = parsed.scene?.trim() ?? ''
-              const scene =
+              const rawScene =
                 directiveScene || (explicitPhotoRequest ? sceneFromPhotoRequest(message) : '')
 
-              const explicit = isExplicitPhotoScene(scene) || isExplicitPhotoScene(message)
-              const shot = classifyShot(scene)
+              const explicit = isExplicitPhotoScene(rawScene) || isExplicitPhotoScene(message)
+              const shot = classifyShot(rawScene)
+              // For explicit requests, drop embedded "send me a … photo"
+              // imperatives (models read them as a request, not a depiction, so
+              // "naked" buried in one leaves the subject clothed) and fold in
+              // clean nudity tokens recovered from the request. No-op otherwise.
+              const scene = resolveExplicitScene({ scene: rawScene, message, explicit })
 
               // Two dispatch paths:
               //   A. Reference image available → Atlas WAN 2.6 image-edit,
