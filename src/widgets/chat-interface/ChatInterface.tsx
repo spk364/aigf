@@ -10,6 +10,7 @@ import type {
   PaywallTeaser,
 } from '@/widgets/paywall'
 import { PhotoComposer, type PhotoComposerStrings } from './PhotoComposer'
+import { GalleryOverlay, type GalleryOverlayStrings } from './GalleryOverlay'
 
 type Message = {
   id: string
@@ -71,6 +72,9 @@ type Props = {
   /** Optional — when provided, the photo chip opens the outfit/pose/setting
       composer instead of sending a plain selfie. */
   photoComposer?: PhotoComposerStrings
+  /** Optional — strings for the in-chat gallery overlay. When provided the
+      gallery button opens an overlay instead of navigating to a page. */
+  gallery?: GalleryOverlayStrings
   /** All paywall props are optional so existing call-sites keep compiling. */
   paywall?: {
     upgradeUrl: string
@@ -451,6 +455,7 @@ export function ChatInterface({
   strings: stringsProp,
   photoComposer,
   paywall,
+  gallery,
 }: Props) {
   const s = { ...defaultStrings, ...stringsProp }
   const [messages, setMessages] = useState<Message[]>(initialMessages)
@@ -474,6 +479,8 @@ export function ChatInterface({
   // Full-screen image viewer. Set when a chat photo is tapped; cleared on
   // backdrop click or Escape.
   const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null)
+  // In-chat gallery overlay (opens over the chat instead of navigating).
+  const [galleryOpen, setGalleryOpen] = useState(false)
   // TTS playback state. Only one assistant clip plays at a time; clicking ▶
   // on another message stops the current one. `pendingTtsId` covers the
   // round-trip to /api/chat/messages/:id/tts (3-15 s on first click).
@@ -1076,17 +1083,29 @@ export function ChatInterface({
             </Link>
           )}
           {/* Gallery — only on an existing conversation (a brand-new chat has
-              no images yet). Links to the per-character gallery. */}
-          {initialConversationId && (
-            <Link
-              href={`/${locale}/chat/${initialConversationId}/gallery`}
-              aria-label={s.gallery}
-              title={s.gallery}
-              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
-            >
-              <IconGallery />
-            </Link>
-          )}
+              no images yet). Opens an overlay over the chat when gallery strings
+              are provided; otherwise falls back to the standalone page. */}
+          {initialConversationId &&
+            (gallery ? (
+              <button
+                type="button"
+                onClick={() => setGalleryOpen(true)}
+                aria-label={s.gallery}
+                title={s.gallery}
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+              >
+                <IconGallery />
+              </button>
+            ) : (
+              <Link
+                href={`/${locale}/chat/${initialConversationId}/gallery`}
+                aria-label={s.gallery}
+                title={s.gallery}
+                className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-[var(--color-text-muted)] transition-all duration-200 hover:bg-white/10 hover:text-[var(--color-text)] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-strong)]"
+              >
+                <IconGallery />
+              </Link>
+            ))}
           <Link
             href={`/${locale}/dashboard`}
             aria-label={s.dashboard}
@@ -1410,6 +1429,16 @@ export function ChatInterface({
           </button>
         </div>
       </form>
+
+      {/* Character gallery — opens over the chat, no navigation. */}
+      {gallery && initialConversationId && (
+        <GalleryOverlay
+          open={galleryOpen}
+          onClose={() => setGalleryOpen(false)}
+          conversationId={initialConversationId}
+          strings={gallery}
+        />
+      )}
 
       {/* Full-screen image viewer. Tap anywhere (or press Esc) to close. */}
       {lightbox && (
