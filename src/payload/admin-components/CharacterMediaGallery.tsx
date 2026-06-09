@@ -161,6 +161,31 @@ export function CharacterMediaGallery() {
     }
   }
 
+  async function setBackdrop(mediaAssetId: string | number) {
+    if (!id) return
+    setBusyId(mediaAssetId)
+    try {
+      // Cuts out the background (transparent standee) then activates it as the
+      // chat backdrop — can take ~10–20s on the cutout step.
+      const res = await fetch(`/api/admin/characters/${id}/set-backdrop-from-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mediaAssetId }),
+      })
+      const data = (await res.json()) as { ok?: boolean; error?: string; message?: string }
+      if (!res.ok || !data.ok) {
+        window.alert(`Set backdrop failed: ${data.message ?? data.error ?? `HTTP ${res.status}`}`)
+        return
+      }
+      window.alert('Backdrop set — it now shows in the chat (and in the backdrop gallery).')
+      refresh()
+    } catch (err) {
+      window.alert(`Set backdrop failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function deleteAsset(mediaAssetId: string | number) {
     if (!id) return
     if (!window.confirm('Delete this image? It will be hidden from the gallery (soft delete).')) return
@@ -333,6 +358,15 @@ export function CharacterMediaGallery() {
                       Reference
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setBackdrop(m.id)}
+                    disabled={busy}
+                    style={{ ...BTN, background: '#0ea5e9', color: '#fff', opacity: busy ? 0.6 : 1 }}
+                    title="Cut out the background and use this as the chat backdrop standee"
+                  >
+                    {busy ? '…' : 'Backdrop'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => deleteAsset(m.id)}
