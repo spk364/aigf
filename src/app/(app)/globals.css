@@ -20,6 +20,10 @@ html,
 body {
   background: var(--color-bg);
   color: var(--color-text);
+  /* Belt-and-suspenders against stray horizontal overflow on mobile. `clip`
+     (not `hidden`) doesn't create a scroll container, so it never breaks
+     position: sticky. Fixed-position descendants still need their own clip. */
+  overflow-x: clip;
 }
 
 body {

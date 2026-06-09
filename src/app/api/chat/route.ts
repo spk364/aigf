@@ -376,6 +376,18 @@ export async function POST(req: NextRequest) {
     content: snapshot?.systemPrompt ?? '',
   })
 
+  // Per-turn output guard, applied to EVERY conversation regardless of the
+  // (frozen) snapshot prompt. Fixes two observed model failures: replying in the
+  // wrong / a mixed language, and leaking out-of-character parenthetical notes
+  // (e.g. "(Note: maintaining 18+ context…)") into the user-visible reply.
+  openrouterMessages.push({
+    role: 'system',
+    content:
+      'Output rules for your reply:\n' +
+      "- Write your ENTIRE reply in the same language as the user's latest message. Never mix languages or switch to another language mid-reply.\n" +
+      '- Stay fully in character. The user must see ONLY the character speaking — never add out-of-character notes, meta-commentary, disclaimers, or parentheses about consent, age, or being an AI.',
+  })
+
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
   // can answer naturally AND attach a photo in the same turn. Only advertised to
   // users who have enough tokens — others never learn the marker, so they can't
@@ -738,10 +750,18 @@ export async function POST(req: NextRequest) {
               //   B. No reference → text-to-image fallback: explicit → warm Atlas,
               //      clothed → fast FLUX. Identity is only as stable as the
               //      appearance description (face/tattoos still drift).
+              //
+              // Exception: anime + explicit always takes path B with a true anime
+              // NSFW checkpoint (WAI Illustrious). Atlas image-edit photoreal-izes
+              // anime references and renders nudity conservatively, so a reference
+              // here gave a realistic, clothed photo. We drop the reference for
+              // this case (face consistency yields to correct style + nudity).
+              const animeExplicit = (artStyle ?? 'realistic') === 'anime' && explicit
+              const conditionOnRef = !!referenceImageUrl && !animeExplicit
               let modelId: string
               let prompt: string
               let negativePrompt: string
-              if (referenceImageUrl) {
+              if (conditionOnRef) {
                 modelId = ATLAS_IMAGE_EDIT_MODEL_ID
                 ;({ prompt, negativePrompt } = buildCharacterEditPrompt({
                   scene,
@@ -769,7 +789,11 @@ export async function POST(req: NextRequest) {
                 negativePrompt,
                 modelId,
                 imageSize: shotImageSize(shot),
-                referenceImageUrl,
+                // Only condition on the reference when we actually took the
+                // image-edit/IP-Adapter path. For anime+explicit (text-to-image
+                // on the anime NSFW checkpoint) passing a ref would force fal's
+                // realistic IP-Adapter base and undo the style fix.
+                referenceImageUrl: conditionOnRef ? referenceImageUrl : null,
               })
 
               if (!submitResult.ok) {
