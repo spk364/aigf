@@ -19,6 +19,7 @@ import {
 } from '@/features/chat/photo-directive'
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { buildCharacterScenePrompt, buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
+import { buildOutputGuard } from '@/features/chat/language-guard'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
 import {
@@ -379,14 +380,10 @@ export async function POST(req: NextRequest) {
   // Per-turn output guard, applied to EVERY conversation regardless of the
   // (frozen) snapshot prompt. Fixes two observed model failures: replying in the
   // wrong / a mixed language, and leaking out-of-character parenthetical notes
-  // (e.g. "(Note: maintaining 18+ context…)") into the user-visible reply.
-  openrouterMessages.push({
-    role: 'system',
-    content:
-      'Output rules for your reply:\n' +
-      "- Write your ENTIRE reply in the same language as the user's latest message. Never mix languages or switch to another language mid-reply.\n" +
-      '- Stay fully in character. The user must see ONLY the character speaking — never add out-of-character notes, meta-commentary, disclaimers, or parentheses about consent, age, or being an AI.',
-  })
+  // (e.g. "(Note: maintaining 18+ context…)") into the user-visible reply. The
+  // language is named explicitly from the request locale (the language the user
+  // is chatting in) — far more reliable than asking the model to detect it.
+  openrouterMessages.push({ role: 'system', content: buildOutputGuard(locale) })
 
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
   // can answer naturally AND attach a photo in the same turn. Only advertised to
