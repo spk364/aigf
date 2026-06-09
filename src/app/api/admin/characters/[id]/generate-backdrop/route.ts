@@ -9,13 +9,14 @@ import { removeBackground } from '@/shared/ai/fal'
 import { buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 
-// Admin-only: generate a chat "standee" candidate — a full-body, transparent
-// PNG of the character shown in the chat window. Modelled on competitor chat
-// avatars: a stylish, fashion-forward look (NOT lingerie) in a relaxed, candid,
-// confident pose — tasteful-sexy rather than naked, and natural rather than a
-// stiff face-on mannequin stance. Pipeline:
-//   1. Atlas WAN 2.6 image-edit on the reference (identity-preserving) → full
-//      body, posing, on a plain background.
+// Admin-only: generate a chat "standee" candidate — a transparent PNG of the
+// character shown in the chat window. Modelled on competitor chat avatars: a
+// 3/4 (head-to-mid-thigh) crop, a revealing-but-styled look (lingerie under an
+// open blazer / shirt / robe), and a sultry, body-forward pose. The point is to
+// be seductive AND editorial — not plain naked (reads as a stiff mannequin) and
+// not fully-covered casual (reads as a boring catalog photo). Pipeline:
+//   1. Atlas WAN 2.6 image-edit on the reference (identity-preserving) → 3/4
+//      crop, posing, on a plain background.
 //   2. fal BiRefNet → cut the background out (transparent PNG).
 //   3. Persist to R2 as a character_backdrop asset. The first one auto-activates
 //      (sets chatBackdropUrl); later ones are candidates the admin picks from
@@ -25,30 +26,33 @@ const ATLAS_IMAGE_EDIT_MODEL_ID = 'alibaba/wan-2.6/image-edit'
 const POLL_INTERVAL_MS = 2500
 const POLL_DEADLINE_MS = 45_000
 
-// Tasteful, fashion-forward "standee" looks modelled on competitor chat avatars
-// (stylish everyday/sexy outfits, NOT lingerie). Sexy-but-clothed: bare skin is
-// incidental (off-shoulder, bare legs), never the point. Picked at random per
-// generation so the admin's candidates vary.
+// Seductive "standee" looks modelled on competitor chat avatars. The winning
+// formula there is NOT plain lingerie (which read as a naked, stiff mannequin)
+// nor fully-covered casual wear (which read as a boring catalog photo) — it is
+// revealing lingerie ALWAYS paired with a styled statement layer (an open
+// blazer, an unbuttoned shirt, a draped robe). Skin-forward but editorial.
+// Picked at random per generation so the admin's candidates vary.
 const BACKDROP_OUTFITS: string[] = [
-  'an oversized black blazer worn open, slipping off one shoulder, over a bralette, with bare legs',
-  'a cozy oversized knit sweater slipping off one shoulder, with bare legs',
-  'a fitted athletic set — a sporty crop top and high-waisted shorts — with clean white sneakers',
-  'a silky slip dress with delicate thin straps',
-  'an oversized boyfriend shirt, partly unbuttoned and loosely tucked',
-  'a fitted ribbed crop top and high-waisted jeans',
-  'a cropped leather jacket over a fitted tank top and skinny jeans',
-  'a soft knit crop top and a short pleated skirt',
+  'an open oversized blazer over a delicate black lace bralette, with a matching mini skirt and a thin belt',
+  'an oversized blazer worn open and slipping off both shoulders over delicate lingerie, with sheer panties',
+  'a delicate lace bra and a wet-look leather mini skirt with a gold statement belt',
+  'a silk robe draped loosely open over a matching lingerie set',
+  'a cropped knit sweater pulled off one shoulder over a lace bra, with a short skirt',
+  'an unbuttoned oversized white shirt over a lace bra and high-cut panties',
+  'a fitted bodysuit under an open denim jacket, with bare legs',
+  'a strappy bralette and a high-waisted leather mini skirt',
 ]
 
-// Natural, candid poses with real body language — weight shift, movement, hands
-// in motion — instead of a stiff "standing straight, facing the camera" pose.
+// Confident, sultry, body-forward poses — direct smoldering eye contact or a
+// warm inviting smile, with movement that flatters the figure (weight on one
+// hip, off-shoulder, a hand in the hair). Never a stiff face-on stance.
 const BACKDROP_POSES: string[] = [
-  'standing relaxed with her weight on one hip, one hand lazily running through her hair, soft genuine smile',
-  'one arm raised resting on top of her head and the other hand on her hip, confident and playful, warm smile',
-  'leaning slightly, glancing back over her shoulder toward the camera with a warm smile',
-  'a natural contrapposto stance, one hand tucked into a pocket, laughing softly',
-  'one hand on her hip, head tilted, looking straight at the camera with an easy relaxed smile',
-  'caught mid-step as if walking toward the camera, candid and full of life',
+  'looking straight into the camera with a confident sultry gaze, one hand sliding through her hair, weight on one hip',
+  'slipping the jacket off one shoulder, chin slightly down, a warm inviting smile and direct eye contact',
+  'leaning back slightly with her hips pushed out, lips parted, a smoldering look at the camera',
+  'one hand on her hip and the other in her hair, glancing over her shoulder with a playful seductive smile',
+  'standing in a relaxed S-curve, head tilted, a soft alluring smile and half-lidded eyes on the camera',
+  'running both hands through her hair, back gently arched, confident and inviting',
 ]
 
 function pick<T>(arr: readonly T[]): T {
@@ -107,18 +111,20 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       ? (character.artStyle as 'anime' | 'realistic')
       : undefined
 
-  // Full-body, candid, on a plain background (so the cutout is clean),
-  // conditioned on the reference for identity. A stylish, tasteful outfit and a
-  // natural relaxed pose — NOT lingerie, NOT nude (explicit:false). Outfit and
-  // pose are randomised so repeated generations give the admin varied candidates.
+  // Seductive 3/4 standee on a plain background (so the cutout is clean),
+  // conditioned on the reference for identity. A revealing-but-styled outfit and
+  // a sultry, body-forward pose. Framed head-to-mid-thigh (NOT full height) so
+  // the figure fills the frame and reads close and flattering, like the
+  // competitor avatars. explicit:false keeps it lingerie-level, not nude. Outfit
+  // and pose are randomised so repeated generations give varied candidates.
   const outfit = pick(BACKDROP_OUTFITS)
   const pose = pick(BACKDROP_POSES)
   const { prompt } = buildCharacterEditPrompt({
     scene:
-      'full body shot from head to toe, the whole body and the footwear visible, ' +
-      `wearing ${outfit}, ${pose}, ` +
-      'natural relaxed body language, candid editorial fashion photography, ' +
-      'soft even studio lighting, plain seamless white studio background',
+      'a three-quarter shot framed from the top of the head down to mid-thigh, the figure ' +
+      `filling the frame, wearing ${outfit}, ${pose}, ` +
+      'glamour editorial fashion photography, flattering soft studio lighting, sharp focus, ' +
+      'high detail, alluring and seductive yet elegant, plain seamless white studio background',
     artStyle,
     explicit: false,
   })
@@ -126,7 +132,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   try {
     const handles = await submitAtlasImageJob({
       prompt,
-      imageSize: { width: 768, height: 1344 },
+      // 2:3 portrait — suits a head-to-mid-thigh 3/4 crop (a taller 4:7 frame
+      // pulls the model toward a small, distant full-body render instead).
+      imageSize: { width: 832, height: 1216 },
       numImages: 1,
       endpoint: ATLAS_IMAGE_EDIT_MODEL_ID,
       ipAdapterImageUrl: referenceImageUrl,
