@@ -365,7 +365,17 @@ export function buildPreviewPrompt(
 
   const eyes = (appearance.eyes ?? {}) as Record<string, string>
   const eyeOpt = EYE_COLORS.find((e) => e.value === eyes.color)
-  if (eyeOpt?.promptFragment) parts.push(`(${eyeOpt.promptFragment}:1.3)`)
+  if (eyeOpt?.promptFragment) {
+    // Eye color used to be force-weighted (:1.3), which on realistic checkpoints
+    // pushed the iris into acid/neon territory (glowing green/blue/brown). A real
+    // eye needs no emphasis — drop the weight and steer toward a natural iris.
+    // Anime keeps a gentle pop of color since vivid eyes are on-style there.
+    parts.push(
+      isAnime
+        ? `(${eyeOpt.promptFragment}:1.15)`
+        : `${eyeOpt.promptFragment}, natural realistic eye color, detailed natural iris`,
+    )
+  }
 
   // Outfit slot. Occupation-specific outfit wins (so a "nurse" looks like a
   // sexy nurse, not a generic alluring girl). Falls back to the default
@@ -400,7 +410,13 @@ export function buildPreviewPrompt(
 
 export function buildPreviewNegativePrompt(appearance: Record<string, unknown>): string {
   const parts: string[] = [QUALITY_NEGATIVE, SAFETY_NEGATIVE, NSFW_RESTRAINT_NEGATIVE]
-  if (String(appearance.artStyle ?? 'realistic') === 'anime') parts.push(ANIME_NEGATIVE)
+  if (String(appearance.artStyle ?? 'realistic') === 'anime') {
+    parts.push(ANIME_NEGATIVE)
+  } else {
+    // Keep realistic irises natural — suppress the neon/glowing eye look the
+    // old weighted eye token produced.
+    parts.push('(neon eyes:1.3), (glowing eyes:1.3), oversaturated iris, unnatural eye color')
+  }
   const breastSize = String(appearance.breastSize ?? '')
   if (BREAST_PROMPT[breastSize]) parts.push(BREAST_PROMPT[breastSize]!.negative)
   const buttSize = String(appearance.buttSize ?? '')
