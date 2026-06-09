@@ -62,6 +62,7 @@ export default async function ConversationPage({ params }: Props) {
 
   let characterPhotoUrl: string | undefined
   let characterBackdropUrl: string | undefined
+  let characterBackdropFallbackUrl: string | undefined
   if (conversationCharacterId) {
     try {
       const character = await payload.findByID({
@@ -80,6 +81,30 @@ export default async function ConversationPage({ params }: Props) {
       const backdrop = (character as { chatBackdropUrl?: unknown } | null)?.chatBackdropUrl
       if (typeof backdrop === 'string' && backdrop.length > 0) {
         characterBackdropUrl = backdrop
+      }
+
+      // No backdrop standee generated yet → fall back to the character's first
+      // scene photo (a regular gallery image). The chat renders it only as the
+      // blurred full-bleed background, so its own background is irrelevant.
+      if (!characterBackdropUrl) {
+        const scenes = await payload.find({
+          collection: 'media-assets',
+          where: {
+            and: [
+              { ownerCharacterId: { equals: conversationCharacterId } },
+              { kind: { equals: 'character_gallery' } },
+              { deletedAt: { exists: false } },
+            ],
+          },
+          sort: '-createdAt',
+          limit: 1,
+          depth: 0,
+          overrideAccess: true,
+        })
+        const sceneUrl = scenes.docs[0]?.publicUrl
+        if (typeof sceneUrl === 'string' && sceneUrl.length > 0) {
+          characterBackdropFallbackUrl = sceneUrl
+        }
       }
     } catch {
       // ignore — photo is non-critical
@@ -279,6 +304,7 @@ export default async function ConversationPage({ params }: Props) {
       characterName={snapshot?.name ?? 'Anna'}
       characterPhotoUrl={characterPhotoUrl}
       characterBackdropUrl={characterBackdropUrl}
+      characterBackdropFallbackUrl={characterBackdropFallbackUrl}
       paywall={{
         upgradeUrl,
         tokensUrl,

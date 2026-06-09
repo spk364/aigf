@@ -76,6 +76,10 @@ type Props = {
   /** Transparent full-body PNG shown as a standee pinned to the right edge of
       the chat, behind the messages. Omit to show no standee. */
   characterBackdropUrl?: string
+  /** Fallback when no backdrop standee exists: the character's first scene
+      photo (a regular non-cutout image). Used only as the blurred full-bleed
+      background — never as a hard standee, since it carries its own background. */
+  characterBackdropFallbackUrl?: string
   strings?: Partial<ChatStrings>
   /** Optional — when provided, the photo chip opens the outfit/pose/setting
       composer instead of sending a plain selfie. */
@@ -487,12 +491,18 @@ export function ChatInterface({
   characterName = 'Anna',
   characterPhotoUrl,
   characterBackdropUrl,
+  characterBackdropFallbackUrl,
   strings: stringsProp,
   photoComposer,
   paywall,
   gallery,
 }: Props) {
   const s = { ...defaultStrings, ...stringsProp }
+  // Image used for the blurred full-bleed background — shown on every screen,
+  // so the character is present on mobile too (where the right-edge standee has
+  // no room). Prefer the real backdrop, then the first scene photo, then the
+  // primary portrait.
+  const backdropSoftBgUrl = characterBackdropUrl ?? characterBackdropFallbackUrl ?? characterPhotoUrl
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
   // Open state for the photo composer sheet (T1-3). Only used when the
@@ -1082,23 +1092,32 @@ export function ChatInterface({
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      {/* Backdrop: blurred character photo bleeds through the entire chat
-          at very low opacity for an immersive, in-her-room feel. */}
-      {characterPhotoUrl && (
+      {/* Blurred character photo bleeds through the entire chat for an
+          immersive, in-her-room feel. Prefers the backdrop standee (then the
+          first scene photo, then the primary), so the character is present even
+          on mobile — where the right-edge standee below has no room. Slightly
+          stronger when it's a scene-photo fallback so a recognisable image still
+          reads through the blur. */}
+      {backdropSoftBgUrl && (
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={characterPhotoUrl}
+            src={backdropSoftBgUrl}
             alt=""
-            className="h-full w-full scale-110 object-cover opacity-[0.07] blur-2xl"
+            className={`h-full w-full scale-110 object-cover blur-2xl ${
+              characterBackdropUrl ? 'opacity-[0.08]' : 'opacity-[0.11]'
+            }`}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-bg)]/40 via-transparent to-[var(--color-bg)]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-bg)]/50 via-[var(--color-bg)]/20 to-[var(--color-bg)]" />
         </div>
       )}
 
       {/* Full-length character standee pinned to the right edge, behind the
           messages (z-0 < message list z-10). Transparent PNG, faded on its left
-          so it blends into the chat. Desktop only — no room on mobile. */}
+          so it blends into the chat. Desktop only — no room on mobile (mobile
+          gets the blurred full-bleed background above instead). Only a real
+          cutout backdrop renders here; the scene-photo fallback would show its
+          own rectangular background, so it stays in the blurred layer only. */}
       {characterBackdropUrl && (
         <div
           aria-hidden
