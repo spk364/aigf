@@ -34,6 +34,17 @@ const SAFETY_NEGATIVE =
 const BASE_NEGATIVE =
   'low quality, blurry, deformed, bad anatomy, extra limbs, watermark, text, signature'
 
+// Pony/Illustrious and similar SDXL NSFW checkpoints — commonly the pinned
+// scene model — render glowing, oversaturated "anime" irises on realistic
+// prompts: the reported acid green/blue/brown eyes. The reference flow dodges
+// this with a clean RealVis checkpoint + iris negative; the scene flow uses the
+// pinned model, so we steer it back to a natural iris here (realistic only —
+// vivid eyes are on-style for anime).
+const NATURAL_EYES_POSITIVE = 'natural realistic eye color, detailed natural iris'
+const NATURAL_EYES_NEGATIVE =
+  '(glowing eyes:1.3), (neon eyes:1.3), (oversaturated iris:1.2), unnatural eye color, ' +
+  'bright glowing eyes, (deformed iris:1.2), (deformed pupils:1.2)'
+
 const PONY_PREFIX = 'score_9, score_8_up, score_7_up, score_6_up'
 
 const VALID_MODEL_IDS = IMAGE_MODEL_OPTIONS.map((m) => m.id)
@@ -177,9 +188,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     prompt = `${PONY_PREFIX}, ${prompt}`
   }
 
-  const negativePrompt = appearance?.negativePrompt
+  // Natural-iris guard for realistic scenes (see NATURAL_EYES_* above). Anime
+  // keeps its vivid eyes. The positive helps every backend; the negative is
+  // honoured by fal SDXL (Atlas/FLUX ignore negatives, but the positive carries).
+  if (!isAnimeChar) {
+    prompt = `${prompt}, ${NATURAL_EYES_POSITIVE}`
+  }
+
+  let negativePrompt = appearance?.negativePrompt
     ? `${appearance.negativePrompt}, ${SAFETY_NEGATIVE}`
     : `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}`
+  if (!isAnimeChar) {
+    negativePrompt = `${negativePrompt}, ${NATURAL_EYES_NEGATIVE}`
+  }
 
   const referenceImageUrl = character.referenceImageUrl as string | null
   // Primary gallery image — the obvious "current scene" Atlas image-edit

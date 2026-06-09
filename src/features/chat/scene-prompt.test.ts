@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCharacterEditPrompt } from './scene-prompt'
+import { buildCharacterEditPrompt, buildCharacterScenePrompt } from './scene-prompt'
 
 describe('buildCharacterEditPrompt', () => {
   it('instructs the model to keep identity and only restyle the scene', () => {
@@ -41,5 +41,41 @@ describe('buildCharacterEditPrompt', () => {
   it('falls back to a default scene when none is given', () => {
     const { prompt } = buildCharacterEditPrompt({ artStyle: 'realistic' })
     expect(prompt).toMatch(/selfie/i)
+  })
+
+  it('steers realistic edits to a natural iris (not anime)', () => {
+    const realistic = buildCharacterEditPrompt({ scene: 'at a cafe', artStyle: 'realistic' }).prompt
+    expect(realistic).toMatch(/true-to-reference eye color/i)
+    expect(realistic).toMatch(/not glowing, neon, or oversaturated/i)
+    const anime = buildCharacterEditPrompt({ scene: 'at a cafe', artStyle: 'anime' }).prompt
+    expect(anime).not.toMatch(/eye color/i)
+  })
+})
+
+describe('buildCharacterScenePrompt natural eyes', () => {
+  const realisticAppearance = {
+    subjectTokens: 'caucasian 25 year old woman, blonde hair, blue eyes',
+    negativePrompt: 'ugly',
+  }
+
+  it('adds a natural-iris positive and negative for realistic scenes', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: realisticAppearance,
+      artStyle: 'realistic',
+      scene: 'lying on the bed',
+    })
+    expect(prompt).toMatch(/natural realistic eye color/i)
+    expect(negativePrompt).toMatch(/glowing eyes/i)
+    expect(negativePrompt).toMatch(/neon eyes/i)
+  })
+
+  it('leaves anime scenes vivid (no iris restraint)', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: { appearancePrompt: 'anime girl, green eyes' },
+      artStyle: 'anime',
+      scene: 'at a cafe',
+    })
+    expect(prompt).not.toMatch(/natural realistic eye color/i)
+    expect(negativePrompt).not.toMatch(/glowing eyes/i)
   })
 })
