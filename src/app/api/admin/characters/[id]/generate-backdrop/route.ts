@@ -119,12 +119,22 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   // and pose are randomised so repeated generations give varied candidates.
   const outfit = pick(BACKDROP_OUTFITS)
   const pose = pick(BACKDROP_POSES)
+  // Style tail must match the character's art style. The realistic
+  // "editorial fashion PHOTOGRAPHY" phrasing pulls the image-edit model to
+  // photorealism even for anime references — so anime needs its own
+  // illustration-leaning tail (with explicit anti-photo disclaimers), or anime
+  // characters render as realistic.
+  const isAnime = artStyle === 'anime'
+  const styleTail = isAnime
+    ? 'detailed 2D anime illustration, cel-shaded, clean lineart, vibrant anime colors, ' +
+      'anime art style, NOT a photo, NOT photorealistic, NOT 3D render'
+    : 'glamour editorial fashion photography, flattering soft studio lighting, sharp focus, ' +
+      'high detail, photorealistic'
   const { prompt } = buildCharacterEditPrompt({
     scene:
       'a three-quarter shot framed from the top of the head down to mid-thigh, the figure ' +
-      `filling the frame, wearing ${outfit}, ${pose}, ` +
-      'glamour editorial fashion photography, flattering soft studio lighting, sharp focus, ' +
-      'high detail, alluring and seductive yet elegant, plain seamless white studio background',
+      `filling the frame, wearing ${outfit}, ${pose}, ${styleTail}, ` +
+      'alluring and seductive yet elegant, plain seamless white studio background',
     artStyle,
     explicit: false,
   })
