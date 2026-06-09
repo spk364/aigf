@@ -10,8 +10,10 @@ import { buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 
 // Admin-only: generate a chat "standee" candidate — a full-body, transparent
-// PNG of the character (in a revealing outfit / lingerie + heels, posing and
-// smiling) shown in the chat window. Pipeline:
+// PNG of the character shown in the chat window. Modelled on competitor chat
+// avatars: a stylish, fashion-forward look (NOT lingerie) in a relaxed, candid,
+// confident pose — tasteful-sexy rather than naked, and natural rather than a
+// stiff face-on mannequin stance. Pipeline:
 //   1. Atlas WAN 2.6 image-edit on the reference (identity-preserving) → full
 //      body, posing, on a plain background.
 //   2. fal BiRefNet → cut the background out (transparent PNG).
@@ -22,6 +24,36 @@ import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 const ATLAS_IMAGE_EDIT_MODEL_ID = 'alibaba/wan-2.6/image-edit'
 const POLL_INTERVAL_MS = 2500
 const POLL_DEADLINE_MS = 45_000
+
+// Tasteful, fashion-forward "standee" looks modelled on competitor chat avatars
+// (stylish everyday/sexy outfits, NOT lingerie). Sexy-but-clothed: bare skin is
+// incidental (off-shoulder, bare legs), never the point. Picked at random per
+// generation so the admin's candidates vary.
+const BACKDROP_OUTFITS: string[] = [
+  'an oversized black blazer worn open, slipping off one shoulder, over a bralette, with bare legs',
+  'a cozy oversized knit sweater slipping off one shoulder, with bare legs',
+  'a fitted athletic set — a sporty crop top and high-waisted shorts — with clean white sneakers',
+  'a silky slip dress with delicate thin straps',
+  'an oversized boyfriend shirt, partly unbuttoned and loosely tucked',
+  'a fitted ribbed crop top and high-waisted jeans',
+  'a cropped leather jacket over a fitted tank top and skinny jeans',
+  'a soft knit crop top and a short pleated skirt',
+]
+
+// Natural, candid poses with real body language — weight shift, movement, hands
+// in motion — instead of a stiff "standing straight, facing the camera" pose.
+const BACKDROP_POSES: string[] = [
+  'standing relaxed with her weight on one hip, one hand lazily running through her hair, soft genuine smile',
+  'one arm raised resting on top of her head and the other hand on her hip, confident and playful, warm smile',
+  'leaning slightly, glancing back over her shoulder toward the camera with a warm smile',
+  'a natural contrapposto stance, one hand tucked into a pocket, laughing softly',
+  'one hand on her hip, head tilted, looking straight at the camera with an easy relaxed smile',
+  'caught mid-step as if walking toward the camera, candid and full of life',
+]
+
+function pick<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]!
+}
 
 function coerceRelId(v: string | number): string | number {
   if (typeof v === 'number') return v
@@ -75,15 +107,18 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       ? (character.artStyle as 'anime' | 'realistic')
       : undefined
 
-  // Full-body, posing, on a plain background (so the cutout is clean),
-  // conditioned on the reference for identity. Revealing outfit / lingerie +
-  // heels, an alluring pose and a smile — NOT nude (explicit:false).
+  // Full-body, candid, on a plain background (so the cutout is clean),
+  // conditioned on the reference for identity. A stylish, tasteful outfit and a
+  // natural relaxed pose — NOT lingerie, NOT nude (explicit:false). Outfit and
+  // pose are randomised so repeated generations give the admin varied candidates.
+  const outfit = pick(BACKDROP_OUTFITS)
+  const pose = pick(BACKDROP_POSES)
   const { prompt } = buildCharacterEditPrompt({
     scene:
-      'full body from head to toe, the entire body and the high-heeled shoes visible, ' +
-      'wearing sexy lingerie (or a skimpy revealing outfit) and high heels, ' +
-      'striking an alluring confident pose, smiling warmly at the camera, ' +
-      'plain flat light-grey studio background',
+      'full body shot from head to toe, the whole body and the footwear visible, ' +
+      `wearing ${outfit}, ${pose}, ` +
+      'natural relaxed body language, candid editorial fashion photography, ' +
+      'soft even studio lighting, plain seamless white studio background',
     artStyle,
     explicit: false,
   })
