@@ -154,7 +154,8 @@ const REALISTIC_NEGATIVE =
   'mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, ' +
   'blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, ' +
   'gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, ' +
-  'fused fingers, too many fingers, long neck, watermark, signature'
+  'fused fingers, too many fingers, long neck, watermark, signature, ' +
+  '(glowing eyes:1.3), (neon eyes:1.3), (bright saturated eyes:1.2), heterochromia'
 
 const ANIME_NEGATIVE =
   'worst quality, low quality, normal quality, lowres, low details, oversaturated, undersaturated, ' +
@@ -234,7 +235,10 @@ function buildAnimeSubjectTokens(p: CharacterAppearanceParams): string {
     if (hairDesc) parts.push(`${hairDesc} hair`)
   }
 
-  if (p.eyeColor) parts.push(`${EYE_COLOR[p.eyeColor]} eyes, beautiful detailed eyes`)
+  // "beautiful detailed eyes" pushed SDXL/RealVis into rendering glowing, neon,
+  // over-saturated irises ("acid eyes"). "natural" + a realistic-colour cue
+  // keeps the iris believable.
+  if (p.eyeColor) parts.push(`natural ${EYE_COLOR[p.eyeColor]} eyes, realistic eye colour`)
   if (p.skinTone && ['very_fair', 'fair', 'light'].includes(p.skinTone)) parts.push('fair skin')
   if (p.breastSize && p.breastSize !== 'small') parts.push(BREAST_SIZE[p.breastSize])
 

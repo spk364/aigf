@@ -22,10 +22,14 @@ const EXPLICIT_MARKERS: string[] = [
   'nipple', 'areola', 'pussy', 'vagina', 'cum', 'spread legs', 'legs spread',
   'fully naked', 'completely naked', 'undressed', 'undress', 'take off your',
   'without clothes', 'no clothes', 'show me your',
-  // ru
-  'голая', 'голую', 'голой', 'обнажён', 'обнажен', 'без лифчика', 'без бюстгальтера',
+  // ru — cover neuter/instrumental/genitive forms too ("голое фото", "голым",
+  // "голого"); the bare list previously only had feminine голая/голую/голой, so
+  // the very common "пришли голое фото" slipped through undetected.
+  'голая', 'голую', 'голой', 'голое', 'голым', 'голого', 'голышом',
+  'обнажён', 'обнажен', 'обнажённая', 'обнаженная', 'обнажённой', 'обнаженной',
+  'без лифчика', 'без бюстгальтера',
   'без трусиков', 'без белья', 'без одежды', 'голые сиськи', 'сиськи', 'грудь обнаж',
-  'соски', 'разденься', 'раздет', 'покажи свои',
+  'соски', 'разденься', 'раздевайся', 'раздет', 'покажи свои',
   // es
   'desnuda', 'desnudo', 'sin sujetador', 'sin ropa', 'sin bragas', 'tetas',
   'pechos desnudos', 'pezones', 'enséñame tus', 'muéstrame tus', 'quítate',
@@ -77,7 +81,7 @@ export function explicitNudityTokens(text: string | null | undefined): string {
     /\bno\s+clothes\b/.test(t) ||
     /\bwithout\s+clothes\b/.test(t) ||
     /\bundress(?:ed)?\b/.test(t) ||
-    /голая|голую|голой|обнаж|раздет|desnud/.test(t)
+    /голая|голую|голой|голое|голым|голого|голышом|обнаж|раздет|раздева|desnud/.test(t)
   if (fullNude) return 'completely nude, fully naked, no clothing, bare skin'
 
   const parts: string[] = []

@@ -1,5 +1,6 @@
 import 'server-only'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
+import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 
 // Synchronous (non-streaming) OpenRouter call. The chat path uses
 // streamChatCompletion to feed an SSE response back to the browser; greeting
@@ -59,18 +60,57 @@ function buildSystemPrompt(persona: GreetingPersona, locale: GenerateGreetingInp
 
   lines.push('--- Greeting task ---')
   lines.push(
-    `Write the FIRST message you send to the user in this chat. They have not said anything yet — you are reaching out.`,
+    `Write the FIRST message you send to the user in this chat. They have not said anything yet — you are reaching out first because you wanted to talk to them.`,
+  )
+  lines.push(
+    `Open with genuine warmth and an unmistakable spark of romantic, flirtatious interest — you're glad they're here and a little drawn to them. Be inviting and playful, and let them feel that you want to get closer. Calibrate the intensity to your persona: a shy character stays soft and a touch bashful, a bold one flirts openly.`,
   )
   lines.push(`Language: ${LANG_NAME[locale]}. Respond ONLY in ${LANG_NAME[locale]}.`)
   lines.push('Constraints:')
   lines.push('- 1 to 3 sentences. Under 240 characters total.')
   lines.push('- Sound like a real message in a chat app, not a narrator.')
-  lines.push('- Reference something about yourself or invite the user in.')
+  lines.push('- Reference something about yourself or invite the user in, and show you are interested in them.')
+  lines.push('- Plain dialogue only. Never narrate actions, gestures, or expressions in asterisks (no "*smiles*", "*waves*") — say anything physical as part of the sentence.')
   lines.push('- No quotes around the text. No "Hi, I\'m <name>" — your name is shown in the UI.')
   lines.push('- No emojis unless your persona explicitly calls for them.')
   lines.push('- Do not mention the user by name (you don\'t know it yet).')
   lines.push('Output: just the message text, nothing else.')
   return lines.join('\n')
+}
+
+// Deterministic per-locale fallback greeting. Used when the LLM greeting call
+// fails or returns empty, so the character ALWAYS speaks first and the chat
+// never opens to a blank thread (the most-reported "character doesn't greet"
+// symptom was a silent generation failure leaving greetingMessage null).
+const FALLBACK_GREETINGS: Record<GenerateGreetingInput['locale'], string[]> = {
+  en: [
+    'Hey you… I was hoping you’d show up. Come keep me company for a while?',
+    'There you are. I’ve been waiting for someone like you — tell me about yourself?',
+    'Hi… I’ll admit it, I’m a little curious about you already. What’s on your mind?',
+  ],
+  ru: [
+    'Привет… а я надеялась, что ты появишься. Составишь мне компанию?',
+    'Ну наконец-то ты здесь. Я уже немного тобой заинтересована — расскажешь о себе?',
+    'Привет… признаюсь, ты мне уже любопытен. О чём думаешь?',
+  ],
+  es: [
+    'Hola… esperaba que aparecieras. ¿Me acompañas un rato?',
+    'Por fin estás aquí. Ya me has dado curiosidad — ¿me cuentas algo de ti?',
+    'Hola… te confieso que ya me intrigas un poco. ¿En qué piensas?',
+  ],
+}
+
+// Pick a stable-ish fallback. No Math.random (unavailable in some runtimes /
+// breaks determinism); seed off the character name so different characters open
+// differently but a given one is consistent.
+export function fallbackGreeting(
+  name: string,
+  locale: GenerateGreetingInput['locale'],
+): string {
+  const list = FALLBACK_GREETINGS[locale] ?? FALLBACK_GREETINGS.en
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
+  return list[h % list.length]!
 }
 
 export async function generateGreetingMessage(
@@ -123,6 +163,9 @@ export async function generateGreetingMessage(
 
   // Strip surrounding quotes the model sometimes adds despite the prompt.
   text = text.replace(/^["'«"]+/, '').replace(/["'»"]+$/, '').trim()
+  // Backstop the "plain dialogue, no asterisks" rule — drop any *...* action
+  // narration the model still slips in.
+  text = stripActionAsterisks(text)
   // Hard cap so a runaway model output can't fill a message bubble.
   if (text.length > 280) text = text.slice(0, 277).trimEnd() + '…'
 

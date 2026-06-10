@@ -878,6 +878,7 @@ function buildSystemPrompt(opts: {
     groundedness,
     '',
     `Communication style: ${opts.chatStyleDirective}`,
+    'Write like a real person texting: plain dialogue only. Never narrate your actions, gestures, or expressions in asterisks (no "*smiles*", "*leans in*", "*laughs*"). If you want to convey something physical, say it as part of the sentence.',
     '',
     safety,
     '',
@@ -1221,6 +1222,14 @@ export async function finalizeBuilderAction(
   } catch (err) {
     // Surface the failure in logs but don't break character creation.
     console.warn('builder.finalize: greeting generation failed', err)
+  }
+
+  // Static fallback so a brand-new companion never opens to a silent chat when
+  // the LLM greeting call fails. Not cached onto the character, so a real
+  // greeting can still be generated/cached on a later visit.
+  if (!greetingText) {
+    const { fallbackGreeting } = await import('@/features/chat/generate-greeting')
+    greetingText = fallbackGreeting(name, language as 'en' | 'ru' | 'es')
   }
 
   const conversation = await payload.create({

@@ -12,6 +12,7 @@ import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/share
 import { CHAT_REGENERATE_LIMIT } from '@/shared/rate-limit/presets'
 import { checkAssistantOutput } from '@/features/safety/output-filter'
 import { parsePhotoDirective } from '@/features/chat/photo-directive'
+import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 import { buildOutputGuard } from '@/features/chat/language-guard'
 import { getAccountState } from '@/shared/auth/account-status'
 
@@ -191,7 +192,9 @@ export async function POST(req: NextRequest) {
             : conversation.characterId
         // Regeneration doesn't offer the photo capability, but strip any stray
         // [SEND_PHOTO] marker defensively so it can never reach the user.
-        let finalContent = parsePhotoDirective(accumulatedContent).cleaned
+        // Strip the [SEND_PHOTO] marker and any *...* action narration (the
+        // latter backstops the plain-dialogue rule for frozen snapshots).
+        let finalContent = stripActionAsterisks(parsePhotoDirective(accumulatedContent).cleaned)
         if (finalContent !== accumulatedContent) {
           send('replace', { text: finalContent })
         }
