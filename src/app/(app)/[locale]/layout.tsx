@@ -6,12 +6,17 @@ import { routing } from '@/i18n/routing'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import PostHogProvider from '@/shared/analytics/PostHogProvider'
 import { ServiceWorkerRegistrar } from '@/shared/pwa/ServiceWorkerRegistrar'
-import { Inter } from 'next/font/google'
+import { Onest } from 'next/font/google'
 import '../globals.css'
 
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
+// Single cohesive type family across the whole app — a neutral-geometric sans
+// with excellent Cyrillic coverage (sleek, premium, AI-native feel). Headlines
+// reuse it at heavy weights + tight tracking via the `font-display` utility, so
+// the system stays coherent instead of pairing two competing families.
+// Cyrillic + latin-ext subsets are required for RU/ES locales.
+const onest = Onest({
+  subsets: ['latin', 'latin-ext', 'cyrillic'],
+  variable: '--font-onest',
   display: 'swap',
 })
 
@@ -62,7 +67,7 @@ export default async function LocaleLayout({ children, params }: Props) {
   const userId = user ? String(user.id) : undefined
 
   return (
-    <html lang={locale} className={inter.variable}>
+    <html lang={locale} className={onest.variable}>
       <body>
         <NextIntlClientProvider messages={messages}>
           <PostHogProvider userId={userId}>{children}</PostHogProvider>

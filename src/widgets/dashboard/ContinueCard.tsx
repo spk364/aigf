@@ -54,7 +54,7 @@ export function ContinueCard({ locale, hero }: Props) {
             <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-accent)]">
               Continue chatting
             </p>
-            <h2 className="text-3xl font-bold text-[var(--color-text)] sm:text-4xl">
+            <h2 className="font-display text-3xl font-bold text-[var(--color-text)] sm:text-4xl">
               {hero.characterName}
             </h2>
             {hero.lastMessagePreview && (

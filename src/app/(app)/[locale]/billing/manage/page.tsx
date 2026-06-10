@@ -92,7 +92,7 @@ export default async function BillingManagePage({ params }: Props) {
         <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
           Billing
         </p>
-        <h1 className="mb-6 text-3xl font-bold text-[var(--color-text)]">{t('title')}</h1>
+        <h1 className="font-display mb-6 text-3xl font-bold text-[var(--color-text)]">{t('title')}</h1>
 
         {!sub ? (
           <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">

@@ -80,7 +80,7 @@ export function HeroBanner({ locale, banners, coverImageUrl }: Props) {
   return (
     <section
       aria-label="Featured promotion"
-      className="relative overflow-hidden rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+      className="relative overflow-hidden rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-raised"
     >
       <div className="relative aspect-[16/6] w-full sm:aspect-[16/5]">
         {slide.imageUrl ? (
@@ -123,7 +123,7 @@ export function HeroBanner({ locale, banners, coverImageUrl }: Props) {
             </svg>
             {slide.eyebrow}
           </span>
-          <h2 className="max-w-xl text-2xl font-bold leading-tight text-white drop-shadow sm:text-4xl lg:text-5xl">
+          <h2 className="font-display max-w-xl text-2xl font-bold leading-tight text-white drop-shadow sm:text-4xl lg:text-5xl">
             {slide.title}
           </h2>
           <p className="max-w-md text-sm text-white/80 sm:text-base">{slide.subtitle}</p>

@@ -96,7 +96,7 @@ export default async function UpgradePage({ params }: Props) {
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
             Plans
           </p>
-          <h1 className="mb-3 text-4xl font-bold text-[var(--color-text)]">
+          <h1 className="font-display mb-3 text-4xl font-bold text-[var(--color-text)]">
             {t('upgrade.title')}
           </h1>
           <p className="text-[var(--color-text-muted)]">{t('upgrade.subtitle')}</p>

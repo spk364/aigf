@@ -22,7 +22,7 @@ export function FinalCta({ locale }: Props) {
         />
       </div>
       <div className="relative mx-auto max-w-3xl px-4 text-center sm:px-6">
-        <h2 className="text-4xl font-bold leading-tight tracking-tight text-[var(--color-text)] sm:text-5xl">
+        <h2 className="font-display text-4xl font-bold leading-tight tracking-tight text-[var(--color-text)] sm:text-5xl">
           Someone is waiting to{' '}
           <span className="bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-accent-strong)] bg-clip-text text-transparent">
             meet you
