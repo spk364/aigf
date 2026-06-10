@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { pickModelIdForStyle } from './prompt-builder'
 
 describe('pickModelIdForStyle', () => {
-  it('routes explicit requests (both styles) to the warm Atlas WAN t2i', () => {
-    // The true-anime Illustrious LoRA cold-starts and times out, so anime+explicit
-    // must NOT route there — it uses the always-warm Atlas WAN like realistic.
-    expect(pickModelIdForStyle('anime', { explicit: true })).toBe('alibaba/wan-2.6/text-to-image')
+  it('routes explicit by style: anime → warm Novita Pony, realistic → warm Atlas WAN', () => {
+    // Anime nudity needs a Pony/Illustrious checkpoint (WAN re-clothes anime);
+    // Novita serves it always-warm. Realistic stays on warm Atlas WAN.
+    expect(pickModelIdForStyle('anime', { explicit: true })).toBe('novita/pony-v6-xl')
     expect(pickModelIdForStyle('realistic', { explicit: true })).toBe('alibaba/wan-2.6/text-to-image')
-    // Never the cold fal-ai/lora checkpoint.
+    // Never the cold fal-ai/lora checkpoint that times out.
     expect(pickModelIdForStyle('anime', { explicit: true })).not.toContain('John6666')
   })
 

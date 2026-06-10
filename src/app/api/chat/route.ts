@@ -796,11 +796,17 @@ export async function POST(req: NextRequest) {
               } else {
                 modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
                 const isFluxModel = findImageModel(modelId)?.isFlux ?? false
+                // Anime+explicit resolves to the Novita Pony checkpoint (synthetic
+                // `novita/…` id, not in the catalogue) — flag it so the prompt
+                // builder prepends the Pony score tags it needs.
+                const isPonyModel =
+                  findImageModel(modelId)?.isPony ?? modelId.startsWith('novita/')
                 ;({ prompt, negativePrompt } = buildCharacterScenePrompt({
                   appearance: sceneAppearance,
                   artStyle,
                   scene,
                   isFlux: isFluxModel,
+                  isPony: isPonyModel,
                   shot,
                 }))
               }

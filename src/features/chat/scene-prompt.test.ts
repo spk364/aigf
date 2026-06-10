@@ -109,4 +109,19 @@ describe('buildCharacterScenePrompt anime style hardening', () => {
     })
     expect(prompt).not.toMatch(/2D anime illustration/i)
   })
+
+  it('prepends Pony score/rating tags for the Novita Pony anime path', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: { appearancePrompt: 'anime girl, twin tails' },
+      artStyle: 'anime',
+      scene: 'topless, bare breasts',
+      isPony: true,
+    })
+    expect(prompt).toMatch(/score_9, score_8_up, score_7_up, score_6_up/)
+    expect(prompt).toMatch(/rating_explicit/)
+    expect(prompt).toMatch(/source_anime/)
+    expect(negativePrompt).toMatch(/score_4/)
+    // Pony uses its own tags, not the generic 2D natural-language assertion.
+    expect(prompt).not.toMatch(/2D anime illustration/i)
+  })
 })

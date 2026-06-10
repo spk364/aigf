@@ -527,7 +527,12 @@ export async function submitPreviewJobAction(draftId: string): Promise<SubmitPre
   const selectedModel =
     typeof appearance.modelEndpoint === 'string' ? appearance.modelEndpoint : null
   const modelId = resolveModelEndpoint(selectedModel, String(appearance.artStyle ?? 'realistic'))
-  const provider = findImageModel(modelId)?.provider ?? detectImageProvider(modelId)
+  // resolveModelEndpoint only ever yields fal/atlas catalogue ids — the Novita
+  // anime-NSFW checkpoint is chat-only and never reaches the builder preview, so
+  // narrowing away 'novita' here is safe and keeps PendingPreviewJob's type tight.
+  const provider = (findImageModel(modelId)?.provider ?? detectImageProvider(modelId)) as
+    | 'fal'
+    | 'atlas'
 
   let handles: Awaited<ReturnType<typeof submitImageJob>>
   try {

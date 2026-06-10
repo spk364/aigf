@@ -10,7 +10,7 @@
 // GenerateImageButton. Keep these in sync with FAL_ENDPOINT_* in `./fal`.
 
 export type ImageModelStyle = 'realism' | 'anime' | 'mixed'
-export type ImageProvider = 'fal' | 'atlas'
+export type ImageProvider = 'fal' | 'atlas' | 'novita'
 
 export type ImageModelOption = {
   // Stable identifier sent over the wire. Equal to either:
@@ -178,6 +178,11 @@ export function isAllowedImageModelId(id: string): boolean {
 // prefixes; fal-ai/* is fal native; anything else (e.g. John6666/...) is
 // a HuggingFace repo routed via fal-ai/lora.
 export function detectImageProvider(id: string): ImageProvider {
+  // Novita checkpoints carry a synthetic `novita/…` id (not in the shared
+  // catalogue — chat-only) so they never reach the admin fal/atlas dispatch.
+  if (id.startsWith('novita/')) {
+    return 'novita'
+  }
   if (
     id.startsWith('atlascloud/') ||
     id.startsWith('alibaba/') ||

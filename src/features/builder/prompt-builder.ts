@@ -565,15 +565,18 @@ const DEFAULT_REALISTIC_ID = 'fal-ai/flux/dev'
 // no cold start). One model covers both art styles.
 const NSFW_STRONG_EXPLICIT_ID = 'alibaba/wan-2.6/text-to-image'
 
-// Anime NSFW history: the true-anime WAI Illustrious LoRA renders anime-styled
-// nudity correctly BUT cold-starts 2-3 min on fal-ai/lora, and in practice fal
-// often can't grab a GPU in time — the chat image job times out
-// (generation_timeout) before it warms. A 2-3 min wait is unusable for a chat
-// photo anyway. We route anime+explicit to the always-warm Atlas WAN t2i instead
-// (NSFW_STRONG_EXPLICIT_ID, ~15 s, no platform filter); buildCharacterScenePrompt
-// hardens the anime-style tokens so WAN doesn't photoreal-ize the result. If WAN
-// proves too tame/2.5D for anime nudity, the proper fix is an always-warm
-// dedicated anime-NSFW provider, not the cold LoRA.
+// Anime NSFW: route to the always-warm Novita Pony V6 XL checkpoint. History of
+// what failed first:
+//   1. Atlas WAN t2i — warm but conservative: re-clothes / photoreal-izes anime
+//      nudity even with hardened anime tokens (reported: clothed anime photos).
+//   2. WAI Illustrious LoRA via fal-ai/lora — true anime nudity but cold-starts
+//      2-3 min and fal often can't grab a GPU, so the job times out.
+// Novita hosts Pony/Illustrious checkpoints always-warm with NSFW detection off,
+// so anime nudity renders correctly AND fast. Synthetic id (chat-only, not in
+// the shared catalogue) dispatched by the novita adapter; checkpoint overridable
+// via NOVITA_IMAGE_MODEL. buildCharacterScenePrompt adds Pony score tags when the
+// model isPony.
+const NSFW_ANIME_EXPLICIT_ID = 'novita/pony-v6-xl'
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
   .filter((m) =>
@@ -605,11 +608,9 @@ export function pickModelIdForStyle(
   opts?: { explicit?: boolean },
 ): string {
   if (opts?.explicit) {
-    // Both art styles route to the warm, unfiltered Atlas WAN t2i. Anime relies
-    // on hardened anime-style tokens in the prompt (see buildCharacterScenePrompt)
-    // to avoid WAN's photoreal drift — the true-anime LoRA cold-starts and times
-    // out, which is worse than a slightly-2.5D but reliable, instant result.
-    return NSFW_STRONG_EXPLICIT_ID
+    // Anime explicit → warm Novita Pony (true anime nudity). Realistic explicit
+    // → warm Atlas WAN t2i. Both avoid the cold fal LoRA that times out.
+    return artStyle === 'anime' ? NSFW_ANIME_EXPLICIT_ID : NSFW_STRONG_EXPLICIT_ID
   }
   return artStyle === 'anime' ? DEFAULT_ANIME_ID : DEFAULT_REALISTIC_ID
 }
