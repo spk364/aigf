@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { replyLanguageName, buildOutputGuard } from './language-guard'
+import {
+  replyLanguageName,
+  buildOutputGuard,
+  detectMessageLanguage,
+  resolveReplyLocale,
+} from './language-guard'
 
 describe('replyLanguageName', () => {
   it('maps known locales to language names', () => {
@@ -11,6 +16,40 @@ describe('replyLanguageName', () => {
     expect(replyLanguageName('de')).toBe('English')
     expect(replyLanguageName(null)).toBe('English')
     expect(replyLanguageName(undefined)).toBe('English')
+  })
+})
+
+describe('detectMessageLanguage', () => {
+  it('detects Russian from Cyrillic script', () => {
+    expect(detectMessageLanguage('привет, как дела?')).toBe('ru')
+    expect(detectMessageLanguage('Hello мир')).toBe('ru')
+  })
+  it('detects Spanish from Spanish-only orthography', () => {
+    expect(detectMessageLanguage('¿cómo estás?')).toBe('es')
+    expect(detectMessageLanguage('mañana nos vemos')).toBe('es')
+  })
+  it('detects Spanish vs English from stopwords', () => {
+    expect(detectMessageLanguage('hola que tal, te quiero')).toBe('es')
+    expect(detectMessageLanguage('what are you doing today')).toBe('en')
+  })
+  it('returns null for ambiguous / too-short text', () => {
+    expect(detectMessageLanguage('ok')).toBeNull()
+    expect(detectMessageLanguage('😀')).toBeNull()
+    expect(detectMessageLanguage('')).toBeNull()
+    expect(detectMessageLanguage(null)).toBeNull()
+  })
+})
+
+describe('resolveReplyLocale', () => {
+  it('prefers the detected message language over the UI locale', () => {
+    // UI in English, user typing Russian → reply in Russian.
+    expect(resolveReplyLocale('привет', 'en')).toBe('ru')
+    // UI in Russian, user typing English → reply in English.
+    expect(resolveReplyLocale('what are you up to', 'ru')).toBe('en')
+  })
+  it('falls back to the UI locale when detection is ambiguous', () => {
+    expect(resolveReplyLocale('ok', 'ru')).toBe('ru')
+    expect(resolveReplyLocale('', 'es')).toBe('es')
   })
 })
 

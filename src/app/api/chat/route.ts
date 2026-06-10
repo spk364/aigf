@@ -20,7 +20,7 @@ import {
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 import { buildCharacterScenePrompt, buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
-import { buildOutputGuard } from '@/features/chat/language-guard'
+import { buildOutputGuard, resolveReplyLocale } from '@/features/chat/language-guard'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
 import {
@@ -49,19 +49,15 @@ const LLM_MODEL = OPENROUTER_MODEL
 // stay consistent across photos. submitChatImageJob passes the source image
 // when referenceImageUrl is set.
 //
-// Two ids: the default (clothed/spicy) edit and an explicit-request edit. WAN
-// 2.6 image-edit conditions hard on the clothed reference and tends to KEEP the
-// outfit even when the prompt asks for nudity, so explicit requests came back
-// dressed. WAN 2.5 image-edit is less aggressive about preserving the source
-// outfit; route explicit nudity edits there. Override via env without a code
-// change while A/B testing edit backends.
-// NOTE: the actual undressing behaviour must be confirmed with a live image —
-// if WAN 2.5 also re-clothes the subject, switch the explicit path to a
-// face-locked NSFW text-to-image (fal IP-Adapter + Pony/Illustrious).
+// Used for clothed / spicy (non-nude) photos ONLY. Explicit nudity does not take
+// the edit path: WAN image-edit conditions hard on the clothed reference and
+// re-clothes the subject — an explicit "fully naked" request came back dressed
+// no matter how forcefully the prompt asked to undress (observed on both WAN 2.6
+// and 2.5 image-edit). Explicit requests fall through to the NSFW-strong
+// text-to-image path instead, which actually renders the nudity (see the
+// dispatch block in the photo branch below).
 const ATLAS_IMAGE_EDIT_MODEL_ID =
   process.env.CHAT_IMAGE_EDIT_MODEL_ID || 'alibaba/wan-2.6/image-edit'
-const ATLAS_IMAGE_EDIT_EXPLICIT_MODEL_ID =
-  process.env.CHAT_IMAGE_EDIT_EXPLICIT_MODEL_ID || 'alibaba/wan-2.5/image-edit'
 // DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
 // which pushes the sampler into the low-probability tail and produces
 // hallucinated biographical facts and broken character consistency. 0.85 keeps
@@ -396,9 +392,14 @@ export async function POST(req: NextRequest) {
   // (frozen) snapshot prompt. Fixes two observed model failures: replying in the
   // wrong / a mixed language, and leaking out-of-character parenthetical notes
   // (e.g. "(Note: maintaining 18+ context…)") into the user-visible reply. The
-  // language is named explicitly from the request locale (the language the user
-  // is chatting in) — far more reliable than asking the model to detect it.
-  openrouterMessages.push({ role: 'system', content: buildOutputGuard(locale) })
+  // language is named explicitly — far more reliable than asking the model to
+  // detect it. We name the language the user is ACTUALLY typing (detected from
+  // this message), falling back to the request locale when the message is too
+  // short to detect — users often have the UI in one language but chat in another.
+  openrouterMessages.push({
+    role: 'system',
+    content: buildOutputGuard(resolveReplyLocale(message, locale)),
+  })
 
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
   // can answer naturally AND attach a photo in the same turn. Only advertised to
@@ -762,36 +763,34 @@ export async function POST(req: NextRequest) {
               const scene = resolveExplicitScene({ scene: rawScene, message, explicit })
 
               // Two dispatch paths:
-              //   A. Reference image available → Atlas WAN 2.6 image-edit,
-              //      conditioned on it. Keeps the same face/tattoos across photos
-              //      while the prompt changes only the outfit/pose/setting. Warm
-              //      (~12 s), no platform filter, so explicit edits work too.
-              //   B. No reference → text-to-image fallback: explicit → warm Atlas,
-              //      clothed → fast FLUX. Identity is only as stable as the
-              //      appearance description (face/tattoos still drift).
+              //   A. Reference image available AND request is non-explicit →
+              //      Atlas WAN image-edit, conditioned on the reference. Keeps the
+              //      same face/tattoos across photos while the prompt changes only
+              //      the outfit/pose/setting. Warm (~12 s), no platform filter.
+              //   B. No reference, OR explicit nudity → text-to-image on an NSFW-
+              //      strong checkpoint: realistic → warm Atlas WAN t2i, anime →
+              //      warm Novita Pony. Identity is only as stable as the appearance
+              //      description (face/tattoos drift), but the nudity renders.
               //
-              // Exception: anime + explicit always takes path B with a true anime
-              // NSFW checkpoint (WAI Illustrious). Atlas image-edit photoreal-izes
-              // anime references and renders nudity conservatively, so a reference
-              // here gave a realistic, clothed photo. We drop the reference for
-              // this case (face consistency yields to correct style + nudity).
-              const animeExplicit = (artStyle ?? 'realistic') === 'anime' && explicit
-              const conditionOnRef = !!referenceImageUrl && !animeExplicit
+              // Why explicit nudity always takes path B, even with a reference:
+              // WAN image-edit conditions hard on the (clothed) reference and
+              // re-clothes the subject, so an explicit request came back tame/
+              // dressed regardless of how forcefully the prompt asked to undress.
+              // We drop the reference for ALL explicit requests — face consistency
+              // yields to actually delivering the nudity, the same tradeoff already
+              // made for anime (whose references also photoreal-ize + re-clothe).
+              const conditionOnRef = !!referenceImageUrl && !explicit
               let modelId: string
               let prompt: string
               let negativePrompt: string
               if (conditionOnRef) {
-                // Explicit nudity edits use the less outfit-preserving WAN 2.5
-                // edit; clothed/spicy edits stay on the default. Both keep the
-                // reference face/tattoos. (anime+explicit never reaches here —
-                // conditionOnRef excludes it and takes the t2i path below.)
-                modelId = explicit
-                  ? ATLAS_IMAGE_EDIT_EXPLICIT_MODEL_ID
-                  : ATLAS_IMAGE_EDIT_MODEL_ID
+                // Clothed / spicy edit on the reference. Explicit never reaches
+                // here — conditionOnRef excludes it and takes the t2i path below.
+                modelId = ATLAS_IMAGE_EDIT_MODEL_ID
                 ;({ prompt, negativePrompt } = buildCharacterEditPrompt({
                   scene,
                   artStyle,
-                  explicit,
+                  explicit: false,
                 }))
               } else {
                 modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
@@ -821,9 +820,9 @@ export async function POST(req: NextRequest) {
                 modelId,
                 imageSize: shotImageSize(shot),
                 // Only condition on the reference when we actually took the
-                // image-edit/IP-Adapter path. For anime+explicit (text-to-image
-                // on the anime NSFW checkpoint) passing a ref would force fal's
-                // realistic IP-Adapter base and undo the style fix.
+                // image-edit path (clothed/spicy). Explicit nudity runs pure
+                // text-to-image on the NSFW-strong checkpoint — passing a ref
+                // would re-clothe the subject (WAN edit) or fight the anime style.
                 referenceImageUrl: conditionOnRef ? referenceImageUrl : null,
               })
 
