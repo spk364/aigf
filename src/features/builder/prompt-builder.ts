@@ -565,13 +565,15 @@ const DEFAULT_REALISTIC_ID = 'fal-ai/flux/dev'
 // no cold start). One model covers both art styles.
 const NSFW_STRONG_EXPLICIT_ID = 'alibaba/wan-2.6/text-to-image'
 
-// Anime NSFW: Atlas WAN photoreal-izes anime prompts and renders nudity
-// conservatively, so an anime character's explicit request used to come back as
-// a realistic, clothed photo. WAI NSFW Illustrious is a true SDXL anime
-// checkpoint with no platform filter — it renders anime-styled nudity correctly.
-// Trade-off: 2-3 min cold start on fal, but the chat image job's ~5 min budget
-// (IMAGE_JOB_TIMEOUT_MS) covers it. Routed through fal-ai/lora by the dispatcher.
-const NSFW_ANIME_EXPLICIT_ID = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
+// Anime NSFW history: the true-anime WAI Illustrious LoRA renders anime-styled
+// nudity correctly BUT cold-starts 2-3 min on fal-ai/lora, and in practice fal
+// often can't grab a GPU in time — the chat image job times out
+// (generation_timeout) before it warms. A 2-3 min wait is unusable for a chat
+// photo anyway. We route anime+explicit to the always-warm Atlas WAN t2i instead
+// (NSFW_STRONG_EXPLICIT_ID, ~15 s, no platform filter); buildCharacterScenePrompt
+// hardens the anime-style tokens so WAN doesn't photoreal-ize the result. If WAN
+// proves too tame/2.5D for anime nudity, the proper fix is an always-warm
+// dedicated anime-NSFW provider, not the cold LoRA.
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
   .filter((m) =>
@@ -603,10 +605,11 @@ export function pickModelIdForStyle(
   opts?: { explicit?: boolean },
 ): string {
   if (opts?.explicit) {
-    // Anime explicit needs an anime NSFW checkpoint, not the realistic-leaning
-    // Atlas WAN — otherwise an anime character gets a photoreal (and clothed)
-    // image. Realistic explicit stays on warm Atlas.
-    return artStyle === 'anime' ? NSFW_ANIME_EXPLICIT_ID : NSFW_STRONG_EXPLICIT_ID
+    // Both art styles route to the warm, unfiltered Atlas WAN t2i. Anime relies
+    // on hardened anime-style tokens in the prompt (see buildCharacterScenePrompt)
+    // to avoid WAN's photoreal drift — the true-anime LoRA cold-starts and times
+    // out, which is worse than a slightly-2.5D but reliable, instant result.
+    return NSFW_STRONG_EXPLICIT_ID
   }
   return artStyle === 'anime' ? DEFAULT_ANIME_ID : DEFAULT_REALISTIC_ID
 }

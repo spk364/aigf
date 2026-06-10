@@ -83,3 +83,30 @@ describe('buildCharacterScenePrompt natural eyes', () => {
     expect(negativePrompt).not.toMatch(/glowing eyes/i)
   })
 })
+
+describe('buildCharacterScenePrompt anime style hardening', () => {
+  // Anime + explicit is served by the warm Atlas WAN t2i (photoreal prior), so
+  // the prompt must hard-assert 2D anime and push photoreal into the negative —
+  // otherwise an "anime" nude comes back semi-realistic.
+  it('asserts 2D anime style and rejects photoreal for anime scenes', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: { appearancePrompt: 'anime girl, twin tails' },
+      artStyle: 'anime',
+      scene: 'topless, bare breasts',
+    })
+    expect(prompt).toMatch(/2D anime illustration/i)
+    expect(prompt).toMatch(/cel-shaded/i)
+    expect(prompt).toMatch(/NOT photorealistic/i)
+    expect(negativePrompt).toMatch(/\(photorealistic:1\.4\)/i)
+    expect(negativePrompt).toMatch(/semi-realistic/i)
+  })
+
+  it('does NOT add the anime style assertion to realistic scenes', () => {
+    const { prompt } = buildCharacterScenePrompt({
+      appearance: { subjectTokens: 'woman, brown hair' },
+      artStyle: 'realistic',
+      scene: 'topless',
+    })
+    expect(prompt).not.toMatch(/2D anime illustration/i)
+  })
+})
