@@ -13,7 +13,7 @@ import { CHAT_REGENERATE_LIMIT } from '@/shared/rate-limit/presets'
 import { checkAssistantOutput } from '@/features/safety/output-filter'
 import { parsePhotoDirective } from '@/features/chat/photo-directive'
 import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
-import { buildOutputGuard } from '@/features/chat/language-guard'
+import { buildOutputGuard, resolveReplyLocale } from '@/features/chat/language-guard'
 import { getAccountState } from '@/shared/auth/account-status'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
@@ -117,11 +117,17 @@ export async function POST(req: NextRequest) {
   openrouterMessages.push({ role: 'system', content: snapshot?.systemPrompt ?? '' })
 
   // Same per-turn output guard as chat/route.ts — keep the regenerated reply in
-  // the user's language and fully in character. Uses the conversation language
-  // (regeneration has no per-request locale).
+  // the user's language and fully in character. Regeneration has no per-request
+  // locale, so detect from the most recent user message (docs are newest-first),
+  // falling back to the conversation language when it can't be detected.
+  const lastUserContent = historyResult.docs.find((d) => d.role === 'user')?.content as
+    | string
+    | undefined
   openrouterMessages.push({
     role: 'system',
-    content: buildOutputGuard(conversation.language as string | null | undefined),
+    content: buildOutputGuard(
+      resolveReplyLocale(lastUserContent, conversation.language as string | null | undefined),
+    ),
   })
 
   if (conversation.summary) {
