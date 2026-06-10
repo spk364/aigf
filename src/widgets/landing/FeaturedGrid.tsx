@@ -46,7 +46,7 @@ export async function FeaturedGrid({ locale }: Props) {
             <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-accent)]">
               {t('eyebrow')}
             </p>
-            <h2 className="text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-4xl">
+            <h2 className="font-display text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-4xl">
               {t('title')}
             </h2>
             <p className="mt-2 max-w-xl text-[var(--color-text-muted)]">{t('subtitle')}</p>

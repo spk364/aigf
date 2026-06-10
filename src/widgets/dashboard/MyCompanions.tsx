@@ -30,7 +30,7 @@ function CompanionTile({ locale, companion }: { locale: string; companion: Compa
   return (
     <Link
       href={href}
-      className="group relative block aspect-[9/16] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/40 hover:shadow-[0_18px_40px_-10px_rgba(192,116,255,0.35)]"
+      className="group relative block aspect-[9/16] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-glow"
     >
       {companion.primaryImageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element

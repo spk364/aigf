@@ -53,7 +53,7 @@ export function PricingTeaser({ locale }: Props) {
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-accent)]">
             Pricing
           </p>
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-4xl">
+          <h2 className="font-display text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-4xl">
             Simple plans, no surprises
           </h2>
           <p className="mt-2 text-[var(--color-text-muted)]">

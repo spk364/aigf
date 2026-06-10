@@ -38,7 +38,7 @@ export function PremiumUpsell({ locale }: Props) {
             </svg>
             Premium
           </span>
-          <h2 className="mt-3 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">
+          <h2 className="font-display mt-3 text-2xl font-bold text-[var(--color-text)] sm:text-3xl">
             Go further with Premium
           </h2>
           <p className="mt-1 text-sm text-[var(--color-text-muted)]">

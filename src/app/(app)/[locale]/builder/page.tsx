@@ -81,7 +81,7 @@ export default async function BuilderPage({ params }: Props) {
       <SiteHeader locale={locale} />
       <main className="min-h-screen bg-[var(--color-bg)] px-4 pt-24 pb-10">
         <div className="mx-auto max-w-2xl">
-          <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">{t('title')}</h1>
+          <h1 className="font-display text-3xl font-bold text-[var(--color-text)] mb-2">{t('title')}</h1>
 
         {atAnyFreeLimit ? (
           <div className="mb-8 rounded-xl border border-[var(--color-accent-strong)]/30 bg-[var(--color-accent-strong)]/10 px-5 py-4 text-sm text-[var(--color-text)]">

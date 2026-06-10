@@ -88,7 +88,7 @@ export default async function PlansPage({ params }: Props) {
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
             {t('upgrade.title')}
           </p>
-          <h1 className="mb-3 text-4xl font-bold text-[var(--color-text)]">{t('upgrade.subtitle')}</h1>
+          <h1 className="font-display mb-3 text-4xl font-bold text-[var(--color-text)]">{t('upgrade.subtitle')}</h1>
           <div className="mt-5 inline-flex items-center gap-3 rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm">
             <span className="text-[var(--color-text-muted)]">{tTokens('currentBalance')}</span>
             <span className="font-bold text-[var(--color-text)]">{balance}</span>

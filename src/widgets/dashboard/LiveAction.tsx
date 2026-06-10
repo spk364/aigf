@@ -68,14 +68,14 @@ function LiveActionCard({
   return (
     <Link
       href={`/${locale}/chat/new?characterId=${c.id}`}
-      className="group relative block aspect-[3/4] w-44 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] sm:w-52"
+      className="group relative block aspect-[3/4] w-44 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-glow sm:w-52"
     >
       <CharacterCardMedia
         photoUrl={c.photoUrl}
         videoUrl={c.videoUrl}
         alt={c.name}
         mode="autoplay"
-        className="absolute inset-0 h-full w-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
       />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
 

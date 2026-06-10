@@ -64,7 +64,7 @@ export default async function TokensPage({ params }: Props) {
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-text-muted)]">
             {t('eyebrow')}
           </p>
-          <h1 className="mb-3 text-4xl font-bold text-[var(--color-text)]">{t('title')}</h1>
+          <h1 className="font-display mb-3 text-4xl font-bold text-[var(--color-text)]">{t('title')}</h1>
           <p className="text-[var(--color-text-muted)]">{t('subtitle')}</p>
         </div>
 
