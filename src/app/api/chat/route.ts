@@ -18,6 +18,7 @@ import {
   explicitPhotoRequestInstruction,
 } from '@/features/chat/photo-directive'
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
+import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 import { buildCharacterScenePrompt, buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
@@ -41,11 +42,48 @@ import { checkAssistantOutput } from '@/features/safety/output-filter'
 import { getAccountState } from '@/shared/auth/account-status'
 
 const LLM_MODEL = OPENROUTER_MODEL
-// Atlas WAN 2.6 image-edit — reference-conditioned generation used for chat
-// photos when the character has a reference/primary image, so the face and
-// tattoos stay consistent across photos. submitChatImageJob passes the source
-// image when referenceImageUrl is set.
-const ATLAS_IMAGE_EDIT_MODEL_ID = 'alibaba/wan-2.6/image-edit'
+
+// Human-readable language names for the response-language directive below.
+const LANG_NAME: Record<string, string> = {
+  en: 'English',
+  ru: 'Russian (русский)',
+  es: 'Spanish (español)',
+}
+
+// The chat path never told the model which language to answer in, so DeepSeek
+// inferred it from the (sometimes multilingual) persona snapshot + history and
+// frequently drifted — e.g. answering in Spanish to an English/Russian user.
+// This directive anchors the reply to the conversation language AND tells the
+// model to mirror the user when they switch. Placed as its own high-salience
+// system message. (generate-greeting.ts already does the equivalent.)
+function languageDirective(convLanguage: string): string {
+  const name = LANG_NAME[convLanguage] ?? LANG_NAME.en!
+  return (
+    `LANGUAGE — this overrides any language used in your persona description: ` +
+    `Reply in the SAME language the user is writing in. This conversation's ` +
+    `default language is ${name}; use it unless the user's latest message is in ` +
+    `another language, in which case match that language exactly. Never answer ` +
+    `in a language the user did not use.`
+  )
+}
+// Atlas WAN image-edit — reference-conditioned generation used for chat photos
+// when the character has a reference/primary image, so the face and tattoos
+// stay consistent across photos. submitChatImageJob passes the source image
+// when referenceImageUrl is set.
+//
+// Two ids: the default (clothed/spicy) edit and an explicit-request edit. WAN
+// 2.6 image-edit conditions hard on the clothed reference and tends to KEEP the
+// outfit even when the prompt asks for nudity, so explicit requests came back
+// dressed. WAN 2.5 image-edit is less aggressive about preserving the source
+// outfit; route explicit nudity edits there. Override via env without a code
+// change while A/B testing edit backends.
+// NOTE: the actual undressing behaviour must be confirmed with a live image —
+// if WAN 2.5 also re-clothes the subject, switch the explicit path to a
+// face-locked NSFW text-to-image (fal IP-Adapter + Pony/Illustrious).
+const ATLAS_IMAGE_EDIT_MODEL_ID =
+  process.env.CHAT_IMAGE_EDIT_MODEL_ID || 'alibaba/wan-2.6/image-edit'
+const ATLAS_IMAGE_EDIT_EXPLICIT_MODEL_ID =
+  process.env.CHAT_IMAGE_EDIT_EXPLICIT_MODEL_ID || 'alibaba/wan-2.5/image-edit'
 // DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
 // which pushes the sampler into the low-probability tail and produces
 // hallucinated biographical facts and broken character consistency. 0.85 keeps
@@ -376,6 +414,14 @@ export async function POST(req: NextRequest) {
     content: snapshot?.systemPrompt ?? '',
   })
 
+  // Pin the reply language. Without this DeepSeek drifts to whatever language
+  // dominates the persona snapshot/history (often Spanish), ignoring the
+  // language the user actually writes in. See languageDirective().
+  openrouterMessages.push({
+    role: 'system',
+    content: languageDirective(convLanguage),
+  })
+
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
   // can answer naturally AND attach a photo in the same turn. Only advertised to
   // users who have enough tokens — others never learn the marker, so they can't
@@ -488,7 +534,14 @@ export async function POST(req: NextRequest) {
 
         // Pull the [SEND_PHOTO] directive (if any) out of the assembled reply.
         const parsed = directiveFilter.finish()
-        let finalContent = parsed.cleaned
+        // Backstop the "no asterisk action narration" prompt rule: existing
+        // conversations carry a frozen system-prompt snapshot, so the prompt
+        // change can't reach them — strip any *...* spans here. When this
+        // removes text the client already streamed, `strippedActions` triggers
+        // a `replace` below so the committed bubble matches the persisted text.
+        const directiveCleaned = parsed.cleaned
+        let finalContent = stripActionAsterisks(directiveCleaned)
+        const strippedActions = finalContent !== directiveCleaned
         // Send a photo ONLY when the user explicitly asked this turn and can pay.
         // We deliberately do NOT honour a bare model-emitted [SEND_PHOTO]: under
         // the strong photo-capability prompt DeepSeek would spontaneously send
@@ -531,7 +584,7 @@ export async function POST(req: NextRequest) {
         // The streamed text (directive stripped) can drift from finalContent via
         // the whitespace tidy or a safety replacement — reconcile the client to
         // the canonical text whenever we touched it.
-        if (hasText && (photoRequested || !outputVerdict.safe)) {
+        if (hasText && (photoRequested || !outputVerdict.safe || strippedActions)) {
           send('replace', { text: finalContent })
         }
 
@@ -742,7 +795,12 @@ export async function POST(req: NextRequest) {
               let prompt: string
               let negativePrompt: string
               if (referenceImageUrl) {
-                modelId = ATLAS_IMAGE_EDIT_MODEL_ID
+                // Explicit nudity edits use the less outfit-preserving WAN 2.5
+                // edit; clothed/spicy edits stay on the default. Both keep the
+                // reference face/tattoos.
+                modelId = explicit
+                  ? ATLAS_IMAGE_EDIT_EXPLICIT_MODEL_ID
+                  : ATLAS_IMAGE_EDIT_MODEL_ID
                 ;({ prompt, negativePrompt } = buildCharacterEditPrompt({
                   scene,
                   artStyle,
@@ -822,7 +880,7 @@ export async function POST(req: NextRequest) {
 
         // Strip any (possibly partial) directive from the salvaged text so a
         // raw [SEND_PHOTO marker never lands in a persisted message.
-        const salvaged = directiveFilter.finish().cleaned
+        const salvaged = stripActionAsterisks(directiveFilter.finish().cleaned)
         await payload.update({
           collection: 'messages',
           id: assistantMsgId,

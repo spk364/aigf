@@ -23,6 +23,16 @@ describe('isExplicitPhotoScene', () => {
     expect(isExplicitPhotoScene('topless on the bed')).toBe(true)
   })
 
+  it('flags Russian neuter/instrumental nudity forms (regression)', () => {
+    // "голое фото" (neuter) — the common phrasing that slipped past the old
+    // feminine-only голая/голую/голой list, leaving explicit requests undetected.
+    expect(isExplicitPhotoScene('пришли мне голое фото')).toBe(true)
+    expect(isExplicitPhotoScene('хочу видеть тебя голой')).toBe(true)
+    expect(isExplicitPhotoScene('сфоткайся голышом')).toBe(true)
+    expect(isExplicitPhotoScene('обнажённая на кровати')).toBe(true)
+    expect(isExplicitPhotoScene('разденься для меня')).toBe(true)
+  })
+
   it('does NOT flag clothed-sexy scenes (stay on the fast FLUX path)', () => {
     expect(isExplicitPhotoScene('lying on the bed, in lingerie, in the bedroom')).toBe(false)
     expect(isExplicitPhotoScene('in a swimsuit at the beach')).toBe(false)

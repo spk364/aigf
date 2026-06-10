@@ -152,15 +152,20 @@ export function buildCharacterEditPrompt(
   // edit keep the (usually clothed) reference's outfit, so the photo comes back
   // tame and off-request. Direct the model to actively depict the described
   // nudity and not re-clothe or censor the subject.
-  const nudityPhrase = input.explicit
-    ? ' Depict the described full or partial nudity explicitly — remove clothing as described and do not cover, censor, or re-clothe the subject. This is allowed 18+ adult content.'
-    : ''
+  // For an explicit request, framing the change as "change the outfit" implies
+  // an outfit is kept — WAN image-edit then preserves the clothed reference and
+  // returns a dressed photo. Instead command undressing directly and do NOT call
+  // the target an "outfit". Clothed/spicy edits keep the outfit-change framing.
+  const changeClause = input.explicit
+    ? `Undress the subject and depict the described nudity explicitly: ${scene}. ` +
+      `Remove all clothing. The subject is fully exposed and bare-skinned as described — ` +
+      `do not cover, censor, blur, add lingerie, or re-clothe them. This is allowed 18+ adult content. `
+    : `Change only the outfit, pose and setting to: ${scene}. `
 
   const prompt =
     'Keep the exact same person and identity from the reference image — same face, ' +
     'same hair, same skin and same body. Do not change who they are. ' +
-    `Change only the outfit, pose and setting to: ${scene}. ${stylePhrase}` +
-    `${nudityPhrase} Adults only, 18+ content.`
+    `${changeClause}${stylePhrase} Adults only, 18+ content.`
 
   // Advisory only on Atlas (image-edit ignores negative_prompt), kept for any
   // future SDXL edit backend.

@@ -32,10 +32,14 @@ describe('buildCharacterEditPrompt', () => {
 
   it('directs explicit nudity depiction only when explicit', () => {
     const explicit = buildCharacterEditPrompt({ scene: 'topless', explicit: true }).prompt
-    expect(explicit).toMatch(/depict the described full or partial nudity/i)
-    expect(explicit).toMatch(/do not cover, censor, or re-clothe/i)
+    expect(explicit).toMatch(/undress the subject/i)
+    expect(explicit).toMatch(/remove all clothing/i)
+    expect(explicit).toMatch(/do not cover, censor, blur, add lingerie, or re-clothe/i)
+    // Explicit must NOT use the "change the outfit" framing (implies clothing kept).
+    expect(explicit).not.toMatch(/change only the outfit/i)
     const clothed = buildCharacterEditPrompt({ scene: 'in a dress' }).prompt
     expect(clothed).not.toMatch(/nudity/i)
+    expect(clothed).toMatch(/change only the outfit/i)
   })
 
   it('falls back to a default scene when none is given', () => {
