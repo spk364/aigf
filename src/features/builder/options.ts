@@ -418,7 +418,7 @@ export const CHAT_STYLES: ChatStyleOption[] = [
     emoji: '🎭',
     gradient: ['#7a4f9c', '#160a26'],
     systemPromptDirective:
-      'Tone: immersive roleplay. Use *italics* for actions and gestures. Stay deeply in character. Reply length: 3–6 sentences with vivid sensory detail.',
+      'Tone: immersive roleplay. Stay deeply in character with vivid sensory detail. Weave actions and gestures into plain prose — never wrap them in asterisks. Reply length: 3–6 sentences.',
   },
   {
     value: 'creative',
