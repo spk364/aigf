@@ -110,7 +110,7 @@ describe('buildCharacterScenePrompt anime style hardening', () => {
     expect(prompt).not.toMatch(/2D anime illustration/i)
   })
 
-  it('prepends Pony score/rating tags for the Novita Pony anime path', () => {
+  it('prepends Pony score/rating tags for the anime Pony/Illustrious path', () => {
     const { prompt, negativePrompt } = buildCharacterScenePrompt({
       appearance: { appearancePrompt: 'anime girl, twin tails' },
       artStyle: 'anime',
@@ -123,5 +123,21 @@ describe('buildCharacterScenePrompt anime style hardening', () => {
     expect(negativePrompt).toMatch(/score_4/)
     // Pony uses its own tags, not the generic 2D natural-language assertion.
     expect(prompt).not.toMatch(/2D anime illustration/i)
+  })
+
+  it('uses realistic Pony tags (no source_anime) for the realistic Pony path', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: { subjectTokens: 'woman, brown hair, blue eyes' },
+      artStyle: 'realistic',
+      scene: 'topless, completely nude',
+      isPony: true,
+    })
+    expect(prompt).toMatch(/score_9, score_8_up, score_7_up, score_6_up/)
+    expect(prompt).toMatch(/rating_explicit/)
+    // source_anime would push a realistic Pony toward 2D — must NOT be present.
+    expect(prompt).not.toMatch(/source_anime/)
+    // Realistic still gets the natural-iris guard.
+    expect(prompt).toMatch(/natural realistic eye color/i)
+    expect(negativePrompt).toMatch(/score_4/)
   })
 })
