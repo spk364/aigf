@@ -46,14 +46,16 @@ export default async function LoginPage({ params, searchParams }: Props) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--color-bg)]">
+    <div className="flex min-h-dvh flex-col overflow-x-clip bg-[var(--color-bg)]">
       <SiteHeader locale={locale} />
 
       <main className="relative flex flex-1 items-center justify-center px-4 pb-10 pt-24">
-        {/* Subtle background glow */}
+        {/* Subtle background glow. overflow-hidden on the wrapper clips the
+            500px gradient so it can't spill past the viewport and create a
+            horizontal scroll on narrow screens. */}
         <div
           aria-hidden
-          className="pointer-events-none fixed inset-0 flex items-start justify-center"
+          className="pointer-events-none fixed inset-0 flex items-start justify-center overflow-hidden"
         >
           <div
             style={{

@@ -76,6 +76,10 @@ type Props = {
   /** Transparent full-body PNG shown as a standee pinned to the right edge of
       the chat, behind the messages. Omit to show no standee. */
   characterBackdropUrl?: string
+  /** Fallback when no backdrop standee exists: the character's first scene
+      photo (a regular non-cutout image). Used only as the blurred full-bleed
+      background — never as a hard standee, since it carries its own background. */
+  characterBackdropFallbackUrl?: string
   strings?: Partial<ChatStrings>
   /** Optional — when provided, the photo chip opens the outfit/pose/setting
       composer instead of sending a plain selfie. */
@@ -487,12 +491,18 @@ export function ChatInterface({
   characterName = 'Anna',
   characterPhotoUrl,
   characterBackdropUrl,
+  characterBackdropFallbackUrl,
   strings: stringsProp,
   photoComposer,
   paywall,
   gallery,
 }: Props) {
   const s = { ...defaultStrings, ...stringsProp }
+  // Image used for the blurred full-bleed background — shown on every screen,
+  // so the character is present on mobile too (where the right-edge standee has
+  // no room). Prefer the real backdrop, then the first scene photo, then the
+  // primary portrait.
+  const backdropSoftBgUrl = characterBackdropUrl ?? characterBackdropFallbackUrl ?? characterPhotoUrl
   const [messages, setMessages] = useState<Message[]>(initialMessages)
   const [input, setInput] = useState('')
   // Open state for the photo composer sheet (T1-3). Only used when the
@@ -1082,23 +1092,46 @@ export function ChatInterface({
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      {/* Backdrop: blurred character photo bleeds through the entire chat
-          at very low opacity for an immersive, in-her-room feel. */}
-      {characterPhotoUrl && (
+      {/* Ambient mood lighting. The chat root paints a solid bg (so messages
+          never bleed through a failed blur), which would otherwise kill the
+          app-wide ambient glow — so we re-introduce it here: an accent bloom up
+          top and a warmer one rising from the bottom where the standee stands,
+          giving an "in her room, softly lit" feel that matches the rest of the app. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          backgroundImage:
+            'radial-gradient(42rem 30rem at 50% -12%, rgba(192,116,255,0.12), transparent 62%), radial-gradient(38rem 26rem at 82% 115%, rgba(233,166,255,0.10), transparent 60%)',
+        }}
+      />
+
+      {/* Blurred character photo bleeds through the entire chat for an
+          immersive, in-her-room feel. Prefers the backdrop standee (then the
+          first scene photo, then the primary), so the character is present even
+          on mobile — where the right-edge standee below has no room. Slightly
+          stronger when it's a scene-photo fallback so a recognisable image still
+          reads through the blur. */}
+      {backdropSoftBgUrl && (
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={characterPhotoUrl}
+            src={backdropSoftBgUrl}
             alt=""
-            className="h-full w-full scale-110 object-cover opacity-[0.07] blur-2xl"
+            className={`h-full w-full scale-110 object-cover blur-2xl ${
+              characterBackdropUrl ? 'opacity-[0.08]' : 'opacity-[0.11]'
+            }`}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-bg)]/40 via-transparent to-[var(--color-bg)]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-bg)]/50 via-[var(--color-bg)]/20 to-[var(--color-bg)]" />
         </div>
       )}
 
       {/* Full-length character standee pinned to the right edge, behind the
           messages (z-0 < message list z-10). Transparent PNG, faded on its left
-          so it blends into the chat. Desktop only — no room on mobile. */}
+          so it blends into the chat. Desktop only — no room on mobile (mobile
+          gets the blurred full-bleed background above instead). Only a real
+          cutout backdrop renders here; the scene-photo fallback would show its
+          own rectangular background, so it stays in the blurred layer only. */}
       {characterBackdropUrl && (
         <div
           aria-hidden
@@ -1271,7 +1304,7 @@ export function ChatInterface({
                     aria-live="polite"
                     className="relative flex aspect-[3/4] w-[240px] items-center justify-center overflow-hidden rounded-3xl border border-white/5 bg-[var(--color-surface-2)]/90 shadow-lg backdrop-blur-sm sm:w-[260px]"
                   >
-                    <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--color-surface-2)] via-[var(--color-surface-3)] to-[var(--color-surface-2)]" />
+                    <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-[var(--color-surface-2)] via-[var(--color-elevated)] to-[var(--color-surface-2)]" />
                     <div className="relative flex flex-col items-center gap-2 text-xs text-[var(--color-text-muted)]">
                       <IconCamera />
                       <span>{s.imagePending}</span>
@@ -1288,10 +1321,10 @@ export function ChatInterface({
                   </div>
                 ) : (
                   <div
-                    className={`group relative max-w-[80%] px-4 py-2.5 text-[15px] leading-snug shadow-sm sm:max-w-[70%] ${
+                    className={`group relative max-w-[80%] px-4 py-2.5 text-[15px] leading-snug sm:max-w-[70%] ${
                       isUser
-                        ? 'rounded-3xl rounded-br-md bg-[var(--color-accent-strong)] text-[var(--color-bg)]'
-                        : 'rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 text-[var(--color-text)] backdrop-blur-sm'
+                        ? 'rounded-3xl rounded-br-md bg-[var(--color-accent-strong)] text-[var(--color-bg)] shadow-[0_6px_20px_-6px_rgba(192,116,255,0.45)]'
+                        : 'rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 text-[var(--color-text)] shadow-card backdrop-blur-sm'
                     }`}
                   >
                     <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{msg.content}</span>
@@ -1355,7 +1388,7 @@ export function ChatInterface({
                   size="sm"
                 />
               </div>
-              <div className="max-w-[80%] rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-2.5 text-[15px] leading-snug text-[var(--color-text)] shadow-sm backdrop-blur-sm sm:max-w-[70%]">
+              <div className="max-w-[80%] rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-2.5 text-[15px] leading-snug text-[var(--color-text)] shadow-card backdrop-blur-sm sm:max-w-[70%]">
                 <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{draft}</span>
               </div>
             </div>
@@ -1371,7 +1404,7 @@ export function ChatInterface({
                   size="sm"
                 />
               </div>
-              <div className="rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-3 text-[var(--color-text-muted)] shadow-sm backdrop-blur-sm">
+              <div className="rounded-3xl rounded-bl-md border border-white/5 bg-[var(--color-surface-2)]/90 px-4 py-3 text-[var(--color-text-muted)] shadow-card backdrop-blur-sm">
                 <TypingDots />
                 <span className="sr-only">
                   {characterName} {s.typing}
@@ -1497,7 +1530,7 @@ export function ChatInterface({
         onSubmit={handleSubmit}
         className="relative z-10 shrink-0 px-3 pb-3 pt-2 sm:px-4 sm:pb-4"
       >
-        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-full border border-white/10 bg-[var(--color-surface)]/95 p-1.5 shadow-lg shadow-black/20 backdrop-blur-md transition-all duration-200 focus-within:border-[var(--color-accent-strong)]/40 focus-within:ring-2 focus-within:ring-[var(--color-accent-strong)]/20">
+        <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-full border border-white/10 bg-[var(--color-surface)]/95 p-1.5 shadow-raised backdrop-blur-md transition-all duration-200 focus-within:border-[var(--color-accent-strong)]/40 focus-within:ring-2 focus-within:ring-[var(--color-accent-strong)]/20">
           <textarea
             ref={textareaRef}
             value={input}

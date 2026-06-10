@@ -37,7 +37,7 @@ export function HowItWorks() {
           <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-[var(--color-accent)]">
             How it works
           </p>
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-4xl">
+          <h2 className="font-display text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-4xl">
             Three steps to your AI relationship
           </h2>
         </div>

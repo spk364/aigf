@@ -9,11 +9,14 @@ import { removeBackground } from '@/shared/ai/fal'
 import { buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 
-// Admin-only: generate a chat "standee" candidate — a full-body, transparent
-// PNG of the character (in a revealing outfit / lingerie + heels, posing and
-// smiling) shown in the chat window. Pipeline:
-//   1. Atlas WAN 2.6 image-edit on the reference (identity-preserving) → full
-//      body, posing, on a plain background.
+// Admin-only: generate a chat "standee" candidate — a transparent PNG of the
+// character shown in the chat window. Modelled on competitor chat avatars: a
+// 3/4 (head-to-mid-thigh) crop, a revealing-but-styled look (lingerie under an
+// open blazer / shirt / robe), and a sultry, body-forward pose. The point is to
+// be seductive AND editorial — not plain naked (reads as a stiff mannequin) and
+// not fully-covered casual (reads as a boring catalog photo). Pipeline:
+//   1. Atlas WAN 2.6 image-edit on the reference (identity-preserving) → 3/4
+//      crop, posing, on a plain background.
 //   2. fal BiRefNet → cut the background out (transparent PNG).
 //   3. Persist to R2 as a character_backdrop asset. The first one auto-activates
 //      (sets chatBackdropUrl); later ones are candidates the admin picks from
@@ -22,6 +25,39 @@ import { persistGeneratedImage } from '@/features/media/persist-generated-image'
 const ATLAS_IMAGE_EDIT_MODEL_ID = 'alibaba/wan-2.6/image-edit'
 const POLL_INTERVAL_MS = 2500
 const POLL_DEADLINE_MS = 45_000
+
+// Seductive "standee" looks modelled on competitor chat avatars. The winning
+// formula there is NOT plain lingerie (which read as a naked, stiff mannequin)
+// nor fully-covered casual wear (which read as a boring catalog photo) — it is
+// revealing lingerie ALWAYS paired with a styled statement layer (an open
+// blazer, an unbuttoned shirt, a draped robe). Skin-forward but editorial.
+// Picked at random per generation so the admin's candidates vary.
+const BACKDROP_OUTFITS: string[] = [
+  'an open oversized blazer over a delicate black lace bralette, with a matching mini skirt and a thin belt',
+  'an oversized blazer worn open and slipping off both shoulders over delicate lingerie, with sheer panties',
+  'a delicate lace bra and a wet-look leather mini skirt with a gold statement belt',
+  'a silk robe draped loosely open over a matching lingerie set',
+  'a cropped knit sweater pulled off one shoulder over a lace bra, with a short skirt',
+  'an unbuttoned oversized white shirt over a lace bra and high-cut panties',
+  'a fitted bodysuit under an open denim jacket, with bare legs',
+  'a strappy bralette and a high-waisted leather mini skirt',
+]
+
+// Confident, sultry, body-forward poses — direct smoldering eye contact or a
+// warm inviting smile, with movement that flatters the figure (weight on one
+// hip, off-shoulder, a hand in the hair). Never a stiff face-on stance.
+const BACKDROP_POSES: string[] = [
+  'looking straight into the camera with a confident sultry gaze, one hand sliding through her hair, weight on one hip',
+  'slipping the jacket off one shoulder, chin slightly down, a warm inviting smile and direct eye contact',
+  'leaning back slightly with her hips pushed out, lips parted, a smoldering look at the camera',
+  'one hand on her hip and the other in her hair, glancing over her shoulder with a playful seductive smile',
+  'standing in a relaxed S-curve, head tilted, a soft alluring smile and half-lidded eyes on the camera',
+  'running both hands through her hair, back gently arched, confident and inviting',
+]
+
+function pick<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]!
+}
 
 function coerceRelId(v: string | number): string | number {
   if (typeof v === 'number') return v
@@ -75,15 +111,30 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       ? (character.artStyle as 'anime' | 'realistic')
       : undefined
 
-  // Full-body, posing, on a plain background (so the cutout is clean),
-  // conditioned on the reference for identity. Revealing outfit / lingerie +
-  // heels, an alluring pose and a smile — NOT nude (explicit:false).
+  // Seductive 3/4 standee on a plain background (so the cutout is clean),
+  // conditioned on the reference for identity. A revealing-but-styled outfit and
+  // a sultry, body-forward pose. Framed head-to-mid-thigh (NOT full height) so
+  // the figure fills the frame and reads close and flattering, like the
+  // competitor avatars. explicit:false keeps it lingerie-level, not nude. Outfit
+  // and pose are randomised so repeated generations give varied candidates.
+  const outfit = pick(BACKDROP_OUTFITS)
+  const pose = pick(BACKDROP_POSES)
+  // Style tail must match the character's art style. The realistic
+  // "editorial fashion PHOTOGRAPHY" phrasing pulls the image-edit model to
+  // photorealism even for anime references — so anime needs its own
+  // illustration-leaning tail (with explicit anti-photo disclaimers), or anime
+  // characters render as realistic.
+  const isAnime = artStyle === 'anime'
+  const styleTail = isAnime
+    ? 'detailed 2D anime illustration, cel-shaded, clean lineart, vibrant anime colors, ' +
+      'anime art style, NOT a photo, NOT photorealistic, NOT 3D render'
+    : 'glamour editorial fashion photography, flattering soft studio lighting, sharp focus, ' +
+      'high detail, photorealistic'
   const { prompt } = buildCharacterEditPrompt({
     scene:
-      'full body from head to toe, the entire body and the high-heeled shoes visible, ' +
-      'wearing sexy lingerie (or a skimpy revealing outfit) and high heels, ' +
-      'striking an alluring confident pose, smiling warmly at the camera, ' +
-      'plain flat light-grey studio background',
+      'a three-quarter shot framed from the top of the head down to mid-thigh, the figure ' +
+      `filling the frame, wearing ${outfit}, ${pose}, ${styleTail}, ` +
+      'alluring and seductive yet elegant, plain seamless white studio background',
     artStyle,
     explicit: false,
   })
@@ -91,7 +142,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   try {
     const handles = await submitAtlasImageJob({
       prompt,
-      imageSize: { width: 768, height: 1344 },
+      // 2:3 portrait — suits a head-to-mid-thigh 3/4 crop (a taller 4:7 frame
+      // pulls the model toward a small, distant full-body render instead).
+      imageSize: { width: 832, height: 1216 },
       numImages: 1,
       endpoint: ATLAS_IMAGE_EDIT_MODEL_ID,
       ipAdapterImageUrl: referenceImageUrl,

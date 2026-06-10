@@ -134,18 +134,26 @@ export function CharactersGrid({ locale, characters }: Props) {
           </p>
         </div>
       ) : (
-        <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
-          {filtered.map((c, i) => (
-            <li
-              key={c.id}
-              className="animate-fade-in-up"
-              // Cap the stagger so re-filtering doesn't feel sluggish on
-              // large result sets.
-              style={{ animationDelay: `${Math.min(i, 9) * 35}ms` }}
-            >
-              <CharacterTileCard character={c} locale={locale} />
-            </li>
-          ))}
+        <ul className="mt-5 grid grid-flow-row-dense grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5">
+          {filtered.map((c, i) => {
+            // Promote the first tile to a 2×2 spotlight (sm+) so the grid reads
+            // as a curated feed with a focal point instead of a uniform wall.
+            // Only when there are enough cards to fill around it.
+            const featured = i === 0 && filtered.length > 6
+            return (
+              <li
+                key={c.id}
+                className={
+                  'animate-fade-in-up' + (featured ? ' sm:col-span-2 sm:row-span-2' : '')
+                }
+                // Cap the stagger so re-filtering doesn't feel sluggish on
+                // large result sets.
+                style={{ animationDelay: `${Math.min(i, 9) * 35}ms` }}
+              >
+                <CharacterTileCard character={c} locale={locale} featured={featured} />
+              </li>
+            )
+          })}
         </ul>
       )}
     </section>
@@ -160,34 +168,57 @@ export function CharactersGrid({ locale, characters }: Props) {
 function CharacterTileCard({
   character,
   locale,
+  featured = false,
 }: {
   character: FeaturedCharacter
   locale: string
+  featured?: boolean
 }) {
   const c = character
 
   return (
     <Link
       href={`/${locale}/pick/${c.slug}`}
-      className="group relative block aspect-[3/4] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+      className={
+        'group relative block overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-glow ' +
+        // Featured fills the spanned 2×2 cell on sm+; falls back to the normal
+        // portrait ratio on mobile where it isn't spanned.
+        (featured ? 'aspect-[3/4] sm:aspect-auto sm:h-full' : 'aspect-[3/4]')
+      }
     >
       <CharacterCardMedia
         photoUrl={c.photoUrl}
         videoUrl={c.videoUrl}
         alt={c.name}
-        className="absolute inset-0 h-full w-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
       />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
+      {featured ? (
+        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-accent-strong)] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--color-bg)] shadow-sm">
+          ★ Featured
+        </span>
+      ) : null}
       <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
         Online
       </span>
-      <div className="absolute inset-x-0 bottom-0 p-3">
-        <p className="truncate text-sm font-bold text-white drop-shadow">
+      <div className={'absolute inset-x-0 bottom-0 ' + (featured ? 'p-4 sm:p-5' : 'p-3')}>
+        <p
+          className={
+            'truncate font-bold text-white drop-shadow ' +
+            (featured ? 'text-lg sm:text-2xl' : 'text-sm')
+          }
+        >
           {c.name}
           {c.age != null ? <span className="ml-1 font-medium text-white/70">{c.age}</span> : null}
         </p>
-        <p className="mt-0.5 truncate text-[11px] text-white/70">{c.archetype}</p>
+        <p
+          className={
+            'mt-0.5 truncate text-white/70 ' + (featured ? 'text-xs sm:text-sm' : 'text-[11px]')
+          }
+        >
+          {c.archetype}
+        </p>
       </div>
     </Link>
   )

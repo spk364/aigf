@@ -31,7 +31,7 @@ export function DiscoverStrip({ locale, characters }: Props) {
           <Link
             key={c.id}
             href={`/${locale}/chat/new?characterId=${c.id}`}
-            className="group relative block aspect-[3/4] w-40 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--color-accent-strong)]/50 hover:shadow-[0_18px_40px_-12px_rgba(192,116,255,0.4)] sm:w-48"
+            className="group relative block aspect-[3/4] w-40 shrink-0 overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-card transition-all duration-300 hover:-translate-y-1 hover:border-[var(--color-accent-strong)]/50 hover:shadow-glow sm:w-48"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img

@@ -20,6 +20,7 @@ import {
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 import { buildCharacterScenePrompt, buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
+import { buildOutputGuard } from '@/features/chat/language-guard'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
 import {
@@ -43,29 +44,6 @@ import { getAccountState } from '@/shared/auth/account-status'
 
 const LLM_MODEL = OPENROUTER_MODEL
 
-// Human-readable language names for the response-language directive below.
-const LANG_NAME: Record<string, string> = {
-  en: 'English',
-  ru: 'Russian (русский)',
-  es: 'Spanish (español)',
-}
-
-// The chat path never told the model which language to answer in, so DeepSeek
-// inferred it from the (sometimes multilingual) persona snapshot + history and
-// frequently drifted — e.g. answering in Spanish to an English/Russian user.
-// This directive anchors the reply to the conversation language AND tells the
-// model to mirror the user when they switch. Placed as its own high-salience
-// system message. (generate-greeting.ts already does the equivalent.)
-function languageDirective(convLanguage: string): string {
-  const name = LANG_NAME[convLanguage] ?? LANG_NAME.en!
-  return (
-    `LANGUAGE — this overrides any language used in your persona description: ` +
-    `Reply in the SAME language the user is writing in. This conversation's ` +
-    `default language is ${name}; use it unless the user's latest message is in ` +
-    `another language, in which case match that language exactly. Never answer ` +
-    `in a language the user did not use.`
-  )
-}
 // Atlas WAN image-edit — reference-conditioned generation used for chat photos
 // when the character has a reference/primary image, so the face and tattoos
 // stay consistent across photos. submitChatImageJob passes the source image
@@ -414,13 +392,13 @@ export async function POST(req: NextRequest) {
     content: snapshot?.systemPrompt ?? '',
   })
 
-  // Pin the reply language. Without this DeepSeek drifts to whatever language
-  // dominates the persona snapshot/history (often Spanish), ignoring the
-  // language the user actually writes in. See languageDirective().
-  openrouterMessages.push({
-    role: 'system',
-    content: languageDirective(convLanguage),
-  })
+  // Per-turn output guard, applied to EVERY conversation regardless of the
+  // (frozen) snapshot prompt. Fixes two observed model failures: replying in the
+  // wrong / a mixed language, and leaking out-of-character parenthetical notes
+  // (e.g. "(Note: maintaining 18+ context…)") into the user-visible reply. The
+  // language is named explicitly from the request locale (the language the user
+  // is chatting in) — far more reliable than asking the model to detect it.
+  openrouterMessages.push({ role: 'system', content: buildOutputGuard(locale) })
 
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
   // can answer naturally AND attach a photo in the same turn. Only advertised to
@@ -791,13 +769,22 @@ export async function POST(req: NextRequest) {
               //   B. No reference → text-to-image fallback: explicit → warm Atlas,
               //      clothed → fast FLUX. Identity is only as stable as the
               //      appearance description (face/tattoos still drift).
+              //
+              // Exception: anime + explicit always takes path B with a true anime
+              // NSFW checkpoint (WAI Illustrious). Atlas image-edit photoreal-izes
+              // anime references and renders nudity conservatively, so a reference
+              // here gave a realistic, clothed photo. We drop the reference for
+              // this case (face consistency yields to correct style + nudity).
+              const animeExplicit = (artStyle ?? 'realistic') === 'anime' && explicit
+              const conditionOnRef = !!referenceImageUrl && !animeExplicit
               let modelId: string
               let prompt: string
               let negativePrompt: string
-              if (referenceImageUrl) {
+              if (conditionOnRef) {
                 // Explicit nudity edits use the less outfit-preserving WAN 2.5
                 // edit; clothed/spicy edits stay on the default. Both keep the
-                // reference face/tattoos.
+                // reference face/tattoos. (anime+explicit never reaches here —
+                // conditionOnRef excludes it and takes the t2i path below.)
                 modelId = explicit
                   ? ATLAS_IMAGE_EDIT_EXPLICIT_MODEL_ID
                   : ATLAS_IMAGE_EDIT_MODEL_ID
@@ -827,7 +814,11 @@ export async function POST(req: NextRequest) {
                 negativePrompt,
                 modelId,
                 imageSize: shotImageSize(shot),
-                referenceImageUrl,
+                // Only condition on the reference when we actually took the
+                // image-edit/IP-Adapter path. For anime+explicit (text-to-image
+                // on the anime NSFW checkpoint) passing a ref would force fal's
+                // realistic IP-Adapter base and undo the style fix.
+                referenceImageUrl: conditionOnRef ? referenceImageUrl : null,
               })
 
               if (!submitResult.ok) {

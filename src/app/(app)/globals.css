@@ -1,12 +1,34 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-onest), system-ui, -apple-system, sans-serif;
+  /* Headlines use the same family at heavy weights + tight tracking, so the
+     type system reads as one cohesive voice rather than a serif/sans pairing. */
+  --font-display: var(--font-onest), system-ui, -apple-system, sans-serif;
 
-  --color-bg: #0b0a10;
-  --color-surface: #151320;
-  --color-surface-2: #1e1b2e;
-  --color-border: #2b2740;
+  /* Display type scale. Large sizes get tighter line-height + negative
+     tracking so headlines read as composed, premium blocks rather than loose
+     default text. Applies automatically wherever these sizes are used. */
+  --text-3xl--line-height: 1.15;
+  --text-3xl--letter-spacing: -0.02em;
+  --text-4xl--line-height: 1.1;
+  --text-4xl--letter-spacing: -0.022em;
+  --text-5xl--line-height: 1.05;
+  --text-5xl--letter-spacing: -0.025em;
+  --text-6xl--line-height: 1.03;
+  --text-6xl--letter-spacing: -0.028em;
+  --text-7xl--line-height: 1;
+  --text-7xl--letter-spacing: -0.03em;
+
+  /* Elevation ladder — widened lightness steps so surfaces visibly separate
+     from the background instead of melting into one dark plane. Stay deep and
+     violet-tinted to keep the premium/intimate mood. */
+  --color-bg: #0a0812;
+  --color-surface: #16131f;
+  --color-surface-2: #221d31;
+  --color-elevated: #2e2842;
+  --color-border: #322c48;
+  --color-border-strong: #443c60;
   --color-text: #f5f2ff;
   --color-text-muted: #a39cc2;
   --color-accent: #e9a6ff;
@@ -14,18 +36,50 @@
   --color-accent-soft: #3d2a4f;
   --color-danger: #ff7a8a;
   --color-success: #88e1a7;
+
+  /* Depth tokens. Shadows are near-black (the only thing that reads on a dark
+     UI); the glow is an accent-tinted ring+bloom for hover/CTA emphasis.
+     Tailwind v4 turns these into `shadow-card` / `shadow-raised` / `shadow-glow`. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -10px rgba(0, 0, 0, 0.55);
+  --shadow-raised: 0 6px 16px rgba(0, 0, 0, 0.5), 0 28px 64px -18px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 0 1px rgba(192, 116, 255, 0.3), 0 16px 44px -10px rgba(192, 116, 255, 0.5);
 }
 
 html,
 body {
   background: var(--color-bg);
   color: var(--color-text);
+  /* Belt-and-suspenders against stray horizontal overflow on mobile. `clip`
+     (not `hidden`) doesn't create a scroll container, so it never breaks
+     position: sticky. Fixed-position descendants still need their own clip. */
+  overflow-x: clip;
 }
 
 body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Ambient mood lighting: a couple of low-opacity accent radial blooms anchored
+     to the top corners, fixed so they read as light in the room rather than
+     scrolling with content. Keeps the dark UI from feeling flat/monotone. */
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(48rem 40rem at 12% -8%, rgba(192, 116, 255, 0.12), transparent 60%),
+    radial-gradient(42rem 36rem at 100% 2%, rgba(233, 166, 255, 0.08), transparent 58%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+/* Display headlines opt into the editorial serif via `font-display`. Balance
+   wrapping so multi-line titles break into even, intentional lines. */
+.font-display {
+  text-wrap: balance;
+  font-feature-settings: 'lnum' 1;
+}
+
+/* Comfortable, orphan-free body copy. */
+p {
+  text-wrap: pretty;
 }
 
 /* Motion primitives. Transform + opacity only so animations stay on the

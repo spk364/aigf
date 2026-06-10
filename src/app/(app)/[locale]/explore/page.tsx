@@ -89,7 +89,7 @@ export default async function ExplorePage({ params, searchParams }: Props) {
               <p className="text-xs font-semibold uppercase tracking-widest text-[var(--color-accent)]">
                 {t('eyebrow')}
               </p>
-              <h1 className="text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-5xl">
+              <h1 className="font-display text-3xl font-bold tracking-tight text-[var(--color-text)] sm:text-5xl">
                 {t('title')}
               </h1>
               <p className="max-w-2xl text-[var(--color-text-muted)]">{t('subtitle')}</p>

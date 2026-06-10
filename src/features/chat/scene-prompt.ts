@@ -20,6 +20,16 @@ const SAFETY_NEGATIVE =
 const BASE_NEGATIVE =
   'low quality, blurry, deformed, bad anatomy, extra limbs, watermark, text, signature'
 
+// Realistic chat scenes inherit the same acid-iris problem as the admin scene
+// route: the pinned Pony/Illustrious-class model (or an Atlas edit) oversaturates
+// eye color into a neon glow. Steer realistic photos back to a natural iris.
+// Anime keeps vivid eyes. The positive carries on every backend; the negative is
+// only honoured by SDXL (Atlas/FLUX drop negatives but keep the positive).
+const NATURAL_EYES_POSITIVE = 'natural realistic eye color, detailed natural iris'
+const NATURAL_EYES_NEGATIVE =
+  '(glowing eyes:1.3), (neon eyes:1.3), (oversaturated iris:1.2), unnatural eye color, ' +
+  'bright glowing eyes, (deformed iris:1.2), (deformed pupils:1.2)'
+
 export type SceneAppearance = {
   appearancePrompt?: string | null
   subjectTokens?: string | null
@@ -108,9 +118,13 @@ export function buildCharacterScenePrompt(
       .join(', ')
   }
 
-  const baseNegative = appearance?.negativePrompt
+  // Natural-iris guard for realistic scenes only (anime keeps vivid eyes).
+  if (!isAnime) prompt = `${prompt}, ${NATURAL_EYES_POSITIVE}`
+
+  let baseNegative = appearance?.negativePrompt
     ? `${appearance.negativePrompt}, ${SAFETY_NEGATIVE}`
     : `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}`
+  if (!isAnime) baseNegative = `${baseNegative}, ${NATURAL_EYES_NEGATIVE}`
   const negativePrompt = framing.negative ? `${baseNegative}, ${framing.negative}` : baseNegative
 
   return { prompt, negativePrompt }
@@ -146,7 +160,9 @@ export function buildCharacterEditPrompt(
   const scene = (input.scene ?? '').trim() || 'a natural selfie, looking at the camera'
   const stylePhrase = isAnime
     ? 'Keep the 2D anime art style, cel-shaded, clean lineart.'
-    : 'Keep it photorealistic with realistic skin texture and natural lighting.'
+    : 'Keep it photorealistic with realistic skin texture and natural lighting. ' +
+      'Keep the natural, true-to-reference eye color — a normal realistic iris, ' +
+      'not glowing, neon, or oversaturated.'
   // For an explicit request the scene already carries the nudity tokens ("…,
   // bottomless, no underwear"). A merely permissive "nudity is allowed" lets the
   // edit keep the (usually clothed) reference's outfit, so the photo comes back
