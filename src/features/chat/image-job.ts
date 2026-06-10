@@ -8,6 +8,7 @@ import {
   type ImageJobStatus,
 } from '@/shared/ai/fal'
 import { submitAtlasImageJob, fetchAtlasImageJobStatus } from '@/shared/ai/atlas'
+import { submitNovitaImageJob, fetchNovitaImageJobStatus } from '@/shared/ai/novita'
 import {
   DEFAULT_IMAGE_MODEL_ID,
   detectImageProvider,
@@ -51,7 +52,7 @@ type ChatImageGenerationMetadata = {
     modelName: string
     submittedAt: string
     // Which provider's poller finalizeChatImageJob must use.
-    provider?: 'fal' | 'atlas'
+    provider?: 'fal' | 'atlas' | 'novita'
   }
   prompt?: string
   negativePrompt?: string
@@ -125,7 +126,17 @@ export async function submitChatImageJob(
 
     let handles: Awaited<ReturnType<typeof submitImageJob>>
 
-    if (provider === 'atlas') {
+    if (provider === 'novita') {
+      // Novita is text-to-image only (warm Pony/Illustrious for anime NSFW).
+      // No reference conditioning — identity rests on the appearance prompt.
+      handles = await submitNovitaImageJob({
+        prompt: input.prompt,
+        negativePrompt: input.negativePrompt,
+        imageSize,
+        numImages: 1,
+        endpoint: modelId,
+      })
+    } else if (provider === 'atlas') {
       // Use the image-edit sibling when we can condition on a reference image
       // (keeps the character's identity); otherwise text-to-image. WAN 2.6
       // exposes both as `…/text-to-image` and `…/image-edit`.
@@ -339,9 +350,11 @@ export async function finalizeChatImageJob(
       startedAtMs: new Date(falJob.submittedAt).getTime(),
     }
     status =
-      falJob.provider === 'atlas'
-        ? await fetchAtlasImageJobStatus(pollArgs)
-        : await fetchImageJobStatus(pollArgs)
+      falJob.provider === 'novita'
+        ? await fetchNovitaImageJobStatus(pollArgs)
+        : falJob.provider === 'atlas'
+          ? await fetchAtlasImageJobStatus(pollArgs)
+          : await fetchImageJobStatus(pollArgs)
   } catch (pollErr) {
     const errMsg = pollErr instanceof Error ? pollErr.message : 'poll_failed'
     log.warn({ msg: 'chat.image.poll_error', provider: falJob.provider, err: errMsg })

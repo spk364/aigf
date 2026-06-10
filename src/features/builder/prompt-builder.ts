@@ -565,13 +565,18 @@ const DEFAULT_REALISTIC_ID = 'fal-ai/flux/dev'
 // no cold start). One model covers both art styles.
 const NSFW_STRONG_EXPLICIT_ID = 'alibaba/wan-2.6/text-to-image'
 
-// Anime NSFW: Atlas WAN photoreal-izes anime prompts and renders nudity
-// conservatively, so an anime character's explicit request used to come back as
-// a realistic, clothed photo. WAI NSFW Illustrious is a true SDXL anime
-// checkpoint with no platform filter — it renders anime-styled nudity correctly.
-// Trade-off: 2-3 min cold start on fal, but the chat image job's ~5 min budget
-// (IMAGE_JOB_TIMEOUT_MS) covers it. Routed through fal-ai/lora by the dispatcher.
-const NSFW_ANIME_EXPLICIT_ID = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
+// Anime NSFW: route to the always-warm Novita Pony V6 XL checkpoint. History of
+// what failed first:
+//   1. Atlas WAN t2i — warm but conservative: re-clothes / photoreal-izes anime
+//      nudity even with hardened anime tokens (reported: clothed anime photos).
+//   2. WAI Illustrious LoRA via fal-ai/lora — true anime nudity but cold-starts
+//      2-3 min and fal often can't grab a GPU, so the job times out.
+// Novita hosts Pony/Illustrious checkpoints always-warm with NSFW detection off,
+// so anime nudity renders correctly AND fast. Synthetic id (chat-only, not in
+// the shared catalogue) dispatched by the novita adapter; checkpoint overridable
+// via NOVITA_IMAGE_MODEL. buildCharacterScenePrompt adds Pony score tags when the
+// model isPony.
+const NSFW_ANIME_EXPLICIT_ID = 'novita/pony-v6-xl'
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS
   .filter((m) =>
@@ -603,9 +608,8 @@ export function pickModelIdForStyle(
   opts?: { explicit?: boolean },
 ): string {
   if (opts?.explicit) {
-    // Anime explicit needs an anime NSFW checkpoint, not the realistic-leaning
-    // Atlas WAN — otherwise an anime character gets a photoreal (and clothed)
-    // image. Realistic explicit stays on warm Atlas.
+    // Anime explicit → warm Novita Pony (true anime nudity). Realistic explicit
+    // → warm Atlas WAN t2i. Both avoid the cold fal LoRA that times out.
     return artStyle === 'anime' ? NSFW_ANIME_EXPLICIT_ID : NSFW_STRONG_EXPLICIT_ID
   }
   return artStyle === 'anime' ? DEFAULT_ANIME_ID : DEFAULT_REALISTIC_ID

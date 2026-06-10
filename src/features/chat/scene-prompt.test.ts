@@ -83,3 +83,45 @@ describe('buildCharacterScenePrompt natural eyes', () => {
     expect(negativePrompt).not.toMatch(/glowing eyes/i)
   })
 })
+
+describe('buildCharacterScenePrompt anime style hardening', () => {
+  // Anime + explicit is served by the warm Atlas WAN t2i (photoreal prior), so
+  // the prompt must hard-assert 2D anime and push photoreal into the negative —
+  // otherwise an "anime" nude comes back semi-realistic.
+  it('asserts 2D anime style and rejects photoreal for anime scenes', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: { appearancePrompt: 'anime girl, twin tails' },
+      artStyle: 'anime',
+      scene: 'topless, bare breasts',
+    })
+    expect(prompt).toMatch(/2D anime illustration/i)
+    expect(prompt).toMatch(/cel-shaded/i)
+    expect(prompt).toMatch(/NOT photorealistic/i)
+    expect(negativePrompt).toMatch(/\(photorealistic:1\.4\)/i)
+    expect(negativePrompt).toMatch(/semi-realistic/i)
+  })
+
+  it('does NOT add the anime style assertion to realistic scenes', () => {
+    const { prompt } = buildCharacterScenePrompt({
+      appearance: { subjectTokens: 'woman, brown hair' },
+      artStyle: 'realistic',
+      scene: 'topless',
+    })
+    expect(prompt).not.toMatch(/2D anime illustration/i)
+  })
+
+  it('prepends Pony score/rating tags for the Novita Pony anime path', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: { appearancePrompt: 'anime girl, twin tails' },
+      artStyle: 'anime',
+      scene: 'topless, bare breasts',
+      isPony: true,
+    })
+    expect(prompt).toMatch(/score_9, score_8_up, score_7_up, score_6_up/)
+    expect(prompt).toMatch(/rating_explicit/)
+    expect(prompt).toMatch(/source_anime/)
+    expect(negativePrompt).toMatch(/score_4/)
+    // Pony uses its own tags, not the generic 2D natural-language assertion.
+    expect(prompt).not.toMatch(/2D anime illustration/i)
+  })
+})

@@ -30,6 +30,28 @@ const NATURAL_EYES_NEGATIVE =
   '(glowing eyes:1.3), (neon eyes:1.3), (oversaturated iris:1.2), unnatural eye color, ' +
   'bright glowing eyes, (deformed iris:1.2), (deformed pupils:1.2)'
 
+// Anime + explicit nudity is served by the warm Atlas WAN t2i (the true-anime
+// LoRA cold-starts and times out). WAN's prior is photoreal, so without a strong
+// 2D assertion an "anime" character's nude photo comes back semi-realistic. These
+// tokens force the cel-shaded 2D look. The positive carries on every backend; the
+// negative is only honoured by SDXL fallbacks (Atlas/FLUX drop negatives).
+const ANIME_STYLE_POSITIVE =
+  '2D anime illustration, japanese anime art style, cel-shaded, flat color fill, ' +
+  'clean lineart, vibrant anime colors, drawn anime artwork, ' +
+  'NOT photorealistic, NOT 3D render, NOT a realistic photo, NOT live action'
+const ANIME_STYLE_NEGATIVE =
+  '(photorealistic:1.4), (3D render:1.4), (realistic photo:1.4), (photograph:1.3), ' +
+  '(live action:1.3), (CGI:1.2), (octane render:1.2), (semi-realistic:1.3)'
+
+// Pony Diffusion V6 XL (Novita, the warm anime-NSFW path) is score-tag trained:
+// without the score_* prefix and source/rating tags it renders washed-out, and
+// nudity is far less reliable. `rating_explicit` + `source_anime` unlock the
+// uncensored anime output. The negative drops the low-score buckets.
+const PONY_POSITIVE_PREFIX =
+  'score_9, score_8_up, score_7_up, score_6_up, source_anime, rating_explicit'
+const PONY_NEGATIVE =
+  'score_6, score_5, score_4, source_pony, source_furry, (worst quality:1.2), (low quality:1.2)'
+
 export type SceneAppearance = {
   appearancePrompt?: string | null
   subjectTokens?: string | null
@@ -45,6 +67,9 @@ export type BuildScenePromptInput = {
   /** True when the target model is FLUX — needs natural-language prompts and
       ignores negative prompts. */
   isFlux?: boolean
+  /** True when the target model is a Pony-family SDXL checkpoint (Novita anime
+      NSFW path) — prepends the score_* / rating_explicit tags it needs. */
+  isPony?: boolean
   /** Shot framing (selfie / full body / …). Defaults to classifying the scene
       text so callers that don't compute it still get sensible framing. */
   shot?: ShotType
@@ -88,7 +113,11 @@ export function buildCharacterScenePrompt(
       appearance?.appearancePrompt ||
       appearance?.subjectTokens ||
       'anime illustration, masterpiece, best quality, beautiful young woman, detailed'
-    prompt = [base, framing.positive, scene, safetyMarkers || ageMarkerPhrase]
+    // Pony (Novita) needs its score_*/rating tags up front to unlock clean,
+    // uncensored anime; non-Pony anime backends get the hard 2D-anime assertion
+    // so they don't drift photoreal.
+    const animeLead = input.isPony ? PONY_POSITIVE_PREFIX : ANIME_STYLE_POSITIVE
+    prompt = [animeLead, base, framing.positive, scene, safetyMarkers || ageMarkerPhrase]
       .filter(Boolean)
       .join(', ')
   } else if (scene && appearance?.subjectTokens) {
@@ -125,6 +154,7 @@ export function buildCharacterScenePrompt(
     ? `${appearance.negativePrompt}, ${SAFETY_NEGATIVE}`
     : `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}`
   if (!isAnime) baseNegative = `${baseNegative}, ${NATURAL_EYES_NEGATIVE}`
+  else baseNegative = `${baseNegative}, ${input.isPony ? PONY_NEGATIVE : ANIME_STYLE_NEGATIVE}`
   const negativePrompt = framing.negative ? `${baseNegative}, ${framing.negative}` : baseNegative
 
   return { prompt, negativePrompt }
