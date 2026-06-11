@@ -742,17 +742,18 @@ export async function POST(req: NextRequest) {
                 sceneAppearance = (snap.appearance as typeof sceneAppearance) ?? null
               }
 
-              // Scene = the model's [SEND_PHOTO: …] hint. The model often emits a
-              // bare [SEND_PHOTO] even when the user gave a detailed request, so
-              // when the directive carries no scene AND the user explicitly asked
-              // for a photo this turn, recover the scene from their message —
-              // otherwise their framing ("lying on the bed, in swimwear…") is lost
-              // and the photo defaults to a portrait. A model-initiated photo (no
-              // explicit request) keeps no scene: the user's message isn't a
-              // photo description.
+              // Scene resolution. When the USER explicitly asked for a photo and
+              // described it ("lying on the bed, in black stockings, no bra"), that
+              // description is authoritative — the model's [SEND_PHOTO: …] hint is a
+              // lossy paraphrase that routinely drops the pose/outfit, so taking the
+              // directive first collapsed every detailed request to a generic
+              // portrait (face + a sliver of chest) regardless of what was asked.
+              // So: user-described scene first, directive as the fallback (covers
+              // bare user requests and model-initiated photos, where the user's
+              // message isn't a photo description).
               const directiveScene = parsed.scene?.trim() ?? ''
-              const rawScene =
-                directiveScene || (explicitPhotoRequest ? sceneFromPhotoRequest(message) : '')
+              const userScene = explicitPhotoRequest ? sceneFromPhotoRequest(message) : ''
+              const rawScene = userScene || directiveScene
 
               const explicit = isExplicitPhotoScene(rawScene) || isExplicitPhotoScene(message)
               const shot = classifyShot(rawScene)

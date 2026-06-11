@@ -77,7 +77,11 @@ export function explicitNudityTokens(text: string | null | undefined): string {
   const t = (text ?? '').toLowerCase()
   const fullNude =
     /\b(?:fully|full|completely|totally)\s+(?:naked|nude)\b/.test(t) ||
-    /\b(?:naked|nude|nudes)\b/.test(t) ||
+    // Bare "naked/nude" means full nudity — UNLESS it's bound to a body part
+    // ("naked breast", "nude chest"), which is a topless cue, not a strip-it-all
+    // instruction. Without this exclusion "in stockings, naked breast" added
+    // "completely nude, no clothing" and the model dropped the stockings.
+    /\b(?:naked|nude|nudes)\b(?!\s*(?:breasts?|boobs?|tits?|chest|nipples?))/.test(t) ||
     /\bno\s+clothes\b/.test(t) ||
     /\bwithout\s+clothes\b/.test(t) ||
     /\bundress(?:ed)?\b/.test(t) ||
@@ -88,7 +92,7 @@ export function explicitNudityTokens(text: string | null | undefined): string {
   const topless =
     /\btopless\b/.test(t) ||
     /\bno\s+bra\b/.test(t) ||
-    /\b(?:bare|naked|exposed)\s+(?:tits|breasts|boobs|chest)\b/.test(t) ||
+    /\b(?:bare|naked|exposed)\s+(?:tits?|breasts?|boobs?|chest)\b/.test(t) ||
     /\bnipples?\b/.test(t) ||
     /сиськи|соски|без\s+лифчика|без\s+бюстг|tetas|pezones/.test(t)
   const bottomless =
