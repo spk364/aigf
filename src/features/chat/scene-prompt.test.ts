@@ -101,6 +101,27 @@ describe('buildCharacterScenePrompt anime style hardening', () => {
     expect(negativePrompt).toMatch(/semi-realistic/i)
   })
 
+  it('strips the baked-in "portrait" framing so a full-body request is not dragged to a headshot', () => {
+    // Stored appearancePrompts start with "RAW photo, portrait of <subject>" —
+    // that "portrait" overrode the requested full-body shot. It must be removed,
+    // and the requested framing must lead the prompt.
+    const { prompt } = buildCharacterScenePrompt({
+      appearance: {
+        appearancePrompt:
+          'RAW photo, portrait of a beautiful woman, blonde hair, looking at camera, photorealistic',
+      },
+      artStyle: 'realistic',
+      scene: 'lying on the bed, topless',
+      shot: 'full_body_wide',
+    })
+    expect(prompt).not.toMatch(/portrait/i)
+    expect(prompt).not.toMatch(/looking at camera/i)
+    // The requested full-body framing leads, ahead of the subject description.
+    expect(prompt.indexOf('full body')).toBeLessThan(prompt.indexOf('blonde hair'))
+    // Subject identity tokens survive the strip.
+    expect(prompt).toMatch(/blonde hair/)
+  })
+
   it('does NOT add the anime style assertion to realistic scenes', () => {
     const { prompt } = buildCharacterScenePrompt({
       appearance: { subjectTokens: 'woman, brown hair' },

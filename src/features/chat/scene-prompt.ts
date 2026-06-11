@@ -56,6 +56,27 @@ const PONY_PREFIX_REALISTIC =
 const PONY_NEGATIVE =
   'score_6, score_5, score_4, source_furry, source_cartoon, (worst quality:1.2), (low quality:1.2)'
 
+// Stored appearance prompts bake in the framing they were generated at — most
+// notably "portrait of <subject>" (see appearance-prompt.ts) plus head-and-
+// shoulders / close-up / looking-at-camera tokens. In a chat photo we want the
+// REQUESTED shot ("full body, lying on the bed") to win, but the baked "portrait"
+// sits at the front of the appearance text and SDXL/Atlas weight it heavily — so
+// a full-body request still came back as a face/headshot. Strip those composition
+// words from the appearance text so the chat's framing token is the only
+// composition directive. Subject/identity tokens (hair, eyes, body) are kept.
+const BAKED_FRAMING_RE =
+  /\b(?:portrait of|portrait|head[\s-]and[\s-]shoulders|head ?shot|close[\s-]?up|looking at (?:the )?camera|upper body|waist[\s-]?up|bust shot|selfie)\b/gi
+
+function stripBakedFraming(text: string | null | undefined): string {
+  if (!text) return ''
+  return text
+    .replace(BAKED_FRAMING_RE, '')
+    .replace(/\s*,(?:\s*,)+/g, ',')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s,]+|[\s,]+$/g, '')
+    .trim()
+}
+
 export type SceneAppearance = {
   appearancePrompt?: string | null
   subjectTokens?: string | null
@@ -113,15 +134,17 @@ export function buildCharacterScenePrompt(
     // Anime SDXL models (Illustrious / Pony) want the character's anime-styled
     // appearancePrompt (or danbooru-ish subjectTokens) — never "RAW photo /
     // photorealistic", which fights the model.
-    const base =
+    const base = stripBakedFraming(
       appearance?.appearancePrompt ||
-      appearance?.subjectTokens ||
-      'anime illustration, masterpiece, best quality, beautiful young woman, detailed'
+        appearance?.subjectTokens ||
+        'anime illustration, masterpiece, best quality, beautiful young woman, detailed',
+    )
     // Non-Pony anime backends get the hard 2D-anime assertion so they don't
     // drift photoreal. Pony skips it — its score/source_anime tags (prepended
-    // below) already enforce the anime style.
+    // below) already enforce the anime style. Framing + scene lead so the
+    // requested shot wins over the (de-framed) subject description.
     const animeLead = input.isPony ? '' : ANIME_STYLE_POSITIVE
-    prompt = [animeLead, base, framing.positive, scene, safetyMarkers || ageMarkerPhrase]
+    prompt = [animeLead, framing.positive, scene, base, safetyMarkers || ageMarkerPhrase]
       .filter(Boolean)
       .join(', ')
   } else if (scene && appearance?.subjectTokens) {
@@ -130,14 +153,16 @@ export function buildCharacterScenePrompt(
       'RAW photo',
       framing.positive,
       scene,
-      appearance.subjectTokens,
+      stripBakedFraming(appearance.subjectTokens),
       safetyMarkers,
       '8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3, photorealistic, realistic skin texture',
     ]
       .filter(Boolean)
       .join(', ')
   } else if (appearance?.appearancePrompt) {
-    prompt = [appearance.appearancePrompt, framing.positive, safetyMarkers, scene]
+    // Framing + scene lead; the de-framed appearance (its baked "portrait of …"
+    // removed) follows so it can't drag a full-body request back to a headshot.
+    prompt = ['RAW photo', framing.positive, scene, stripBakedFraming(appearance.appearancePrompt), safetyMarkers]
       .filter(Boolean)
       .join(', ')
   } else {
