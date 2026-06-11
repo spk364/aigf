@@ -29,7 +29,7 @@ import {
   photoSendCaption,
   resolveExplicitScene,
 } from '@/features/chat/photo-consistency'
-import { pickModelIdForStyle } from '@/features/builder/prompt-builder'
+import { pickModelIdForStyle, isPonyModelId } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
@@ -795,11 +795,10 @@ export async function POST(req: NextRequest) {
               } else {
                 modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
                 const isFluxModel = findImageModel(modelId)?.isFlux ?? false
-                // Anime+explicit resolves to the Novita Pony checkpoint (synthetic
-                // `novita/…` id, not in the catalogue) — flag it so the prompt
-                // builder prepends the Pony score tags it needs.
-                const isPonyModel =
-                  findImageModel(modelId)?.isPony ?? modelId.startsWith('novita/')
+                // Explicit resolves to a Pony/Illustrious checkpoint (fal warm
+                // endpoint or catalogue id) — flag it so the prompt builder
+                // prepends the score_*/rating_explicit tags Pony needs.
+                const isPonyModel = isPonyModelId(modelId)
                 ;({ prompt, negativePrompt } = buildCharacterScenePrompt({
                   appearance: sceneAppearance,
                   artStyle,

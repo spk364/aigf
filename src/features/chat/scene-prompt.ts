@@ -43,14 +43,18 @@ const ANIME_STYLE_NEGATIVE =
   '(photorealistic:1.4), (3D render:1.4), (realistic photo:1.4), (photograph:1.3), ' +
   '(live action:1.3), (CGI:1.2), (octane render:1.2), (semi-realistic:1.3)'
 
-// Pony Diffusion V6 XL (Novita, the warm anime-NSFW path) is score-tag trained:
-// without the score_* prefix and source/rating tags it renders washed-out, and
-// nudity is far less reliable. `rating_explicit` + `source_anime` unlock the
-// uncensored anime output. The negative drops the low-score buckets.
-const PONY_POSITIVE_PREFIX =
+// Pony/Illustrious SDXL checkpoints (the warm hard-NSFW path on fal — and the
+// Novita fallback) are score-tag trained: without the score_* prefix and
+// source/rating tags they render washed-out and nudity is unreliable.
+// `rating_explicit` unlocks uncensored output; `source_anime` is added only for
+// anime checkpoints (it would push a realistic Pony toward 2D). The negative
+// drops the low-score buckets.
+const PONY_PREFIX_ANIME =
   'score_9, score_8_up, score_7_up, score_6_up, source_anime, rating_explicit'
+const PONY_PREFIX_REALISTIC =
+  'score_9, score_8_up, score_7_up, score_6_up, rating_explicit, realistic, photorealistic'
 const PONY_NEGATIVE =
-  'score_6, score_5, score_4, source_pony, source_furry, (worst quality:1.2), (low quality:1.2)'
+  'score_6, score_5, score_4, source_furry, source_cartoon, (worst quality:1.2), (low quality:1.2)'
 
 export type SceneAppearance = {
   appearancePrompt?: string | null
@@ -113,10 +117,10 @@ export function buildCharacterScenePrompt(
       appearance?.appearancePrompt ||
       appearance?.subjectTokens ||
       'anime illustration, masterpiece, best quality, beautiful young woman, detailed'
-    // Pony (Novita) needs its score_*/rating tags up front to unlock clean,
-    // uncensored anime; non-Pony anime backends get the hard 2D-anime assertion
-    // so they don't drift photoreal.
-    const animeLead = input.isPony ? PONY_POSITIVE_PREFIX : ANIME_STYLE_POSITIVE
+    // Non-Pony anime backends get the hard 2D-anime assertion so they don't
+    // drift photoreal. Pony skips it — its score/source_anime tags (prepended
+    // below) already enforce the anime style.
+    const animeLead = input.isPony ? '' : ANIME_STYLE_POSITIVE
     prompt = [animeLead, base, framing.positive, scene, safetyMarkers || ageMarkerPhrase]
       .filter(Boolean)
       .join(', ')
@@ -150,11 +154,18 @@ export function buildCharacterScenePrompt(
   // Natural-iris guard for realistic scenes only (anime keeps vivid eyes).
   if (!isAnime) prompt = `${prompt}, ${NATURAL_EYES_POSITIVE}`
 
+  // Pony/Illustrious score+rating tags lead the prompt (style-aware: source_anime
+  // only for anime checkpoints). Prepended last so they sit at the very front.
+  if (input.isPony) {
+    prompt = `${isAnime ? PONY_PREFIX_ANIME : PONY_PREFIX_REALISTIC}, ${prompt}`
+  }
+
   let baseNegative = appearance?.negativePrompt
     ? `${appearance.negativePrompt}, ${SAFETY_NEGATIVE}`
     : `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}`
   if (!isAnime) baseNegative = `${baseNegative}, ${NATURAL_EYES_NEGATIVE}`
-  else baseNegative = `${baseNegative}, ${input.isPony ? PONY_NEGATIVE : ANIME_STYLE_NEGATIVE}`
+  else if (!input.isPony) baseNegative = `${baseNegative}, ${ANIME_STYLE_NEGATIVE}`
+  if (input.isPony) baseNegative = `${baseNegative}, ${PONY_NEGATIVE}`
   const negativePrompt = framing.negative ? `${baseNegative}, ${framing.negative}` : baseNegative
 
   return { prompt, negativePrompt }
