@@ -110,6 +110,13 @@ describe('explicitNudityTokens', () => {
     expect(explicitNudityTokens('topless, no bra')).toMatch(/topless, bare breasts/)
     expect(explicitNudityTokens('bottomless, no panties')).toMatch(/bottomless/)
   })
+  it('treats "naked breast" as topless, not full nudity (keeps a worn garment)', () => {
+    // "in black stockings, no bra, naked breast" → topless; must NOT emit
+    // "completely nude / no clothing", which would strip the stockings.
+    const out = explicitNudityTokens('in black stockings, no bra, naked breast')
+    expect(out).toMatch(/topless, bare breasts/)
+    expect(out).not.toMatch(/completely nude|no clothing/)
+  })
   it('returns empty for non-nude text', () => {
     expect(explicitNudityTokens('in a red dress on the bed')).toBe('')
   })
