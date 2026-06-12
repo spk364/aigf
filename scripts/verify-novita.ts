@@ -19,17 +19,26 @@ async function main() {
     console.error('NOVITA_API_KEY is not set — add it to .env.local first.')
     process.exit(1)
   }
-  const modelName = process.env.NOVITA_IMAGE_MODEL || DEFAULT_MODEL
+  // npm run verify:novita [realistic]
+  const style = process.argv[2] === 'realistic' ? 'realistic' : 'anime'
+  const modelName =
+    style === 'realistic'
+      ? process.env.NOVITA_REALISTIC_MODEL || DEFAULT_MODEL
+      : process.env.NOVITA_ANIME_MODEL || process.env.NOVITA_IMAGE_MODEL || DEFAULT_MODEL
+
+  const appearance =
+    style === 'realistic'
+      ? { subjectTokens: 'mixed race 28 year old woman, fair pale skin, auburn wavy hair, green eyes, slim body, medium breasts, wire-frame glasses' }
+      : { appearancePrompt: 'anime girl, long pink hair, twin tails, blue eyes, large breasts' }
 
   const { prompt, negativePrompt } = buildCharacterScenePrompt({
-    appearance: {
-      appearancePrompt: 'anime girl, long pink hair, twin tails, blue eyes, large breasts',
-    },
-    artStyle: 'anime',
+    appearance,
+    artStyle: style,
     scene: 'lying on a bed, topless, completely nude, bare breasts, bedroom, soft lighting',
     isPony: true,
     shot: 'full_body',
   })
+  console.log('STYLE  :', style)
 
   console.log('MODEL  :', modelName)
   console.log('PROMPT :', prompt, '\n')

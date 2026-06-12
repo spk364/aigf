@@ -39,7 +39,13 @@ const NOVITA_BASE = 'https://api.novita.ai/v3'
 // Override the checkpoint without a code change via NOVITA_IMAGE_MODEL.
 const PONY_V6_XL_DEFAULT = 'ponyDiffusionV6XL_v6StartWithThisOne_228616.safetensors'
 const NOVITA_MODEL_NAMES: Record<string, string> = {
-  'novita/pony-v6-xl': process.env.NOVITA_IMAGE_MODEL || PONY_V6_XL_DEFAULT,
+  // Anime NSFW — Pony V6 XL with source_anime tags renders cel-shaded anime.
+  'novita/pony-v6-xl':
+    process.env.NOVITA_ANIME_MODEL || process.env.NOVITA_IMAGE_MODEL || PONY_V6_XL_DEFAULT,
+  // Realistic NSFW — defaults to Pony V6 XL (semi-realistic with the realistic
+  // score tags). For best photorealism set NOVITA_REALISTIC_MODEL to a
+  // realism-tuned Novita checkpoint sd_name (e.g. a CyberRealistic Pony merge).
+  'novita/realistic': process.env.NOVITA_REALISTIC_MODEL || PONY_V6_XL_DEFAULT,
 }
 
 export function isNovitaModelId(id: string | undefined | null): boolean {

@@ -555,36 +555,35 @@ const DEFAULT_ANIME_ID = 'fal-ai/flux/schnell'
 // trip FLUX's lighter classifier.
 const DEFAULT_REALISTIC_ID = 'fal-ai/flux/dev'
 
-// Hard-NSFW explicit checkpoints. Only Pony/Illustrious SDXL checkpoints render
-// uncensored nudity AND honour the described identity. Atlas WAN t2i was the
-// realistic default but proved unreliable on BOTH counts — verified live on
-// character #37 ("mixed race, auburn hair, green eyes"): WAN returned a clothed,
-// Asian-looking woman, while CyberRealistic Pony returned a full-body realistic
-// nude matching the description. So both styles now default to a fal Pony/
-// Illustrious checkpoint. These run COLD via fal-ai/lora (~60-120 s, sometimes
-// times out), so for instant results deploy them as a WARM fal endpoint
-// (min_concurrency / dedicated) and point the env vars at that endpoint id:
-//   FAL_NSFW_ANIME_ENDPOINT      → anime nudity (default: WAI NSFW Illustrious)
-//   FAL_NSFW_REALISTIC_ENDPOINT  → realistic nudity (default: CyberRealistic Pony)
-// buildCharacterScenePrompt adds the Pony score tags. A timed-out cold start
-// auto-refunds the user's tokens (see finalizeChatImageJob).
-const FAL_ANIME_NSFW_DEFAULT = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
-const FAL_REALISTIC_NSFW_DEFAULT = 'John6666/cyberrealistic-pony-v110-sdxl'
+// Hard-NSFW explicit routing. Only Pony/Illustrious SDXL checkpoints render
+// uncensored nudity AND honour the described identity (Atlas WAN returned clothed
+// + wrong ethnicity; FLUX/RealVis black-frame nudity). On fal those checkpoints
+// only run COLD via fal-ai/lora and routinely time out, so the warm path is
+// Novita (managed always-warm Pony, NSFW detection off) — that's the default.
+//
+// Resolution priority per style:
+//   1. FAL_NSFW_*_ENDPOINT — a WARM fal endpoint the operator deployed (fastest,
+//      uses their fal credits). Set this to switch off Novita.
+//   2. Novita synthetic id — warm out of the box, dispatched by the novita adapter.
+// buildCharacterScenePrompt adds the Pony score tags (style-aware). A timed-out
+// generation auto-refunds the user's tokens (see finalizeChatImageJob).
+const NOVITA_ANIME_ID = 'novita/pony-v6-xl'
+const NOVITA_REALISTIC_ID = 'novita/realistic'
 
 function animeExplicitModelId(): string {
-  return process.env.FAL_NSFW_ANIME_ENDPOINT || FAL_ANIME_NSFW_DEFAULT
+  return process.env.FAL_NSFW_ANIME_ENDPOINT || NOVITA_ANIME_ID
 }
 function realisticExplicitModelId(): string {
-  return process.env.FAL_NSFW_REALISTIC_ENDPOINT || FAL_REALISTIC_NSFW_DEFAULT
+  return process.env.FAL_NSFW_REALISTIC_ENDPOINT || NOVITA_REALISTIC_ID
 }
 
 // True when a resolved model is a Pony/Illustrious checkpoint and therefore needs
-// the score_* / rating_explicit prompt tags. Catalogue ids (incl. the fal NSFW
-// defaults) are flagged via findImageModel; a custom warm fal endpoint set via
-// the FAL_NSFW_* envs is Pony/Illustrious by definition. Atlas WAN (the realistic
-// fallback) is deliberately NOT matched here.
+// the score_* / rating_explicit prompt tags: catalogue Pony ids, every Novita id
+// (Novita serves Pony/Illustrious), and a custom warm fal endpoint set via the
+// FAL_NSFW_* envs. Atlas WAN is deliberately NOT matched.
 export function isPonyModelId(modelId: string): boolean {
   if (findImageModel(modelId)?.isPony) return true
+  if (modelId.startsWith('novita/')) return true
   const animeEp = process.env.FAL_NSFW_ANIME_ENDPOINT
   const realEp = process.env.FAL_NSFW_REALISTIC_ENDPOINT
   return (!!animeEp && modelId === animeEp) || (!!realEp && modelId === realEp)
