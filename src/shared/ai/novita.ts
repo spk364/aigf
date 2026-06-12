@@ -38,15 +38,16 @@ const NOVITA_BASE = 'https://api.novita.ai/v3'
 // "sd_name"). Kept here rather than in the shared image-models catalogue so an
 // admin can't pick a Novita id the admin generate-image route doesn't dispatch.
 // Override the checkpoint without a code change via NOVITA_IMAGE_MODEL.
-const PONY_V6_XL_DEFAULT = 'ponyDiffusionV6XL_v6StartWithThisOne_228616.safetensors'
+// Anime NSFW → Nova Anime XL (Illustrious SDXL): soft, modern, flat 2D anime —
+// chosen over Pony V6 XL (which renders 2.5D/semi-realistic with hard outlines).
+// SDXL, so it uses the Pony score tags + SDXL resolution.
+const NOVITA_ANIME_DEFAULT = 'novaAnimeXL_xlV10_341799.safetensors'
+// Realistic NSFW → EpicPhotoGasm (SD1.5 photoreal): true photorealism, unlike
+// Pony's painterly look. SD1.5, so it uses NO score tags + SD1.5 resolution.
+const NOVITA_REALISTIC_DEFAULT = 'epicphotogasm_x_131265.safetensors'
 const NOVITA_MODEL_NAMES: Record<string, string> = {
-  // Anime NSFW — Pony V6 XL with source_anime tags renders cel-shaded anime.
-  'novita/pony-v6-xl':
-    process.env.NOVITA_ANIME_MODEL || process.env.NOVITA_IMAGE_MODEL || PONY_V6_XL_DEFAULT,
-  // Realistic NSFW — defaults to Pony V6 XL (semi-realistic with the realistic
-  // score tags). For best photorealism set NOVITA_REALISTIC_MODEL to a
-  // realism-tuned Novita checkpoint sd_name (e.g. a CyberRealistic Pony merge).
-  'novita/realistic': process.env.NOVITA_REALISTIC_MODEL || PONY_V6_XL_DEFAULT,
+  'novita/anime': process.env.NOVITA_ANIME_MODEL || process.env.NOVITA_IMAGE_MODEL || NOVITA_ANIME_DEFAULT,
+  'novita/realistic': process.env.NOVITA_REALISTIC_MODEL || NOVITA_REALISTIC_DEFAULT,
 }
 
 export function isNovitaModelId(id: string | undefined | null): boolean {
@@ -57,7 +58,7 @@ function resolveNovitaModelName(endpoint?: string): string {
   if (endpoint && NOVITA_MODEL_NAMES[endpoint]) return NOVITA_MODEL_NAMES[endpoint]!
   // Allow passing a raw checkpoint filename straight through.
   if (endpoint && endpoint.endsWith('.safetensors')) return endpoint
-  return NOVITA_MODEL_NAMES['novita/pony-v6-xl']!
+  return NOVITA_MODEL_NAMES['novita/anime']!
 }
 
 function authHeader(): { Authorization: string } {
@@ -129,7 +130,7 @@ export async function submitNovitaImageJob(
   const url = taskResultUrl(id)
   return {
     requestId: id,
-    endpoint: input.endpoint ?? 'novita/pony-v6-xl',
+    endpoint: input.endpoint ?? 'novita/anime',
     modelName,
     statusUrl: url,
     responseUrl: url,

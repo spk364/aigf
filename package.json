@@ -25,6 +25,8 @@
     "merge:conversations": "tsx --env-file-if-exists=.env.local scripts/merge-duplicate-conversations.ts",
     "verify:novita": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/verify-novita.ts",
     "verify:fal-nsfw": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/verify-fal-nsfw.ts",
+    "compare:realistic": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/compare-realistic-models.ts",
+    "compare:anime": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/compare-anime-models.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
