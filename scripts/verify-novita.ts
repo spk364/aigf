@@ -11,7 +11,7 @@
 import { buildCharacterScenePrompt } from '../src/features/chat/scene-prompt'
 
 const NOVITA_BASE = 'https://api.novita.ai/v3'
-const DEFAULT_MODEL = 'ponyDiffusionV6XL_v6StartWithThisOne_228616.safetensors'
+const DEFAULT_MODEL = 'novaAnimeXL_xlV10_341799.safetensors'
 
 async function main() {
   const key = process.env.NOVITA_API_KEY
@@ -20,27 +20,28 @@ async function main() {
     process.exit(1)
   }
   // npm run verify:novita [realistic]
+  // anime → Nova Anime XL (SDXL, Pony tags, 832x1216); realistic → EpicPhotoGasm
+  // (SD1.5 photoreal, no Pony tags, 512x768).
   const style = process.argv[2] === 'realistic' ? 'realistic' : 'anime'
-  const modelName =
-    style === 'realistic'
-      ? process.env.NOVITA_REALISTIC_MODEL || DEFAULT_MODEL
-      : process.env.NOVITA_ANIME_MODEL || process.env.NOVITA_IMAGE_MODEL || DEFAULT_MODEL
+  const isRealistic = style === 'realistic'
+  const modelName = isRealistic
+    ? process.env.NOVITA_REALISTIC_MODEL || 'epicphotogasm_x_131265.safetensors'
+    : process.env.NOVITA_ANIME_MODEL || process.env.NOVITA_IMAGE_MODEL || DEFAULT_MODEL
 
-  const appearance =
-    style === 'realistic'
-      ? { subjectTokens: 'mixed race 28 year old woman, fair pale skin, auburn wavy hair, green eyes, slim body, medium breasts, wire-frame glasses' }
-      : { appearancePrompt: 'anime girl, long pink hair, twin tails, blue eyes, large breasts' }
+  const appearance = isRealistic
+    ? { subjectTokens: 'mixed race 28 year old woman, fair pale skin, auburn wavy hair, green eyes, slim body, medium breasts' }
+    : { appearancePrompt: 'anime girl, long pink hair, twin tails, blue eyes, large breasts' }
 
   const { prompt, negativePrompt } = buildCharacterScenePrompt({
     appearance,
     artStyle: style,
-    scene: 'lying on a bed, topless, completely nude, bare breasts, bedroom, soft lighting',
-    isPony: true,
+    scene: 'lying on a bed, topless, completely nude, bare breasts, legs spread, bedroom, soft lighting',
+    isPony: !isRealistic, // SD1.5 photoreal must NOT get Pony score tags
+    explicit: true,
     shot: 'full_body',
   })
-  console.log('STYLE  :', style)
-
-  console.log('MODEL  :', modelName)
+  const size = isRealistic ? { width: 512, height: 768 } : { width: 832, height: 1216 }
+  console.log('STYLE  :', style, '| MODEL:', modelName, '| size:', `${size.width}x${size.height}`)
   console.log('PROMPT :', prompt, '\n')
 
   const submitRes = await fetch(`${NOVITA_BASE}/async/txt2img`, {
@@ -52,8 +53,8 @@ async function main() {
         model_name: modelName,
         prompt,
         negative_prompt: negativePrompt,
-        width: 832,
-        height: 1216,
+        width: size.width,
+        height: size.height,
         image_num: 1,
         steps: 28,
         seed: -1,

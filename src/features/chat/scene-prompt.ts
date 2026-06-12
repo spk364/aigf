@@ -57,6 +57,21 @@ const PONY_PREFIX_REALISTIC =
 const PONY_NEGATIVE =
   'score_6, score_5, score_4, source_furry, source_cartoon, (worst quality:1.2), (low quality:1.2)'
 
+// Anti-duplicate-limb negative. SD1.5 photoreal models especially duplicate
+// anatomy (extra arms/legs) on full-body shots; harmless on SDXL. Applied to
+// every scene's negative.
+const ANATOMY_NEGATIVE =
+  '(extra arms:1.4), (extra legs:1.4), (extra hands:1.4), (extra limbs:1.4), ' +
+  '(missing limbs:1.3), (fused limbs:1.3), (mutated hands:1.3), (malformed limbs:1.3), ' +
+  '(too many fingers:1.3), (duplicate:1.3), (conjoined:1.3)'
+
+// Anime hentai checkpoints render featureless / censored ("doll-like") genitals
+// unless explicitly told to render them uncensored + detailed. Applied to
+// explicit anime scenes only.
+const ANIME_UNCENSORED_POSITIVE = 'uncensored, detailed pussy, anatomically correct'
+const ANIME_UNCENSORED_NEGATIVE =
+  '(censored:1.4), (mosaic censoring:1.4), (bar censor:1.4), (doll:1.3), (featureless crotch:1.3)'
+
 // Stored appearance prompts bake in the framing they were generated at — most
 // notably "portrait of <subject>" (see appearance-prompt.ts) plus head-and-
 // shoulders / close-up / looking-at-camera tokens. In a chat photo we want the
@@ -96,6 +111,9 @@ export type BuildScenePromptInput = {
   /** True when the target model is a Pony-family SDXL checkpoint (Novita anime
       NSFW path) — prepends the score_* / rating_explicit tags it needs. */
   isPony?: boolean
+  /** True for explicit-nudity scenes — adds uncensored/detailed-anatomy tokens
+      (anime) so genitals aren't rendered featureless/censored. */
+  explicit?: boolean
   /** Shot framing (selfie / full body / …). Defaults to classifying the scene
       text so callers that don't compute it still get sensible framing. */
   shot?: ShotType
@@ -146,7 +164,10 @@ export function buildCharacterScenePrompt(
     // "1girl, solo" pull it back to flat anime and prevent stray extra
     // characters. Framing + scene lead so the requested shot wins over the
     // (de-framed) subject description.
-    prompt = ['1girl, solo', ANIME_STYLE_POSITIVE, framing.positive, scene, base, safetyMarkers || ageMarkerPhrase]
+    // Explicit anime needs the uncensored/detailed-anatomy cue or the genitals
+    // render featureless ("doll-like").
+    const uncensored = input.explicit ? ANIME_UNCENSORED_POSITIVE : ''
+    prompt = ['1girl, solo', uncensored, ANIME_STYLE_POSITIVE, framing.positive, scene, base, safetyMarkers || ageMarkerPhrase]
       .filter(Boolean)
       .join(', ')
   } else if (scene && appearance?.subjectTokens) {
@@ -194,6 +215,9 @@ export function buildCharacterScenePrompt(
   // All anime (incl. Pony) gets the anti-3D/anti-photoreal negative so it stays flat.
   else baseNegative = `${baseNegative}, ${ANIME_STYLE_NEGATIVE}`
   if (input.isPony) baseNegative = `${baseNegative}, ${PONY_NEGATIVE}`
+  // Anti-duplicate-limb on every scene; anti-censor/anti-doll on explicit anime.
+  baseNegative = `${baseNegative}, ${ANATOMY_NEGATIVE}`
+  if (isAnime && input.explicit) baseNegative = `${baseNegative}, ${ANIME_UNCENSORED_NEGATIVE}`
   const negativePrompt = framing.negative ? `${baseNegative}, ${framing.negative}` : baseNegative
 
   return { prompt, negativePrompt }

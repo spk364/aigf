@@ -70,8 +70,22 @@ const SHOT_PRESET: Record<ShotType, string> = {
   full_body_wide: 'landscape_3_2',
 }
 
-/** The {width, height} bucket that physically fits the given shot's framing. */
-export function shotImageSize(shot: ShotType): { width: number; height: number } {
+// SD1.5 checkpoints are trained at ~512x768 and duplicate anatomy (extra limbs,
+// two heads) at SDXL resolutions. These native-ish buckets keep SD1.5 photoreal
+// models clean. SDXL models keep the larger SHOT_PRESET buckets above.
+const SHOT_SIZE_SD15: Record<ShotType, { width: number; height: number }> = {
+  selfie: { width: 512, height: 768 },
+  closeup: { width: 512, height: 768 },
+  portrait: { width: 512, height: 768 },
+  half_body: { width: 512, height: 768 },
+  full_body: { width: 512, height: 768 },
+  full_body_wide: { width: 768, height: 512 },
+}
+
+/** The {width, height} bucket that physically fits the given shot's framing.
+ *  Pass `{ sd15: true }` for SD1.5 checkpoints to get their native-res bucket. */
+export function shotImageSize(shot: ShotType, opts?: { sd15?: boolean }): { width: number; height: number } {
+  if (opts?.sd15) return SHOT_SIZE_SD15[shot]
   return resolveImageSize(SHOT_PRESET[shot])
 }
 

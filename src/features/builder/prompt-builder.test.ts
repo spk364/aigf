@@ -1,14 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { pickModelIdForStyle, isPonyModelId } from './prompt-builder'
+import { pickModelIdForStyle, isPonyModelId, isSd15ModelId } from './prompt-builder'
 
 describe('pickModelIdForStyle', () => {
-  it('routes explicit to the warm Novita Pony by default (both styles)', () => {
-    // Novita is warm out of the box; fal Pony/Illustrious cold-start and time out.
-    expect(pickModelIdForStyle('anime', { explicit: true })).toBe('novita/pony-v6-xl')
+  it('routes explicit by style: anime → novita/anime (SDXL), realistic → novita/realistic (SD1.5)', () => {
+    expect(pickModelIdForStyle('anime', { explicit: true })).toBe('novita/anime')
     expect(pickModelIdForStyle('realistic', { explicit: true })).toBe('novita/realistic')
-    // Novita ids are Pony → get the score tags.
-    expect(isPonyModelId('novita/pony-v6-xl')).toBe(true)
-    expect(isPonyModelId('novita/realistic')).toBe(true)
+    // Anime (Nova Anime XL = Illustrious SDXL) uses Pony score tags; realistic
+    // (EpicPhotoGasm = SD1.5 photoreal) must NOT (score tags = garbage on SD1.5).
+    expect(isPonyModelId('novita/anime')).toBe(true)
+    expect(isPonyModelId('novita/realistic')).toBe(false)
+    // SD1.5 flag drives the smaller resolution bucket.
+    expect(isSd15ModelId('novita/realistic')).toBe(true)
+    expect(isSd15ModelId('novita/anime')).toBe(false)
   })
 
   it('a warm fal endpoint (FAL_NSFW_*) overrides Novita', () => {

@@ -565,9 +565,13 @@ const DEFAULT_REALISTIC_ID = 'fal-ai/flux/dev'
 //   1. FAL_NSFW_*_ENDPOINT — a WARM fal endpoint the operator deployed (fastest,
 //      uses their fal credits). Set this to switch off Novita.
 //   2. Novita synthetic id — warm out of the box, dispatched by the novita adapter.
-// buildCharacterScenePrompt adds the Pony score tags (style-aware). A timed-out
+// buildCharacterScenePrompt adds the right tags per family. A timed-out
 // generation auto-refunds the user's tokens (see finalizeChatImageJob).
-const NOVITA_ANIME_ID = 'novita/pony-v6-xl'
+//
+// Two Novita families, dispatched by the novita adapter:
+//   novita/anime     → Nova Anime XL (Illustrious SDXL): Pony score tags + SDXL res.
+//   novita/realistic → EpicPhotoGasm (SD1.5 photoreal): NO score tags + SD1.5 res.
+const NOVITA_ANIME_ID = 'novita/anime'
 const NOVITA_REALISTIC_ID = 'novita/realistic'
 
 function animeExplicitModelId(): string {
@@ -577,16 +581,24 @@ function realisticExplicitModelId(): string {
   return process.env.FAL_NSFW_REALISTIC_ENDPOINT || NOVITA_REALISTIC_ID
 }
 
-// True when a resolved model is a Pony/Illustrious checkpoint and therefore needs
-// the score_* / rating_explicit prompt tags: catalogue Pony ids, every Novita id
-// (Novita serves Pony/Illustrious), and a custom warm fal endpoint set via the
-// FAL_NSFW_* envs. Atlas WAN is deliberately NOT matched.
+// True when a resolved model is a Pony/Illustrious SDXL checkpoint and therefore
+// needs the score_* / rating_explicit tags: catalogue Pony ids, the Novita ANIME
+// id (Nova Anime XL = Illustrious SDXL), and a custom warm fal endpoint. The
+// Novita REALISTIC id (EpicPhotoGasm = SD1.5 photoreal) and Atlas WAN are NOT
+// Pony — SD1.5 photoreal models render garbage from score tags.
 export function isPonyModelId(modelId: string): boolean {
   if (findImageModel(modelId)?.isPony) return true
-  if (modelId.startsWith('novita/')) return true
+  if (modelId === NOVITA_ANIME_ID) return true
   const animeEp = process.env.FAL_NSFW_ANIME_ENDPOINT
   const realEp = process.env.FAL_NSFW_REALISTIC_ENDPOINT
   return (!!animeEp && modelId === animeEp) || (!!realEp && modelId === realEp)
+}
+
+// True when a resolved model is an SD1.5 checkpoint — it needs a smaller (SD1.5-
+// native) resolution, or it duplicates limbs at SDXL sizes. Only the Novita
+// realistic photoreal default (EpicPhotoGasm) is SD1.5 today.
+export function isSd15ModelId(modelId: string): boolean {
+  return modelId === NOVITA_REALISTIC_ID && !process.env.FAL_NSFW_REALISTIC_ENDPOINT
 }
 
 export const IMAGE_MODELS: ModelOption[] = IMAGE_MODEL_OPTIONS

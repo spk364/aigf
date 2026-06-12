@@ -29,7 +29,7 @@ import {
   photoSendCaption,
   resolveExplicitScene,
 } from '@/features/chat/photo-consistency'
-import { pickModelIdForStyle, isPonyModelId } from '@/features/builder/prompt-builder'
+import { pickModelIdForStyle, isPonyModelId, isSd15ModelId } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
 import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
@@ -806,6 +806,7 @@ export async function POST(req: NextRequest) {
                   scene,
                   isFlux: isFluxModel,
                   isPony: isPonyModel,
+                  explicit,
                   shot,
                 }))
               }
@@ -818,7 +819,10 @@ export async function POST(req: NextRequest) {
                 prompt,
                 negativePrompt,
                 modelId,
-                imageSize: shotImageSize(shot),
+                // SD1.5 photoreal checkpoints (Novita realistic) need their
+                // native-res bucket or they duplicate limbs; SDXL/edit keep the
+                // large bucket.
+                imageSize: shotImageSize(shot, { sd15: isSd15ModelId(modelId) }),
                 // Only condition on the reference when we actually took the
                 // image-edit path (clothed/spicy). Explicit nudity runs pure
                 // text-to-image on the NSFW-strong checkpoint — passing a ref
