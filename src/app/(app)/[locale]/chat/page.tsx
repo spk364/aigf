@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { requireCompleteProfile } from '@/shared/auth/require-complete-profile'
+import { sortAndDedupeConversations } from '@/features/chat/conversation-list'
 import Link from 'next/link'
 
 type Props = {
@@ -102,11 +103,22 @@ export default async function ChatPage({ params }: Props) {
       ],
     },
     sort: '-lastMessageAt',
-    limit: 20,
+    // Over-fetch (NULL-lastMessageAt threads sort first in Postgres); re-sort +
+    // dedupe in JS below.
+    limit: 40,
   })
 
+  // Restore true recency order (lastMessageAt ?? createdAt) and collapse legacy
+  // duplicate threads per character down to one entry, then cap the display.
+  const conversations = sortAndDedupeConversations(conversationsResult.docs, (conv) => {
+    const cid = conv.characterId
+    if (typeof cid === 'string' || typeof cid === 'number') return String(cid)
+    if (cid && typeof cid === 'object' && 'id' in cid) return String((cid as { id: string | number }).id)
+    return null
+  }).slice(0, 20)
+
   const conversationCharacterIds = new Set<string>()
-  for (const conv of conversationsResult.docs) {
+  for (const conv of conversations) {
     const cid = conv.characterId
     if (typeof cid === 'string' || typeof cid === 'number') {
       conversationCharacterIds.add(String(cid))
@@ -164,13 +176,13 @@ export default async function ChatPage({ params }: Props) {
         </div>
 
         {/* Mobile-only: conversations list. Desktop has the sidebar instead. */}
-        {conversationsResult.docs.length > 0 && (
+        {conversations.length > 0 && (
           <section className="mb-10 md:hidden">
             <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">
               {t('yourConversations')}
             </h2>
             <div className="flex flex-col gap-2">
-              {conversationsResult.docs.map((conv, idx) => {
+              {conversations.map((conv, idx) => {
                 const snapshot = conv.characterSnapshot as { name?: string } | null
                 const name = snapshot?.name ?? 'Conversation'
                 const cid = conv.characterId

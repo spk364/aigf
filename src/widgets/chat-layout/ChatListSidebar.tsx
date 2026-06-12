@@ -4,6 +4,7 @@ import config from '@payload-config'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { getTranslations } from 'next-intl/server'
 import { ConversationLink, type ChatListItem } from './ConversationLink'
+import { sortAndDedupeConversations } from '@/features/chat/conversation-list'
 
 type Props = {
   locale: string
@@ -46,12 +47,21 @@ export async function ChatListSidebar({ locale }: Props) {
       ],
     },
     sort: '-lastMessageAt',
-    limit: 30,
+    // Over-fetch: the DB sort puts NULL-lastMessageAt threads first (Postgres
+    // NULLS FIRST), so a few genuinely-recent threads can sit past position 30.
+    // We re-sort + dedupe in JS below, then the list still shows ~30.
+    limit: 50,
   })
+
+  // Restore true recency order (lastMessageAt ?? createdAt) and collapse any
+  // legacy duplicate threads per character down to one entry.
+  const conversations = sortAndDedupeConversations(conversationsResult.docs, (conv) =>
+    extractCharacterId(conv.characterId),
+  )
 
   // Batch-load primary images for character avatars in one query.
   const characterIds = new Set<string>()
-  for (const conv of conversationsResult.docs) {
+  for (const conv of conversations) {
     const id = extractCharacterId(conv.characterId)
     if (id) characterIds.add(id)
   }
@@ -75,7 +85,7 @@ export async function ChatListSidebar({ locale }: Props) {
     }
   }
 
-  const items: ChatListItem[] = conversationsResult.docs.map((conv) => {
+  const items: ChatListItem[] = conversations.map((conv) => {
     const snapshot = conv.characterSnapshot as { name?: string } | null
     const charId = extractCharacterId(conv.characterId)
     return {
