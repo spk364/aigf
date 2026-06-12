@@ -22,21 +22,27 @@ import { buildCharacterScenePrompt, type SceneAppearance } from '../src/features
 import { capPrompt } from '../src/shared/ai/novita-prompt'
 
 // Photoreal NSFW checkpoints available on Novita (sd_name → label). All SD1.5,
-// so a landscape size near their native bucket avoids the duplicate-body artifact
-// SD1.5 shows at full SDXL resolution.
+// txt2img-capable (inpainting variants like PornMaster / RealisticVision-v40 are
+// excluded — they can't do txt2img).
 const MODELS: Array<{ label: string; sd_name: string }> = [
   { label: 'EpicPhotoGasm-xPlusPlus', sd_name: 'epicphotogasm_xPlusPlus_135412.safetensors' },
   { label: 'EpicPhotoGasm-x', sd_name: 'epicphotogasm_x_131265.safetensors' },
-  { label: 'PornMasterPro-v5', sd_name: 'pornmasterPro_fullV5-inpainting_135217.safetensors' },
   { label: 'EpicRealism-pureEvoV5', sd_name: 'epicrealism_pureEvolutionV5_97793.safetensors' },
   { label: 'EpicRealism-naturalSin', sd_name: 'epicrealism_naturalSinRC1VAE_106430.safetensors' },
   { label: 'RealisticVision-v51', sd_name: 'realisticVisionV51_v51VAE_94301.safetensors' },
-  { label: 'RealisticVision-v40', sd_name: 'realisticVisionV40_v40VAE-inpainting_81543.safetensors' },
   { label: 'MajicMixRealistic-v7', sd_name: 'majicmixRealistic_v7_134792.safetensors' },
 ]
 
-const WIDTH = 912
-const HEIGHT = 624
+// SD1.5-native landscape (these models duplicate limbs at large/SDXL resolutions).
+// Keeps anatomy clean; portrait shots would use 512x768.
+const WIDTH = 768
+const HEIGHT = 512
+
+// Strong anti-extra-limb negative, prepended to the character's own negative.
+const ANATOMY_NEGATIVE =
+  '(extra arms:1.4), (extra legs:1.4), (extra hands:1.4), (extra limbs:1.4), ' +
+  '(missing limbs:1.3), (fused limbs:1.3), (mutated hands:1.3), (malformed limbs:1.3), ' +
+  '(too many fingers:1.3), (duplicate:1.3), (conjoined:1.3), bad anatomy, deformed'
 
 const MESSAGE =
   'Send me a photo of you lying on the bed, relaxed, in the bedroom, fully naked, legs wide spread'
@@ -138,8 +144,9 @@ async function main() {
   console.log(`prompt: ${prompt.slice(0, 160)}…\n`)
   console.log(`saving to: ${outDir}\n`)
 
+  const fullNegative = `${ANATOMY_NEGATIVE}, ${negativePrompt}`
   for (const m of MODELS) {
-    const res = await gen(m.sd_name, prompt, negativePrompt, seed, key)
+    const res = await gen(m.sd_name, prompt, fullNegative, seed, key)
     if (res.url) {
       const buf = Buffer.from(await (await fetch(res.url)).arrayBuffer())
       const file = join(outDir, `${m.label}.jpg`)
