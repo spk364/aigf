@@ -2,25 +2,21 @@ import { describe, it, expect } from 'vitest'
 import { pickModelIdForStyle, isPonyModelId } from './prompt-builder'
 
 describe('pickModelIdForStyle', () => {
-  it('routes explicit to fal Pony/Illustrious: anime → Illustrious, realistic → CyberRealistic Pony', () => {
-    // Only Pony/Illustrious render uncensored nudity AND honour the described
-    // identity (Atlas WAN returned clothed/wrong-ethnicity). Both default to a
-    // fal checkpoint; override per style via FAL_NSFW_*_ENDPOINT (warm endpoint).
-    expect(pickModelIdForStyle('anime', { explicit: true })).toBe(
-      'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl',
-    )
-    expect(pickModelIdForStyle('realistic', { explicit: true })).toBe(
-      'John6666/cyberrealistic-pony-v110-sdxl',
-    )
+  it('routes explicit to the warm Novita Pony by default (both styles)', () => {
+    // Novita is warm out of the box; fal Pony/Illustrious cold-start and time out.
+    expect(pickModelIdForStyle('anime', { explicit: true })).toBe('novita/pony-v6-xl')
+    expect(pickModelIdForStyle('realistic', { explicit: true })).toBe('novita/realistic')
+    // Novita ids are Pony → get the score tags.
+    expect(isPonyModelId('novita/pony-v6-xl')).toBe(true)
+    expect(isPonyModelId('novita/realistic')).toBe(true)
   })
 
-  it('honours the FAL_NSFW_* env overrides (warm endpoints)', () => {
+  it('a warm fal endpoint (FAL_NSFW_*) overrides Novita', () => {
     const prev = { ...process.env }
     process.env.FAL_NSFW_ANIME_ENDPOINT = 'fal-ai/my-warm-illustrious'
     process.env.FAL_NSFW_REALISTIC_ENDPOINT = 'fal-ai/my-warm-pony'
     expect(pickModelIdForStyle('anime', { explicit: true })).toBe('fal-ai/my-warm-illustrious')
     expect(pickModelIdForStyle('realistic', { explicit: true })).toBe('fal-ai/my-warm-pony')
-    // A custom warm endpoint is treated as Pony so the score tags get added.
     expect(isPonyModelId('fal-ai/my-warm-illustrious')).toBe(true)
     expect(isPonyModelId('fal-ai/my-warm-pony')).toBe(true)
     process.env.FAL_NSFW_ANIME_ENDPOINT = prev.FAL_NSFW_ANIME_ENDPOINT
