@@ -49,3 +49,6 @@ generated-images/
 
 # Playwright MCP
 .playwright-mcp/
+
+# Generated NSFW comparison images (compare:realistic)
+novita-compare/
