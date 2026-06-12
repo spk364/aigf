@@ -555,27 +555,19 @@ const DEFAULT_ANIME_ID = 'fal-ai/flux/schnell'
 // trip FLUX's lighter classifier.
 const DEFAULT_REALISTIC_ID = 'fal-ai/flux/dev'
 
-// NSFW-strong model for explicit-nudity scenes. The FLUX defaults above still
-// black-frame outright nudity (FLUX's classifier fires). Rather than fall back
-// to the Pony/Illustrious LoRAs — which return real nudity but cold-start 2-3
-// min on fal — route explicit to Atlas Cloud's WAN 2.6 text-to-image: it's the
-// admin's default model, has NO platform safety gate, renders both realistic
-// and anime well, and is always warm (verified live 2026-06-08: explicit
-// realistic + anime prompts both returned real non-black images in ~13-16 s,
-// no cold start). One model covers both art styles.
-const NSFW_STRONG_EXPLICIT_ID = 'alibaba/wan-2.6/text-to-image'
-
 // Hard-NSFW explicit checkpoints. Only Pony/Illustrious SDXL checkpoints render
-// uncensored nudity — fal's FLUX/RealVis black-frame it, and Atlas WAN re-clothes
-// anime. These run COLD via fal-ai/lora (2-3 min) and time out, so for instant
-// results deploy them as a WARM fal endpoint (min_concurrency / dedicated) and
-// point the env vars below at that endpoint id:
+// uncensored nudity AND honour the described identity. Atlas WAN t2i was the
+// realistic default but proved unreliable on BOTH counts — verified live on
+// character #37 ("mixed race, auburn hair, green eyes"): WAN returned a clothed,
+// Asian-looking woman, while CyberRealistic Pony returned a full-body realistic
+// nude matching the description. So both styles now default to a fal Pony/
+// Illustrious checkpoint. These run COLD via fal-ai/lora (~60-120 s, sometimes
+// times out), so for instant results deploy them as a WARM fal endpoint
+// (min_concurrency / dedicated) and point the env vars at that endpoint id:
 //   FAL_NSFW_ANIME_ENDPOINT      → anime nudity (default: WAI NSFW Illustrious)
-//   FAL_NSFW_REALISTIC_ENDPOINT  → realistic nudity (CyberRealistic Pony)
-// Realistic falls back to the always-warm Atlas WAN t2i (already fast) until a
-// warm fal Pony endpoint is configured, so realistic explicit never regresses.
-// Anime has no warm non-Pony option, so its default is the (cold-until-warmed)
-// Illustrious checkpoint. buildCharacterScenePrompt adds the Pony score tags.
+//   FAL_NSFW_REALISTIC_ENDPOINT  → realistic nudity (default: CyberRealistic Pony)
+// buildCharacterScenePrompt adds the Pony score tags. A timed-out cold start
+// auto-refunds the user's tokens (see finalizeChatImageJob).
 const FAL_ANIME_NSFW_DEFAULT = 'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl'
 const FAL_REALISTIC_NSFW_DEFAULT = 'John6666/cyberrealistic-pony-v110-sdxl'
 
@@ -583,9 +575,7 @@ function animeExplicitModelId(): string {
   return process.env.FAL_NSFW_ANIME_ENDPOINT || FAL_ANIME_NSFW_DEFAULT
 }
 function realisticExplicitModelId(): string {
-  // Atlas WAN by default (warm, renders realistic nudity); switch to a warm fal
-  // Pony only when FAL_NSFW_REALISTIC_ENDPOINT is set.
-  return process.env.FAL_NSFW_REALISTIC_ENDPOINT || NSFW_STRONG_EXPLICIT_ID
+  return process.env.FAL_NSFW_REALISTIC_ENDPOINT || FAL_REALISTIC_NSFW_DEFAULT
 }
 
 // True when a resolved model is a Pony/Illustrious checkpoint and therefore needs

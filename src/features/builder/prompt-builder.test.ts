@@ -2,14 +2,16 @@ import { describe, it, expect } from 'vitest'
 import { pickModelIdForStyle, isPonyModelId } from './prompt-builder'
 
 describe('pickModelIdForStyle', () => {
-  it('routes explicit to hard-NSFW checkpoints: anime → fal Illustrious, realistic → Atlas WAN default', () => {
-    // Only Pony/Illustrious render uncensored nudity. Anime defaults to the fal
-    // Illustrious checkpoint; realistic defaults to warm Atlas WAN until a warm
-    // fal Pony endpoint is configured (FAL_NSFW_REALISTIC_ENDPOINT).
+  it('routes explicit to fal Pony/Illustrious: anime → Illustrious, realistic → CyberRealistic Pony', () => {
+    // Only Pony/Illustrious render uncensored nudity AND honour the described
+    // identity (Atlas WAN returned clothed/wrong-ethnicity). Both default to a
+    // fal checkpoint; override per style via FAL_NSFW_*_ENDPOINT (warm endpoint).
     expect(pickModelIdForStyle('anime', { explicit: true })).toBe(
       'John6666/wai-nsfw-illustrious-sdxl-v150-sdxl',
     )
-    expect(pickModelIdForStyle('realistic', { explicit: true })).toBe('alibaba/wan-2.6/text-to-image')
+    expect(pickModelIdForStyle('realistic', { explicit: true })).toBe(
+      'John6666/cyberrealistic-pony-v110-sdxl',
+    )
   })
 
   it('honours the FAL_NSFW_* env overrides (warm endpoints)', () => {
