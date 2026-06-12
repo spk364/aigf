@@ -142,8 +142,11 @@ describe('buildCharacterScenePrompt anime style hardening', () => {
     expect(prompt).toMatch(/rating_explicit/)
     expect(prompt).toMatch(/source_anime/)
     expect(negativePrompt).toMatch(/score_4/)
-    // Pony uses its own tags, not the generic 2D natural-language assertion.
-    expect(prompt).not.toMatch(/2D anime illustration/i)
+    // Pony V6 XL is 2.5D by default, so anime ALSO gets the flat-2D assertion
+    // and the anti-3D negative + a solo guard.
+    expect(prompt).toMatch(/2D anime illustration/i)
+    expect(prompt).toMatch(/1girl, solo/)
+    expect(negativePrompt).toMatch(/3D render/i)
   })
 
   it('uses realistic Pony tags (no source_anime) for the realistic Pony path', () => {

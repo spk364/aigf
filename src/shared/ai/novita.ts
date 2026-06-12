@@ -30,6 +30,7 @@ import type {
   ImageJobHandles,
   ImageJobStatus,
 } from './fal'
+import { capPrompt } from './novita-prompt'
 
 const NOVITA_BASE = 'https://api.novita.ai/v3'
 
@@ -93,8 +94,8 @@ export async function submitNovitaImageJob(
     extra: { response_image_type: 'jpeg' },
     request: {
       model_name: modelName,
-      prompt: input.prompt,
-      negative_prompt: input.negativePrompt ?? '',
+      prompt: capPrompt(input.prompt),
+      negative_prompt: capPrompt(input.negativePrompt ?? ''),
       width,
       height,
       image_num: input.numImages ?? 1,
