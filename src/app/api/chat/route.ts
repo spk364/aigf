@@ -261,6 +261,10 @@ export async function POST(req: NextRequest) {
           },
           language: locale,
           status: 'active',
+          // Stamp at creation so the thread never carries a NULL lastMessageAt —
+          // Postgres sorts NULLS FIRST on `-lastMessageAt`, which floated
+          // freshly-created threads above genuinely-recent ones in the chat list.
+          lastMessageAt: new Date().toISOString(),
         },
       })
 

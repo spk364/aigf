@@ -12,6 +12,7 @@ import { PLANS } from '@/features/billing/plans'
 import { getActiveExitIntentPromo } from '@/features/promotions/exit-intent-promo'
 import { PHOTO_OPTION_GROUPS } from '@/features/chat/photo-options'
 import type { PhotoComposerStrings } from '@/widgets/chat-interface/PhotoComposer'
+import { ensureGreeting } from '@/features/chat/ensure-greeting'
 
 type Props = {
   params: Promise<{ locale: string; conversationId: string }>
@@ -33,22 +34,6 @@ export default async function ConversationPage({ params }: Props) {
 
   if (String(convUserId) !== String(user.id)) notFound()
 
-  const messagesResult = await payload.find({
-    collection: 'messages',
-    where: {
-      and: [
-        { conversationId: { equals: conversationId } },
-        { role: { in: ['user', 'assistant'] } },
-        { deletedAt: { exists: false } },
-      ],
-    },
-    // Most-recent 30, newest-first. Ascending 'createdAt' + limit:30 returned
-    // the OLDEST 30, so opening a long conversation showed ancient messages and
-    // hid everything recent. We re-sort to chronological for rendering below.
-    sort: '-createdAt',
-    limit: 30,
-  })
-
   const snapshot = conversation.characterSnapshot as { name?: string } | null
 
   // Look up the character's primary image so the chat header/avatars can
@@ -60,33 +45,72 @@ export default async function ConversationPage({ params }: Props) {
       ? (conversation.characterId as { id: string | number }).id
       : (conversation.characterId as string | number | undefined)
 
+  // Fetch the transcript and the character in parallel — they're independent,
+  // and the character drives the header photo, backdrop, AND the first-message
+  // greeting below.
+  const [messagesResult, character] = await Promise.all([
+    payload.find({
+      collection: 'messages',
+      where: {
+        and: [
+          { conversationId: { equals: conversationId } },
+          { role: { in: ['user', 'assistant'] } },
+          { deletedAt: { exists: false } },
+        ],
+      },
+      // Most-recent 30, newest-first. Ascending 'createdAt' + limit:30 returned
+      // the OLDEST 30, so opening a long conversation showed ancient messages and
+      // hid everything recent. We re-sort to chronological for rendering below.
+      sort: '-createdAt',
+      limit: 30,
+    }),
+    conversationCharacterId
+      ? payload
+          .findByID({
+            collection: 'characters',
+            id: conversationCharacterId,
+            depth: 1,
+            overrideAccess: true,
+          })
+          .catch(() => null)
+      : Promise.resolve(null),
+  ])
+
+  // Character speaks first. When the thread is empty — opened directly via
+  // /chat/[id] (chat list, "continue" cards, or a legacy duplicate) rather than
+  // through /chat/new — seed the greeting here so the chat is never silent. The
+  // helper re-checks emptiness, so this is a no-op once any message exists.
+  let seededGreeting: { id: string; content: string } | null = null
+  if (messagesResult.totalDocs === 0) {
+    seededGreeting = await ensureGreeting(payload, {
+      conversationId,
+      character,
+      fallbackName: snapshot?.name ?? 'Companion',
+      locale: locale as 'en' | 'ru' | 'es',
+    }).catch(() => null)
+  }
+
   let characterPhotoUrl: string | undefined
   let characterBackdropUrl: string | undefined
   let characterBackdropFallbackUrl: string | undefined
-  if (conversationCharacterId) {
-    try {
-      const character = await payload.findByID({
-        collection: 'characters',
-        id: conversationCharacterId,
-        depth: 1,
-        overrideAccess: true,
-      })
-      const primary = character?.primaryImageId as unknown
-      if (primary && typeof primary === 'object') {
-        const url = (primary as { publicUrl?: unknown }).publicUrl
-        if (typeof url === 'string' && url.length > 0) {
-          characterPhotoUrl = url
-        }
+  if (character) {
+    const primary = character.primaryImageId as unknown
+    if (primary && typeof primary === 'object') {
+      const url = (primary as { publicUrl?: unknown }).publicUrl
+      if (typeof url === 'string' && url.length > 0) {
+        characterPhotoUrl = url
       }
-      const backdrop = (character as { chatBackdropUrl?: unknown } | null)?.chatBackdropUrl
-      if (typeof backdrop === 'string' && backdrop.length > 0) {
-        characterBackdropUrl = backdrop
-      }
+    }
+    const backdrop = (character as { chatBackdropUrl?: unknown }).chatBackdropUrl
+    if (typeof backdrop === 'string' && backdrop.length > 0) {
+      characterBackdropUrl = backdrop
+    }
 
-      // No backdrop standee generated yet → fall back to the character's first
-      // scene photo (a regular gallery image). The chat renders it only as the
-      // blurred full-bleed background, so its own background is irrelevant.
-      if (!characterBackdropUrl) {
+    // No backdrop standee generated yet → fall back to the character's first
+    // scene photo (a regular gallery image). The chat renders it only as the
+    // blurred full-bleed background, so its own background is irrelevant.
+    if (!characterBackdropUrl && conversationCharacterId) {
+      try {
         const scenes = await payload.find({
           collection: 'media-assets',
           where: {
@@ -105,9 +129,9 @@ export default async function ConversationPage({ params }: Props) {
         if (typeof sceneUrl === 'string' && sceneUrl.length > 0) {
           characterBackdropFallbackUrl = sceneUrl
         }
+      } catch {
+        // ignore — backdrop is non-critical
       }
-    } catch {
-      // ignore — photo is non-critical
     }
   }
 
@@ -202,6 +226,16 @@ export default async function ConversationPage({ params }: Props) {
 
     return base
   })
+
+  // The transcript was empty and we just seeded the opening message — render it
+  // immediately (ensureGreeting wrote it after the messages query ran).
+  if (seededGreeting) {
+    initialMessages.push({
+      id: seededGreeting.id,
+      role: 'assistant',
+      content: seededGreeting.content,
+    })
+  }
 
   // ─── Paywall plumbing ───────────────────────────────────────────────────
   // Per-reason copy is resolved server-side: admin CMS row first, then bundled
