@@ -41,7 +41,8 @@ const ANIME_STYLE_POSITIVE =
   'NOT photorealistic, NOT 3D render, NOT a realistic photo, NOT live action'
 const ANIME_STYLE_NEGATIVE =
   '(photorealistic:1.4), (3D render:1.4), (realistic photo:1.4), (photograph:1.3), ' +
-  '(live action:1.3), (CGI:1.2), (octane render:1.2), (semi-realistic:1.3)'
+  '(live action:1.3), (CGI:1.2), (octane render:1.2), (semi-realistic:1.3), ' +
+  '(volumetric:1.2), (depth of field:1.1), 2girls, multiple girls'
 
 // Pony/Illustrious SDXL checkpoints (the warm hard-NSFW path on fal — and the
 // Novita fallback) are score-tag trained: without the score_* prefix and
@@ -139,12 +140,13 @@ export function buildCharacterScenePrompt(
         appearance?.subjectTokens ||
         'anime illustration, masterpiece, best quality, beautiful young woman, detailed',
     )
-    // Non-Pony anime backends get the hard 2D-anime assertion so they don't
-    // drift photoreal. Pony skips it — its score/source_anime tags (prepended
-    // below) already enforce the anime style. Framing + scene lead so the
-    // requested shot wins over the (de-framed) subject description.
-    const animeLead = input.isPony ? '' : ANIME_STYLE_POSITIVE
-    prompt = [animeLead, framing.positive, scene, base, safetyMarkers || ageMarkerPhrase]
+    // ALWAYS assert flat 2D anime — including on Pony. Pony V6 XL's prior is
+    // 2.5D / volumetric, so with only the score tags an "anime" character came
+    // back semi-realistic (reported). The cel-shaded / flat-color tokens plus
+    // "1girl, solo" pull it back to flat anime and prevent stray extra
+    // characters. Framing + scene lead so the requested shot wins over the
+    // (de-framed) subject description.
+    prompt = ['1girl, solo', ANIME_STYLE_POSITIVE, framing.positive, scene, base, safetyMarkers || ageMarkerPhrase]
       .filter(Boolean)
       .join(', ')
   } else if (scene && appearance?.subjectTokens) {
@@ -189,7 +191,8 @@ export function buildCharacterScenePrompt(
     ? `${appearance.negativePrompt}, ${SAFETY_NEGATIVE}`
     : `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}`
   if (!isAnime) baseNegative = `${baseNegative}, ${NATURAL_EYES_NEGATIVE}`
-  else if (!input.isPony) baseNegative = `${baseNegative}, ${ANIME_STYLE_NEGATIVE}`
+  // All anime (incl. Pony) gets the anti-3D/anti-photoreal negative so it stays flat.
+  else baseNegative = `${baseNegative}, ${ANIME_STYLE_NEGATIVE}`
   if (input.isPony) baseNegative = `${baseNegative}, ${PONY_NEGATIVE}`
   const negativePrompt = framing.negative ? `${baseNegative}, ${framing.negative}` : baseNegative
 
