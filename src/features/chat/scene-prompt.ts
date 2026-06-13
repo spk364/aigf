@@ -12,9 +12,15 @@
 import { getSafetyAdultMarkerString, type ArtStyleHint } from '@/shared/ai/age-safety'
 import { classifyShot, shotFramingTokens, type ShotType } from './shot-framing'
 
+// Apparent-age negative. Deliberately does NOT include "petite" or a bare
+// "small" — those are legitimate adult body descriptors that many characters are
+// built with (small breasts, petite frame), and negating them overrode the
+// character's own design (a petite, small-breasted character rendered busty).
+// The explicit minor tokens (child/teen/loli/underage/minor/childlike) + flat
+// chest + the positive adult markers carry the age safety.
 const SAFETY_NEGATIVE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
-  '(petite:1.2), (small:1.2), (flat chest:1.4), (underage:1.5), (minor:1.5), ' +
+  '(flat chest:1.4), (underage:1.5), (minor:1.5), ' +
   '(childlike features:1.5), deformed, low quality, multiple people, bad anatomy'
 
 const BASE_NEGATIVE =
@@ -171,21 +177,25 @@ export function buildCharacterScenePrompt(
       .filter(Boolean)
       .join(', ')
   } else if (scene && appearance?.subjectTokens) {
-    // Framing leads so SDXL weighs composition over the face-heavy subject tokens.
+    // Order: framing (composition) → identity → scene. Framing still leads so the
+    // requested shot wins, but the subject tokens come BEFORE the scene so the
+    // character's hair/eyes/body actually render (buried after the long scene, SD1.5
+    // under-weighted them and produced a generic person). "solo" blocks duplicate
+    // bodies/limbs.
     prompt = [
       'RAW photo',
+      'solo',
       framing.positive,
-      scene,
       stripBakedFraming(appearance.subjectTokens),
+      scene,
       safetyMarkers,
       '8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3, photorealistic, realistic skin texture',
     ]
       .filter(Boolean)
       .join(', ')
   } else if (appearance?.appearancePrompt) {
-    // Framing + scene lead; the de-framed appearance (its baked "portrait of …"
-    // removed) follows so it can't drag a full-body request back to a headshot.
-    prompt = ['RAW photo', framing.positive, scene, stripBakedFraming(appearance.appearancePrompt), safetyMarkers]
+    // Framing → identity → scene (see above); "solo" blocks duplicate bodies.
+    prompt = ['RAW photo', 'solo', framing.positive, stripBakedFraming(appearance.appearancePrompt), scene, safetyMarkers]
       .filter(Boolean)
       .join(', ')
   } else {
