@@ -42,9 +42,13 @@ const NOVITA_BASE = 'https://api.novita.ai/v3'
 // chosen over Pony V6 XL (which renders 2.5D/semi-realistic with hard outlines).
 // SDXL, so it uses the Pony score tags + SDXL resolution.
 const NOVITA_ANIME_DEFAULT = 'novaAnimeXL_xlV10_341799.safetensors'
-// Realistic NSFW → EpicPhotoGasm (SD1.5 photoreal): true photorealism, unlike
-// Pony's painterly look. SD1.5, so it uses NO score tags + SD1.5 resolution.
-const NOVITA_REALISTIC_DEFAULT = 'epicphotogasm_x_131265.safetensors'
+// Realistic NSFW → CyberRealistic Pony (SDXL photoreal). EpicPhotoGasm (SD1.5)
+// looked great in isolated 768x512 tests but in real chat (wide full-body +
+// spread legs) it DUPLICATED bodies/limbs and ignored the character's identity
+// tokens (rendered busty/dark-haired regardless). CyberRealistic Pony is SDXL:
+// no duplication at full res, far better identity adherence, still photoreal.
+// SDXL → Pony score tags + SDXL resolution (like the anime path).
+const NOVITA_REALISTIC_DEFAULT = 'cyberrealisticPony_v63_693581.safetensors'
 const NOVITA_MODEL_NAMES: Record<string, string> = {
   'novita/anime': process.env.NOVITA_ANIME_MODEL || process.env.NOVITA_IMAGE_MODEL || NOVITA_ANIME_DEFAULT,
   'novita/realistic': process.env.NOVITA_REALISTIC_MODEL || NOVITA_REALISTIC_DEFAULT,

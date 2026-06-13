@@ -2,15 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { pickModelIdForStyle, isPonyModelId, isSd15ModelId } from './prompt-builder'
 
 describe('pickModelIdForStyle', () => {
-  it('routes explicit by style: anime → novita/anime (SDXL), realistic → novita/realistic (SD1.5)', () => {
+  it('routes explicit by style to the Novita SDXL defaults (anime + realistic)', () => {
     expect(pickModelIdForStyle('anime', { explicit: true })).toBe('novita/anime')
     expect(pickModelIdForStyle('realistic', { explicit: true })).toBe('novita/realistic')
-    // Anime (Nova Anime XL = Illustrious SDXL) uses Pony score tags; realistic
-    // (EpicPhotoGasm = SD1.5 photoreal) must NOT (score tags = garbage on SD1.5).
+    // Both defaults are Pony/Illustrious SDXL → score tags + SDXL res.
     expect(isPonyModelId('novita/anime')).toBe(true)
-    expect(isPonyModelId('novita/realistic')).toBe(false)
-    // SD1.5 flag drives the smaller resolution bucket.
-    expect(isSd15ModelId('novita/realistic')).toBe(true)
+    expect(isPonyModelId('novita/realistic')).toBe(true)
+    expect(isSd15ModelId('novita/realistic')).toBe(false)
     expect(isSd15ModelId('novita/anime')).toBe(false)
   })
 
