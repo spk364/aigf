@@ -1,5 +1,11 @@
 import type { Payload } from 'payload'
-import { PERSONAS, buildSystemPrompt, type Persona, type Language } from './preset-personas'
+import {
+  PERSONAS,
+  buildSystemPrompt,
+  PRESET_PROMPT_VERSION,
+  type Persona,
+  type Language,
+} from './preset-personas'
 import { EXTRA_PERSONAS } from './preset-personas-extra'
 import { buildAppearanceFromParams } from '@/shared/ai/appearance-prompt'
 
@@ -35,6 +41,9 @@ function buildDocData(persona: Persona, language: Language) {
     tagline: variant.tagline,
     shortBio: variant.shortBio,
     systemPrompt: buildSystemPrompt(persona, language),
+    // Lets the chat route detect stale conversation snapshots and re-snapshot
+    // them, so prompt-template improvements reach existing threads on re-seed.
+    systemPromptVersion: PRESET_PROMPT_VERSION,
     communicationStyle: {
       formality: 'casual',
       messageLength: 'medium',

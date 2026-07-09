@@ -14,6 +14,7 @@ import { checkAssistantOutput } from '@/features/safety/output-filter'
 import { parsePhotoDirective } from '@/features/chat/photo-directive'
 import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 import { buildOutputGuard, resolveReplyLocale } from '@/features/chat/language-guard'
+import { buildStyleGuard } from '@/features/chat/style-guard'
 import { getAccountState } from '@/shared/auth/account-status'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
@@ -129,6 +130,10 @@ export async function POST(req: NextRequest) {
       resolveReplyLocale(lastUserContent, conversation.language as string | null | undefined),
     ),
   })
+
+  // Same per-turn tone guard as chat/route.ts — a regenerated reply must obey
+  // the same warmth floor and flirt-reciprocation rules as the original.
+  openrouterMessages.push({ role: 'system', content: buildStyleGuard() })
 
   if (conversation.summary) {
     openrouterMessages.push({

@@ -10,17 +10,20 @@ import { getDailyMessageCap, checkAndIncrementQuota } from '@/features/quota/mes
 import { getRequestContext } from '@/shared/lib/request-context'
 import { createLogger } from '@/shared/lib/logger'
 import { track } from '@/shared/analytics/posthog'
-import { detectImageIntent } from '@/features/chat/intent-detection'
+import { detectImageIntent, mentionsPhotoKeyword } from '@/features/chat/intent-detection'
 import { findExistingConversation } from '@/features/chat/find-existing-conversation'
 import {
   makeDirectiveStreamFilter,
   photoCapabilityInstructions,
+  photoUnavailableInstruction,
   explicitPhotoRequestInstruction,
 } from '@/features/chat/photo-directive'
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
 import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 import { buildCharacterScenePrompt, buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { buildOutputGuard, resolveReplyLocale } from '@/features/chat/language-guard'
+import { buildStyleGuard } from '@/features/chat/style-guard'
+import { shouldUpdateSummary, updateConversationSummary } from '@/features/chat/conversation-summary'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
 import {
@@ -367,16 +370,60 @@ export async function POST(req: NextRequest) {
     limit: 30,
   })
 
-  const snapshot = conversation.characterSnapshot as {
-    systemPrompt?: string
-    name?: string
-  } | null
-
-  // Retrieve top-5 relevant memories for this (user, character) pair.
   const convCharacterId =
     typeof conversation.characterId === 'object' && conversation.characterId !== null
       ? (conversation.characterId as { id: string | number }).id
       : conversation.characterId
+
+  // ── Snapshot refresh ────────────────────────────────────────────────────────
+  // Conversations freeze the character's system prompt at creation time, so
+  // every prompt improvement (chemistry, groundedness, photo rules) only ever
+  // reached NEW threads — long-running conversations were stuck with the prompt
+  // from months ago. When the live character carries a newer systemPromptVersion
+  // than the conversation's snapshot, re-snapshot it so existing threads pick up
+  // the current prompt. Deleted characters simply keep the frozen snapshot.
+  let snapshot = conversation.characterSnapshot as {
+    systemPrompt?: string
+    name?: string
+  } | null
+  try {
+    const liveChar = await payload.findByID({
+      collection: 'characters',
+      id: convCharacterId,
+      locale: convLanguage as 'en' | 'ru' | 'es',
+      depth: 0,
+      overrideAccess: true,
+    })
+    const liveVersion = (liveChar?.systemPromptVersion as number | null) ?? 1
+    const snapVersion = (conversation.snapshotVersion as number | null) ?? 1
+    if (
+      liveChar &&
+      !liveChar.deletedAt &&
+      liveVersion > snapVersion &&
+      typeof liveChar.systemPrompt === 'string' &&
+      liveChar.systemPrompt.length > 0
+    ) {
+      snapshot = {
+        ...(conversation.characterSnapshot as Record<string, unknown> | null),
+        systemPrompt: liveChar.systemPrompt,
+        name: (liveChar.name as string | undefined) ?? snapshot?.name,
+        personalityTraits: liveChar.personalityTraits ?? null,
+        backstory: liveChar.backstory ?? null,
+        appearance: liveChar.appearance ?? null,
+        imageModel: liveChar.imageModel ?? null,
+      } as typeof snapshot
+      await payload.update({
+        collection: 'conversations',
+        id: conversationId,
+        data: { characterSnapshot: snapshot, snapshotVersion: liveVersion },
+      })
+      log.info({ msg: 'chat.snapshot.refreshed', conversationId, from: snapVersion, to: liveVersion })
+    }
+  } catch {
+    // Character gone or lookup failed — keep the frozen snapshot.
+  }
+
+  // Retrieve top-5 relevant memories for this (user, character) pair.
 
   const memories = await retrieveMemories({
     payload,
@@ -405,12 +452,21 @@ export async function POST(req: NextRequest) {
     content: buildOutputGuard(resolveReplyLocale(message, locale)),
   })
 
+  // Per-turn tone guard (warmth floor, flirt reciprocation, consistency) — like
+  // the output guard, applied to EVERY conversation so it also reaches threads
+  // whose frozen snapshot predates these rules.
+  openrouterMessages.push({ role: 'system', content: buildStyleGuard() })
+
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
   // can answer naturally AND attach a photo in the same turn. Only advertised to
-  // users who have enough tokens — others never learn the marker, so they can't
-  // be promised a photo.
+  // users who have enough tokens. Ineligible users get the inverse instruction —
+  // without it the model knows nothing about photos and roleplays sending them
+  // in plain text ("here you go 😘"), which reads as a free photo that never
+  // arrives.
   if (photoEligibility.eligible) {
     openrouterMessages.push({ role: 'system', content: photoCapabilityInstructions() })
+  } else {
+    openrouterMessages.push({ role: 'system', content: photoUnavailableInstruction() })
   }
 
   const memoryBlock = formatMemoriesForPrompt(memories)
@@ -525,14 +581,19 @@ export async function POST(req: NextRequest) {
         const directiveCleaned = parsed.cleaned
         let finalContent = stripActionAsterisks(directiveCleaned)
         const strippedActions = finalContent !== directiveCleaned
-        // Send a photo ONLY when the user explicitly asked this turn and can pay.
-        // We deliberately do NOT honour a bare model-emitted [SEND_PHOTO]: under
-        // the strong photo-capability prompt DeepSeek would spontaneously send
-        // (and charge IMAGE_TOKEN_COST for) photos on a plain "hi", which users
-        // never requested. The directive is still stripped from the text below
-        // either way, so the marker never leaks. The explicit-request regex
-        // (detectImageIntent) is the deterministic, user-initiated trigger.
-        let photoRequested = explicitPhotoRequest && photoEligibility.eligible
+        // Send a photo when the user asked this turn and can pay. Two triggers:
+        //  1. The explicit-request regex (deterministic, always honoured).
+        //  2. A model-emitted [SEND_PHOTO] directive, but ONLY when the user's
+        //     own message gives photo-ish signal (mentionsPhotoKeyword) — the
+        //     LLM covers phrasings the regex misses ("what are you wearing",
+        //     "got any pics?"), while the keyword gate stops DeepSeek from
+        //     spontaneously sending (and charging IMAGE_TOKEN_COST for) photos
+        //     on a plain "hi", which users never requested. The directive is
+        //     stripped from the text below either way, so the marker never
+        //     leaks.
+        const directivePhotoRequest = parsed.requested && mentionsPhotoKeyword(message)
+        let photoRequested =
+          (explicitPhotoRequest || directivePhotoRequest) && photoEligibility.eligible
 
         // ── Output safety filter (post-LLM) ──────────────────────────────────
         // Backstop for CSAM-class model drift, run over the user-visible text. A
@@ -610,26 +671,51 @@ export async function POST(req: NextRequest) {
             },
           })
 
-          // Trigger memory extraction every 30 user messages (fire-and-forget).
-          // The check uses newCnt (total messages, user+assistant = pairs of 2).
-          // newCnt / 2 = user messages count.
-          if (newCnt > 0 && (newCnt / 2) % 30 === 0) {
-            const extractionMessages = historyDocs
-              .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
-              .map((m) => ({ role: m.role as string, content: m.content ?? '', id: m.id }))
+          // Derived user-turn count. Math.floor matters: the greeting message
+          // makes newCnt odd (1 + 2 per turn), and the previous exact-division
+          // check `(newCnt / 2) % 30 === 0` could never be true on an odd
+          // count — memory extraction NEVER fired for any greeted conversation.
+          // floor(newCnt / 2) advances by exactly 1 per turn with or without a
+          // greeting, so the modulo fires reliably.
+          const userTurns = Math.floor(newCnt / 2)
 
-            // Add the current user message and the just-generated assistant message.
-            extractionMessages.push({ role: 'user', content: message, id: 'current-user' })
-            extractionMessages.push({ role: 'assistant', content: finalContent, id: assistantMsgId })
+          // Recent history (chronological) + this turn, shared by the memory
+          // extraction and summary jobs below.
+          const turnMessages = historyDocs
+            .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
+            .map((m) => ({
+              role: m.role as 'user' | 'assistant',
+              content: (m.content as string | null) ?? '',
+              id: m.id,
+            }))
+          turnMessages.push({ role: 'user', content: message, id: 'current-user' })
+          turnMessages.push({ role: 'assistant', content: finalContent, id: assistantMsgId })
 
+          // Trigger memory extraction every 10 user messages (fire-and-forget).
+          if (userTurns > 0 && userTurns % 10 === 0) {
             void extractMemories({
               payload,
               userId: user.id,
               characterId: convCharacterId,
               conversationId,
-              messages: extractionMessages,
+              messages: turnMessages,
             }).catch((err: unknown) => {
               log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+            })
+          }
+
+          // Refresh the rolling summary (fire-and-forget) so context older than
+          // the 30-message history window survives — without it the character
+          // forgot everything beyond the window on long conversations.
+          if (shouldUpdateSummary(newCnt)) {
+            void updateConversationSummary({
+              payload,
+              conversationId,
+              previousSummary: (conversation.summary as string | null) ?? null,
+              messages: turnMessages,
+              language: convLanguage,
+            }).catch((err: unknown) => {
+              log.warn({ msg: 'chat.summary.background_failed', conversationId, err: err instanceof Error ? err.message : err })
             })
           }
         } else {

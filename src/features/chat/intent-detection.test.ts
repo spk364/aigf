@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { detectImageIntent } from './intent-detection'
+import { detectImageIntent, mentionsPhotoKeyword } from './intent-detection'
 
-describe('detectImageIntent', () => {
+describe('detectImageIntent (hard tier — forces a paid photo)', () => {
   const en = [
     'send me a photo',
     'send a pic',
@@ -12,9 +12,9 @@ describe('detectImageIntent', () => {
     'i wanna see you',
     'send me a selfie',
     'photo of you please',
-    'what are you wearing',
     'show yourself',
     'gimme a pic',
+    'send me your photo',
   ]
   it.each(en)('matches EN request: %s', (t) => {
     expect(detectImageIntent(t, 'en')).toBe(true)
@@ -25,12 +25,12 @@ describe('detectImageIntent', () => {
     'пришли селфи',
     'скинь фотку',
     'скинь мне фото',
+    'скинь мне ещё фото',
     'хочу тебя увидеть',
     'можно фото?',
     'покажи себя',
     'покажись',
     'сфоткайся',
-    'как ты выглядишь?',
   ]
   it.each(ru)('matches RU request: %s', (t) => {
     expect(detectImageIntent(t, 'ru')).toBe(true)
@@ -43,7 +43,6 @@ describe('detectImageIntent', () => {
     'quiero verte',
     'puedo verte?',
     'muéstrate',
-    'cómo te ves?',
   ]
   it.each(es)('matches ES request: %s', (t) => {
     expect(detectImageIntent(t, 'es')).toBe(true)
@@ -54,6 +53,14 @@ describe('detectImageIntent', () => {
     ['tell me about your day', 'en'],
     ['как дела сегодня?', 'ru'],
     ['cuéntame de tu día', 'es'],
+    // Casual imperatives / appearance questions must NOT force a charge —
+    // these used to match and silently billed a photo.
+    ['show me how to cook pasta', 'en'],
+    ['what are you wearing', 'en'],
+    ['покажи мне пример', 'ru'],
+    ['покажи мне город', 'ru'],
+    ['как ты выглядишь?', 'ru'],
+    ['cómo te ves?', 'es'],
   ]
   it.each(negatives)('does not match non-request: %s', (t, locale) => {
     expect(detectImageIntent(t, locale)).toBe(false)
@@ -74,5 +81,39 @@ describe('detectImageIntent', () => {
     expect(detectImageIntent('mándame una foto', 'ru')).toBe(true)
     // A non-request stays false no matter the locale.
     expect(detectImageIntent('how are you today?', 'ru')).toBe(false)
+  })
+})
+
+describe('mentionsPhotoKeyword (soft tier — confirms a model directive)', () => {
+  const positives = [
+    // Everything the hard tier matches…
+    'send me a photo',
+    'отправь фото',
+    'mándame una foto',
+    // …plus appearance questions and looser phrasings the hard tier now skips.
+    'what are you wearing',
+    'what do you look like?',
+    'как ты выглядишь?',
+    'во что ты одета?',
+    'cómo te ves?',
+    'show me',
+    'покажи',
+    'got any pics?',
+    'есть фотки?',
+  ]
+  it.each(positives)('matches: %s', (t) => {
+    expect(mentionsPhotoKeyword(t)).toBe(true)
+  })
+
+  const negatives = [
+    'hi',
+    'how are you today?',
+    'i love you',
+    'расскажи о себе',
+    'что делаешь вечером?',
+    'cuéntame de tu día',
+  ]
+  it.each(negatives)('does not match: %s', (t) => {
+    expect(mentionsPhotoKeyword(t)).toBe(false)
   })
 })

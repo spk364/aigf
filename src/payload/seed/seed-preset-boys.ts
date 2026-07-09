@@ -6,6 +6,7 @@ import {
   type BoyPersona,
   type Language,
 } from './preset-boys'
+import { PRESET_PROMPT_VERSION } from './preset-personas'
 
 const LANGUAGES: Language[] = ['en', 'ru', 'es']
 
@@ -36,6 +37,9 @@ function buildDocData(persona: BoyPersona, language: Language) {
     tagline: variant.tagline,
     shortBio: variant.shortBio,
     systemPrompt: buildBoySystemPrompt(persona, language),
+    // Lets the chat route detect stale conversation snapshots and re-snapshot
+    // them, so prompt-template improvements reach existing threads on re-seed.
+    systemPromptVersion: PRESET_PROMPT_VERSION,
     communicationStyle: {
       formality: 'casual',
       messageLength: 'medium',
