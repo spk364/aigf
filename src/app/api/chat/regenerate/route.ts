@@ -15,6 +15,10 @@ import { parsePhotoDirective } from '@/features/chat/photo-directive'
 import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 import { buildOutputGuard, resolveReplyLocale } from '@/features/chat/language-guard'
 import { buildStyleGuard } from '@/features/chat/style-guard'
+import {
+  resolveRelationshipStage,
+  buildRelationshipBlock,
+} from '@/features/chat/relationship-stage'
 import { getAccountState } from '@/shared/auth/account-status'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
@@ -58,7 +62,12 @@ export async function POST(req: NextRequest) {
   const { conversationId, messageId } = parsed.data
   const payload = await getPayload({ config })
 
-  const conversation = await payload.findByID({ collection: 'conversations', id: conversationId })
+  // depth:0 — see chat/route.ts: only scalar ids + own columns are needed.
+  const conversation = await payload.findByID({
+    collection: 'conversations',
+    id: conversationId,
+    depth: 0,
+  })
   if (!conversation || conversation.deletedAt) {
     return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
   }
@@ -72,7 +81,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const oldMessage = await payload.findByID({ collection: 'messages', id: messageId })
+  const oldMessage = await payload.findByID({ collection: 'messages', id: messageId, depth: 0 })
   if (!oldMessage) {
     return NextResponse.json({ error: 'Message not found' }, { status: 404 })
   }
@@ -93,6 +102,8 @@ export async function POST(req: NextRequest) {
       content: '',
       regeneratedFromId: messageId,
     },
+    // Only the id is used — skip relationship hydration on the write.
+    depth: 0,
   })
   const newMsgId = String(newAssistantMsg.id)
 
@@ -110,6 +121,10 @@ export async function POST(req: NextRequest) {
     // + limit returns the oldest 30, starving regeneration of recent context.
     sort: '-createdAt',
     limit: 30,
+    // Prompt building only needs role + content — skip relationship hydration
+    // (see the matching note in chat/route.ts).
+    depth: 0,
+    select: { role: true, content: true, createdAt: true },
   })
 
   const snapshot = conversation.characterSnapshot as { systemPrompt?: string } | null
@@ -134,6 +149,23 @@ export async function POST(req: NextRequest) {
   // Same per-turn tone guard as chat/route.ts — a regenerated reply must obey
   // the same warmth floor and flirt-reciprocation rules as the original.
   openrouterMessages.push({ role: 'system', content: buildStyleGuard() })
+
+  // Same relationship-progression block as chat/route.ts (no away-gap line —
+  // regeneration happens immediately after a reply, so there is no absence).
+  const snapshotBackstory = (
+    conversation.characterSnapshot as {
+      backstory?: { relationshipStage?: string; startingRelationship?: string } | null
+    } | null
+  )?.backstory
+  openrouterMessages.push({
+    role: 'system',
+    content: buildRelationshipBlock(
+      resolveRelationshipStage(
+        (conversation.relationshipScore as number | null) ?? 0,
+        snapshotBackstory?.relationshipStage ?? snapshotBackstory?.startingRelationship ?? null,
+      ),
+    ),
+  })
 
   if (conversation.summary) {
     openrouterMessages.push({

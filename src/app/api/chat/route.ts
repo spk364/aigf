@@ -23,6 +23,11 @@ import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
 import { buildCharacterScenePrompt, buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { buildOutputGuard, resolveReplyLocale } from '@/features/chat/language-guard'
 import { buildStyleGuard } from '@/features/chat/style-guard'
+import {
+  resolveRelationshipStage,
+  buildRelationshipBlock,
+  daysSince,
+} from '@/features/chat/relationship-stage'
 import { shouldUpdateSummary, updateConversationSummary } from '@/features/chat/conversation-summary'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
@@ -227,7 +232,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'characterId required when no conversationId' }, { status: 400 })
     }
 
-    const character = await payload.findByID({ collection: 'characters', id: characterId, locale })
+    // depth:0 — only the character's own columns feed the snapshot below.
+    const character = await payload.findByID({
+      collection: 'characters',
+      id: characterId,
+      locale,
+      depth: 0,
+    })
     if (!character || character.deletedAt) {
       return NextResponse.json({ error: 'Character not found' }, { status: 404 })
     }
@@ -279,7 +290,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const conversation = await payload.findByID({ collection: 'conversations', id: conversationId })
+  // depth:0 — default depth hydrated the full user AND character docs (plus
+  // their nested relations) on every single message send; only scalar ids and
+  // the conversation's own columns are needed here.
+  const conversation = await payload.findByID({
+    collection: 'conversations',
+    id: conversationId,
+    depth: 0,
+  })
   if (!conversation || conversation.deletedAt) {
     return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
   }
@@ -302,6 +320,8 @@ export async function POST(req: NextRequest) {
       status: 'completed',
       content: message,
     },
+    // The created doc is discarded — skip relationship hydration on the write.
+    depth: 0,
   })
 
   // Track chat message sent (no content — only metadata)
@@ -360,6 +380,10 @@ export async function POST(req: NextRequest) {
         { conversationId: { equals: conversationId } },
         { role: { in: ['user', 'assistant'] } },
         { deletedAt: { exists: false } },
+        // A superseded (regenerated-away) reply must not feed the next turn's
+        // context — the character would "remember" saying two different things.
+        // Same exclusion the regenerate route already applies.
+        { isRegenerated: { not_equals: true } },
       ],
     },
     // Most-recent 30, newest-first. Plain 'createdAt' is ascending in Payload,
@@ -368,6 +392,13 @@ export async function POST(req: NextRequest) {
     // to chronological order below for both the budget walk and extraction.
     sort: '-createdAt',
     limit: 30,
+    // Only the columns the prompt builder / extraction need. Without depth:0
+    // Payload hydrates relationships two levels deep for every row — each of
+    // the 30 messages dragged in its conversation (with the full
+    // characterSnapshot JSON) and that conversation's character. Pure waste on
+    // the hottest query in the app.
+    depth: 0,
+    select: { role: true, content: true, createdAt: true },
   })
 
   const convCharacterId =
@@ -385,6 +416,7 @@ export async function POST(req: NextRequest) {
   let snapshot = conversation.characterSnapshot as {
     systemPrompt?: string
     name?: string
+    backstory?: { relationshipStage?: string; startingRelationship?: string } | null
   } | null
   try {
     const liveChar = await payload.findByID({
@@ -457,6 +489,23 @@ export async function POST(req: NextRequest) {
   // whose frozen snapshot predates these rules.
   openrouterMessages.push({ role: 'system', content: buildStyleGuard() })
 
+  // Relationship progression: the stored relationshipScore (message volume,
+  // days active, recency) sets how far the relationship has come, floored at
+  // the character's authored starting stage. lastMessageAt still holds the
+  // PREVIOUS turn's timestamp here (it's re-stamped after the reply), so it
+  // doubles as the away-gap signal for the "welcome back" line.
+  const relationshipStage = resolveRelationshipStage(
+    (conversation.relationshipScore as number | null) ?? 0,
+    snapshot?.backstory?.relationshipStage ?? snapshot?.backstory?.startingRelationship ?? null,
+  )
+  openrouterMessages.push({
+    role: 'system',
+    content: buildRelationshipBlock(
+      relationshipStage,
+      isNewConversation ? 0 : daysSince(conversation.lastMessageAt as string | null),
+    ),
+  })
+
   // Photo-sending capability: teaches the model the [SEND_PHOTO] directive so it
   // can answer naturally AND attach a photo in the same turn. Only advertised to
   // users who have enough tokens. Ineligible users get the inverse instruction —
@@ -518,6 +567,8 @@ export async function POST(req: NextRequest) {
       status: 'streaming',
       content: '',
     },
+    // Only the id is used — skip relationship hydration on the write.
+    depth: 0,
   })
   const assistantMsgId = String(assistantMsg.id)
 
@@ -753,6 +804,8 @@ export async function POST(req: NextRequest) {
                 type: 'image',
                 status: 'pending',
               },
+              // Only the id is used — skip relationship hydration on the write.
+              depth: 0,
             })
             const assistantImageMsgId = String(assistantImageMsg.id)
             const reserveKey = `image:reserve:${assistantImageMsgId}`
