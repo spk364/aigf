@@ -971,6 +971,11 @@ export async function POST(req: NextRequest) {
                 // text-to-image on the NSFW-strong checkpoint — passing a ref
                 // would re-clothe the subject (WAN edit) or fight the anime style.
                 referenceImageUrl: conditionOnRef ? referenceImageUrl : null,
+                // …but the identity still has to survive. On the unconditioned
+                // path the checkpoint re-rolls the face from the appearance text,
+                // so hand the reference over for a post-generation face swap —
+                // nudity from the checkpoint, face from the reference.
+                faceSwapReferenceUrl: conditionOnRef ? null : referenceImageUrl,
               })
 
               if (!submitResult.ok) {

@@ -99,6 +99,99 @@ function stripBakedFraming(text: string | null | undefined): string {
     .trim()
 }
 
+// ── Negative-prompt composition ──────────────────────────────────────────
+//
+// Novita caps BOTH prompt and negative_prompt at 1024 chars, and capPrompt
+// silently drops the tail at a comma boundary. Measured on a real built
+// appearance, the explicit negative ran 1333 chars (realistic) / 1483 (anime),
+// so 315-460 chars were cut from EVERY NSFW generation — and because the
+// curated guards were appended last, what got cut was exactly ANATOMY_NEGATIVE
+// (extra/fused/malformed limbs, mutated hands, duplicate, conjoined), the Pony
+// low-score buckets, the framing negative, and — on anime — the whole
+// anti-censor block. That is the "ugly NSFW" report: on the explicit path the
+// model never received the anti-deformity negatives at all. The SFW edit path
+// never hit the cap (338 chars), which is why only NSFW looked wrong.
+//
+// The string was also ~40% duplicates: a stored character negativePrompt
+// already carries "bad anatomy / extra limbs / worst quality / mutated hands",
+// which our curated blocks then repeated verbatim.
+//
+// Fix: compose from priority-ordered groups and drop duplicate tokens. Guards
+// we least want to lose lead; the redundant character negative trails.
+
+/** Split on top-level commas only, so weighted groups stay intact. */
+function splitPromptTokens(text: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let cur = ''
+  for (const ch of text) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth = Math.max(0, depth - 1)
+    if (ch === ',' && depth === 0) {
+      out.push(cur)
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  out.push(cur)
+  return out.map((t) => t.trim()).filter(Boolean)
+}
+
+// `(a, b, c)` carries no explicit weight — it's a plain grouping, so flatten it
+// and let its members dedupe individually. `(child:1.5)` is weighted and stays.
+function flattenGroup(token: string): string[] {
+  const m = /^\((.*)\)$/s.exec(token)
+  if (!m) return [token]
+  const inner = m[1]!
+  if (/:\s*[\d.]+\s*$/.test(inner)) return [token]
+  if (!inner.includes(',')) return [token]
+  return splitPromptTokens(inner).flatMap(flattenGroup)
+}
+
+/** Dedup key: the bare concept, ignoring parens and any `:weight` suffix. */
+function negativeKey(token: string): string {
+  return token
+    .replace(/^\(+/, '')
+    .replace(/\)+$/, '')
+    .replace(/:\s*[\d.]+\s*$/, '')
+    .trim()
+    .toLowerCase()
+}
+
+function hasWeight(token: string): boolean {
+  return /:\s*[\d.]+\s*\)?$/.test(token)
+}
+
+/**
+ * Merge negative-prompt groups in priority order, keeping each concept once.
+ * When the same concept appears both bare and weighted, the weighted variant
+ * wins (in the earlier slot) — an emphasis we'd otherwise lose to dedup.
+ */
+export function composeNegativePrompt(
+  groups: Array<string | null | undefined>,
+): string {
+  const order: string[] = []
+  const slotByKey = new Map<string, number>()
+
+  for (const group of groups) {
+    if (!group) continue
+    for (const token of splitPromptTokens(group).flatMap(flattenGroup)) {
+      const key = negativeKey(token)
+      if (!key) continue
+      const slot = slotByKey.get(key)
+      if (slot === undefined) {
+        slotByKey.set(key, order.length)
+        order.push(token)
+      } else if (hasWeight(token) && !hasWeight(order[slot]!)) {
+        order[slot] = token
+      }
+    }
+  }
+
+  return order.join(', ')
+}
+
 export type SceneAppearance = {
   appearancePrompt?: string | null
   subjectTokens?: string | null
@@ -218,17 +311,23 @@ export function buildCharacterScenePrompt(
     prompt = `${isAnime ? PONY_PREFIX_ANIME : PONY_PREFIX_REALISTIC}, ${prompt}`
   }
 
-  let baseNegative = appearance?.negativePrompt
-    ? `${appearance.negativePrompt}, ${SAFETY_NEGATIVE}`
-    : `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}`
-  if (!isAnime) baseNegative = `${baseNegative}, ${NATURAL_EYES_NEGATIVE}`
-  // All anime (incl. Pony) gets the anti-3D/anti-photoreal negative so it stays flat.
-  else baseNegative = `${baseNegative}, ${ANIME_STYLE_NEGATIVE}`
-  if (input.isPony) baseNegative = `${baseNegative}, ${PONY_NEGATIVE}`
-  // Anti-duplicate-limb on every scene; anti-censor/anti-doll on explicit anime.
-  baseNegative = `${baseNegative}, ${ANATOMY_NEGATIVE}`
-  if (isAnime && input.explicit) baseNegative = `${baseNegative}, ${ANIME_UNCENSORED_NEGATIVE}`
-  const negativePrompt = framing.negative ? `${baseNegative}, ${framing.negative}` : baseNegative
+  // Ordered by what we can least afford to lose if a backend truncates (Novita
+  // cuts the tail at 1024 chars): age safety → anatomy → the checkpoint's own
+  // quality buckets → style → framing. The character's stored negativePrompt
+  // goes last: it is the most redundant of the groups, and after dedup it
+  // usually contributes only a handful of genuinely extra tokens.
+  const negativePrompt = composeNegativePrompt([
+    SAFETY_NEGATIVE,
+    // Anti-duplicate-limb on every scene; anti-censor/anti-doll on explicit anime.
+    ANATOMY_NEGATIVE,
+    input.isPony ? PONY_NEGATIVE : null,
+    isAnime && input.explicit ? ANIME_UNCENSORED_NEGATIVE : null,
+    // All anime (incl. Pony) gets the anti-3D/anti-photoreal negative so it
+    // stays flat; realistic gets the natural-iris guard instead.
+    isAnime ? ANIME_STYLE_NEGATIVE : NATURAL_EYES_NEGATIVE,
+    framing.negative || null,
+    appearance?.negativePrompt || BASE_NEGATIVE,
+  ])
 
   return { prompt, negativePrompt }
 }

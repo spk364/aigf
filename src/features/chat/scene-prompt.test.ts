@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { buildCharacterEditPrompt, buildCharacterScenePrompt } from './scene-prompt'
+import {
+  buildCharacterEditPrompt,
+  buildCharacterScenePrompt,
+  composeNegativePrompt,
+} from './scene-prompt'
+import { capPrompt, NOVITA_MAX_PROMPT } from '@/shared/ai/novita-prompt'
 
 describe('buildCharacterEditPrompt', () => {
   it('instructs the model to keep identity and only restyle the scene', () => {
@@ -53,6 +58,36 @@ describe('buildCharacterEditPrompt', () => {
     expect(realistic).toMatch(/not glowing, neon, or oversaturated/i)
     const anime = buildCharacterEditPrompt({ scene: 'at a cafe', artStyle: 'anime' }).prompt
     expect(anime).not.toMatch(/eye color/i)
+  })
+})
+
+describe('composeNegativePrompt', () => {
+  it('keeps each concept once, in first-seen (priority) order', () => {
+    expect(composeNegativePrompt(['bad anatomy, blurry', 'blurry, watermark'])).toBe(
+      'bad anatomy, blurry, watermark',
+    )
+  })
+
+  it('promotes a weighted variant over a bare duplicate, keeping the earlier slot', () => {
+    expect(composeNegativePrompt(['low quality, blurry', '(low quality:1.2)'])).toBe(
+      '(low quality:1.2), blurry',
+    )
+  })
+
+  it('flattens unweighted groups so their members dedupe individually', () => {
+    expect(composeNegativePrompt(['(cgi, 3d, blurry)', 'blurry, sketch'])).toBe(
+      'cgi, 3d, blurry, sketch',
+    )
+  })
+
+  it('never splits a weighted token', () => {
+    expect(composeNegativePrompt(['(child:1.5), (flat chest:1.4)'])).toBe(
+      '(child:1.5), (flat chest:1.4)',
+    )
+  })
+
+  it('ignores empty and nullish groups', () => {
+    expect(composeNegativePrompt([null, '', undefined, 'blurry, , blurry'])).toBe('blurry')
   })
 })
 
@@ -147,6 +182,74 @@ describe('buildCharacterScenePrompt anime style hardening', () => {
     expect(prompt).toMatch(/2D anime illustration/i)
     expect(prompt).toMatch(/1girl, solo/)
     expect(negativePrompt).toMatch(/3D render/i)
+  })
+
+  // Regression: Novita truncates negative_prompt at 1024 chars from the tail.
+  // The curated guards used to be appended LAST, so every explicit generation
+  // lost the whole anti-deformity block — NSFW photos came back malformed while
+  // SFW (short, reference-conditioned edit prompt) looked fine.
+  it('keeps the anatomy/quality guards inside the provider cap on explicit scenes', () => {
+    // A realistic stored character negative — verbose and largely redundant with
+    // our curated blocks, which is what used to push the guards past the cap.
+    const characterNegative =
+      '(deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime), ' +
+      'text, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, ' +
+      'mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, ' +
+      'blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, ' +
+      'gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, ' +
+      'fused fingers, too many fingers, long neck, watermark, signature'
+
+    for (const artStyle of ['realistic', 'anime'] as const) {
+      const { negativePrompt } = buildCharacterScenePrompt({
+        appearance: {
+          subjectTokens: 'caucasian 25 year old woman, long wavy hair, green eyes, large breasts',
+          appearancePrompt: 'RAW photo, portrait of a caucasian woman, long wavy hair, green eyes',
+          negativePrompt: characterNegative,
+        },
+        artStyle,
+        scene: 'lying on the bed, naked, legs spread',
+        isPony: true,
+        explicit: true,
+      })
+
+      // What actually reaches the model after the provider's cap.
+      const sent = capPrompt(negativePrompt)
+      expect(sent.length).toBeLessThanOrEqual(NOVITA_MAX_PROMPT)
+
+      for (const guard of [
+        /\(extra arms:1\.4\)/,
+        /\(extra legs:1\.4\)/,
+        /\(fused limbs:1\.3\)/,
+        /\(malformed limbs:1\.3\)/,
+        /\(mutated hands:1\.3\)/,
+        /\(conjoined:1\.3\)/,
+        /score_4/,
+        /worst quality/i,
+        /\(underage:1\.5\)/,
+      ]) {
+        expect(sent, `${artStyle}: ${guard} must survive the cap`).toMatch(guard)
+      }
+    }
+  })
+
+  it('does not repeat a concept it already emitted', () => {
+    const { negativePrompt } = buildCharacterScenePrompt({
+      appearance: {
+        subjectTokens: 'woman, brown hair',
+        negativePrompt: 'bad anatomy, extra limbs, low quality, deformed',
+      },
+      artStyle: 'realistic',
+      scene: 'nude',
+      isPony: true,
+      explicit: true,
+    })
+    // Count whole tokens, not substrings — "deformed" and "(deformed iris:1.2)"
+    // are distinct concepts and both legitimately belong.
+    const tokens = negativePrompt
+      .split(',')
+      .map((t) => t.trim().replace(/^\(+|\)+$/g, '').replace(/:\s*[\d.]+$/, '').toLowerCase())
+    const duplicated = tokens.filter((t, i) => t && tokens.indexOf(t) !== i)
+    expect(duplicated, `duplicated tokens: ${duplicated.join(' | ')}`).toEqual([])
   })
 
   it('uses realistic Pony tags (no source_anime) for the realistic Pony path', () => {

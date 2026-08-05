@@ -8,7 +8,11 @@ import {
   type ImageJobStatus,
 } from '@/shared/ai/fal'
 import { submitAtlasImageJob, fetchAtlasImageJobStatus } from '@/shared/ai/atlas'
-import { submitNovitaImageJob, fetchNovitaImageJobStatus } from '@/shared/ai/novita'
+import {
+  submitNovitaImageJob,
+  fetchNovitaImageJobStatus,
+  swapFaceOntoImage,
+} from '@/shared/ai/novita'
 import {
   DEFAULT_IMAGE_MODEL_ID,
   detectImageProvider,
@@ -56,6 +60,12 @@ type ChatImageGenerationMetadata = {
   }
   prompt?: string
   negativePrompt?: string
+  // Character reference to face-swap onto the finished frame. Only set on the
+  // explicit text-to-image path, which can't be conditioned on the reference
+  // (see novita-merge-face.ts) and therefore re-rolls the face every time.
+  faceSwapReferenceUrl?: string | null
+  // Outcome of that swap, for debugging identity complaints.
+  faceSwap?: { applied: boolean; error?: string }
   // Set once the generated image has been persisted to storage. Lets a poll
   // that died between persist and the final message update (most commonly the
   // age classifier failing closed during its 60–90s cold start) retry the
@@ -89,6 +99,12 @@ export type SubmitChatImageInput = {
   // generation on it for identity consistency — Atlas image-edit takes it as
   // the source image; fal uses IP-Adapter Face-ID. Mirrors the admin route.
   referenceImageUrl?: string | null
+  // Reference to face-swap onto the finished image once generation completes.
+  // Set this on the explicit path — where `referenceImageUrl` must stay null
+  // because conditioning on it re-clothes the subject — so the character still
+  // comes out looking like herself. Ignored when the job was already
+  // reference-conditioned (the edit path keeps identity on its own).
+  faceSwapReferenceUrl?: string | null
   // Output resolution bucket. Derived from the requested shot framing (see
   // shot-framing.ts) so full-body/reclining shots get a fitting aspect ratio.
   // Defaults to the SDXL-native portrait bucket when omitted.
@@ -177,6 +193,9 @@ export async function submitChatImageJob(
     const meta: ChatImageGenerationMetadata = {
       prompt: input.prompt,
       negativePrompt: input.negativePrompt,
+      // Only meaningful when we did NOT condition on the reference — otherwise
+      // the frame already carries the right face and a swap is wasted latency.
+      faceSwapReferenceUrl: ref ? null : (input.faceSwapReferenceUrl?.trim() || null),
       falJob: {
         requestId: handles.requestId,
         statusUrl: handles.statusUrl,
@@ -431,13 +450,49 @@ export async function finalizeChatImageJob(
   if (meta.persistedAsset) {
     persistResult = meta.persistedAsset
   } else {
+    // Identity restore for the explicit path: that path can't be conditioned on
+    // the character's reference (it would re-clothe her), so the checkpoint
+    // re-rolls the face from text alone. Swap the reference face onto the
+    // finished frame before anything is stored, so storage, the age gate and
+    // the user all see the same final image.
+    //
+    // Best-effort by design: a failed swap keeps the un-swapped frame rather
+    // than losing a paid generation. The outcome is recorded in metadata.
+    let swapped: { bytes: Buffer; contentType: string } | null = null
+    if (meta.faceSwapReferenceUrl) {
+      const swapStartedAt = Date.now()
+      try {
+        swapped = await swapFaceOntoImage({
+          faceImageUrl: meta.faceSwapReferenceUrl,
+          targetImageUrl: firstImage.url,
+        })
+        meta.faceSwap = { applied: true }
+        log.info({
+          msg: 'chat.image.face_swap_applied',
+          messageId: input.messageId,
+          ms: Date.now() - swapStartedAt,
+        })
+      } catch (swapErr) {
+        const errMsg = swapErr instanceof Error ? swapErr.message : 'face_swap_failed'
+        meta.faceSwap = { applied: false, error: errMsg.slice(0, 240) }
+        log.warn({
+          msg: 'chat.image.face_swap_failed',
+          messageId: input.messageId,
+          err: errMsg,
+          ms: Date.now() - swapStartedAt,
+        })
+      }
+    }
+
     try {
       persistResult = await persistGeneratedImage({
         payload: input.payload,
-        fromUrl: firstImage.url,
+        ...(swapped
+          ? { fromBytes: swapped.bytes }
+          : { fromUrl: firstImage.url }),
         width: firstImage.width,
         height: firstImage.height,
-        contentType: firstImage.contentType,
+        contentType: swapped ? swapped.contentType : firstImage.contentType,
         kind: 'message-image',
         ownerUserId: input.userId,
         relatedMessageId: input.messageId,
