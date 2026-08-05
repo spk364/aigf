@@ -24,7 +24,11 @@ export default async function ConversationPage({ params }: Props) {
   const payload = await getPayload({ config })
   const t = await getTranslations('chat')
 
-  const conversation = await payload.findByID({ collection: 'conversations', id: conversationId }).catch(() => null)
+  // depth:0 — the page only reads scalar ids and the conversation's own
+  // columns; default depth pulled the full user + character docs on every load.
+  const conversation = await payload
+    .findByID({ collection: 'conversations', id: conversationId, depth: 0 })
+    .catch(() => null)
   if (!conversation) notFound()
 
   const convUserId =
@@ -56,6 +60,9 @@ export default async function ConversationPage({ params }: Props) {
           { conversationId: { equals: conversationId } },
           { role: { in: ['user', 'assistant'] } },
           { deletedAt: { exists: false } },
+          // Superseded replies (regenerated away) would otherwise reappear as
+          // duplicates next to their replacement on reload.
+          { isRegenerated: { not_equals: true } },
         ],
       },
       // Most-recent 30, newest-first. Ascending 'createdAt' + limit:30 returned
@@ -63,6 +70,21 @@ export default async function ConversationPage({ params }: Props) {
       // hid everything recent. We re-sort to chronological for rendering below.
       sort: '-createdAt',
       limit: 30,
+      // depth:0 — the asset URLs are batch-fetched below from the scalar ids;
+      // default depth hydrated the conversation (with its characterSnapshot)
+      // and character for every row. The mapping code already handles both
+      // object and scalar relationship shapes.
+      depth: 0,
+      select: {
+        role: true,
+        content: true,
+        type: true,
+        status: true,
+        errorReason: true,
+        imageAssetId: true,
+        audioAssetId: true,
+        createdAt: true,
+      },
     }),
     conversationCharacterId
       ? payload
@@ -166,6 +188,8 @@ export default async function ConversationPage({ params }: Props) {
       collection: 'media-assets',
       where: { id: { in: allAssetIds.map(String) } },
       limit: allAssetIds.length,
+      depth: 0,
+      select: { publicUrl: true, width: true, height: true },
       overrideAccess: true,
     })
     for (const asset of assetsResult.docs) {
@@ -193,7 +217,7 @@ export default async function ConversationPage({ params }: Props) {
     const base = {
       id: String(msg.id),
       role: msg.role as 'user' | 'assistant',
-      content: msg.content ?? '',
+      content: (msg.content as string | null | undefined) ?? '',
       ...(audioUrl ? { audioUrl } : {}),
     }
 

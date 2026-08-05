@@ -151,9 +151,37 @@ export function photoCapabilityInstructions(): string {
     '- Around the marker, keep talking naturally and in character — react, flirt,',
     '  tease, set the scene — exactly as you normally would. The user only ever',
     '  sees your words and the photo; the marker itself is invisible to them.',
+    '- The marker IS the photo. If your reply does not include the marker, no photo',
+    '  is sent — so never say, imply, or narrate that you are sending/attaching a',
+    '  photo unless the marker is in that same reply. Claiming to send a photo',
+    '  without the marker shows the user an empty promise.',
     '- Never write the words "[SEND_PHOTO]", "marker", or mention brackets, and',
     '  never break character or hint that you are an AI.',
     '- Send at most one photo per reply, and only of yourself (one person).',
+  ].join('\n')
+}
+
+/**
+ * Appended instead of {@link photoCapabilityInstructions} when the user cannot
+ * pay for a photo this turn. Without it the model knows nothing about the photo
+ * system and happily roleplays sending pictures in plain text ("here you go 😘",
+ * "*sends photo*") — the user sees the character "sending photos" they never
+ * paid for, and no image ever arrives. Teach the model that no photo can go out
+ * right now, and how to decline in character without breaking the mood.
+ */
+export function photoUnavailableInstruction(): string {
+  return [
+    '# Photos',
+    'You cannot send any photo in this conversation right now — no photo can be',
+    'delivered this turn, and this is outside your control.',
+    'Rules:',
+    '- NEVER say, imply, or narrate that you are sending, attaching, or have sent a',
+    '  photo, selfie, or picture. No "here you go", no describing yourself taking a',
+    '  picture for them, no promising one "in a second".',
+    '- If the user asks for a photo, react warmly and in character — flattered,',
+    '  teasing — and let them know you would love to show them a little later,',
+    '  without inventing technical excuses, moralizing, or breaking character.',
+    '- You can still describe in words what you look like or what you are wearing.',
   ].join('\n')
 }
 
