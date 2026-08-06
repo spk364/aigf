@@ -31,6 +31,12 @@ import type {
   ImageJobStatus,
 } from './fal'
 import { capPrompt } from './novita-prompt'
+import {
+  NOVITA_MERGE_FACE_URL,
+  NOVITA_MERGE_FACE_MAX_BYTES,
+  buildMergeFaceBody,
+  parseMergeFaceResponse,
+} from './novita-merge-face'
 
 const NOVITA_BASE = 'https://api.novita.ai/v3'
 
@@ -210,6 +216,71 @@ export async function fetchNovitaImageJobStatus(args: {
     latencyMs: args.startedAtMs ? Date.now() - args.startedAtMs : 0,
   }
   return { status: 'completed', result }
+}
+
+// ── Face swap ────────────────────────────────────────────────────────────
+
+// The endpoint is synchronous and measured ~4.5 s. Bound it well under the
+// chat-image poll budget so a hung swap can't starve the rest of finalize.
+const MERGE_FACE_TIMEOUT_MS = 25_000
+
+async function fetchImageAsBase64(url: string, label: string): Promise<string> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(MERGE_FACE_TIMEOUT_MS) })
+  if (!res.ok) {
+    throw new Error(`merge-face: could not fetch ${label} image (HTTP ${res.status})`)
+  }
+  const buf = Buffer.from(await res.arrayBuffer())
+  if (buf.byteLength > NOVITA_MERGE_FACE_MAX_BYTES) {
+    throw new Error(
+      `merge-face: ${label} image is ${buf.byteLength} bytes, over the ${NOVITA_MERGE_FACE_MAX_BYTES} limit`,
+    )
+  }
+  if (buf.byteLength === 0) {
+    throw new Error(`merge-face: ${label} image is empty`)
+  }
+  return buf.toString('base64')
+}
+
+export type FaceSwapResult = {
+  bytes: Buffer
+  contentType: string
+}
+
+/**
+ * Put the face from `faceImageUrl` onto `targetImageUrl`, returning the merged
+ * image bytes. Used to restore character identity on the explicit text-to-image
+ * path, which cannot be conditioned on the reference (see novita-merge-face.ts).
+ *
+ * Throws on any failure — callers are expected to fall back to the un-swapped
+ * frame rather than losing the whole generation.
+ */
+export async function swapFaceOntoImage(input: {
+  faceImageUrl: string
+  targetImageUrl: string
+}): Promise<FaceSwapResult> {
+  const [faceB64, targetB64] = await Promise.all([
+    fetchImageAsBase64(input.faceImageUrl, 'reference'),
+    fetchImageAsBase64(input.targetImageUrl, 'generated'),
+  ])
+
+  const res = await fetch(NOVITA_MERGE_FACE_URL, {
+    method: 'POST',
+    headers: { ...authHeader(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildMergeFaceBody(faceB64, targetB64)),
+    signal: AbortSignal.timeout(MERGE_FACE_TIMEOUT_MS),
+  })
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`merge-face: HTTP ${res.status} ${text.slice(0, 200)}`)
+  }
+
+  const parsed = parseMergeFaceResponse(await res.json())
+  const bytes = Buffer.from(parsed.base64, 'base64')
+  if (bytes.byteLength === 0) {
+    throw new Error('merge-face: decoded to zero bytes')
+  }
+  return { bytes, contentType: parsed.contentType }
 }
 
 // Novita async tasks can't be cancelled via the API — no-op so the route stays

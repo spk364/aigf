@@ -12,6 +12,13 @@ vi.mock('@/shared/ai/fal', () => ({
   fetchImageJobStatus: (args: unknown) => fetchImageJobStatusMock(args),
 }))
 
+const swapFaceMock = vi.fn()
+vi.mock('@/shared/ai/novita', () => ({
+  submitNovitaImageJob: vi.fn(),
+  fetchNovitaImageJobStatus: vi.fn(),
+  swapFaceOntoImage: (args: unknown) => swapFaceMock(args),
+}))
+
 const persistMock = vi.fn()
 vi.mock('@/features/media/persist-generated-image', () => ({
   persistGeneratedImage: (args: unknown) => persistMock(args),
@@ -103,6 +110,7 @@ const baseHandles = {
 
 beforeEach(() => {
   fetchImageJobStatusMock.mockReset()
+  swapFaceMock.mockReset()
   persistMock.mockReset()
   classifyMock.mockReset()
   autoRefundMock.mockReset()
@@ -474,6 +482,99 @@ describe('finalizeChatImageJob', () => {
     const asset = payload.__store['media-assets'][0]!
     expect(asset.deletedAt).toBeTruthy()
     expect(fetchImageJobStatusMock).not.toHaveBeenCalled()
+  })
+
+  // Identity restore for the explicit path — that path can't be conditioned on
+  // the character's reference, so the face is re-rolled by the checkpoint and
+  // has to be swapped back in after generation.
+  describe('face swap', () => {
+    const completedStatus = {
+      status: 'completed',
+      result: {
+        images: [{ url: 'https://novita/img.jpg', width: 832, height: 1216, contentType: 'image/jpeg' }],
+        seed: 7,
+        requestId: 'req-1',
+        modelName: 'cyberrealisticPony',
+        endpoint: 'novita/realistic',
+        latencyMs: 5000,
+      },
+    }
+
+    function payloadWithFaceRef(faceSwapReferenceUrl: string | null) {
+      return makePayload({
+        messages: [{
+          id: 'msg-1',
+          conversationId: 'conv-1',
+          status: 'pending',
+          generationMetadata: { falJob: baseHandles, faceSwapReferenceUrl },
+        }],
+        conversations: [{ ...baseConvo }],
+      })
+    }
+
+    it('swaps the reference face on and persists the merged bytes', async () => {
+      fetchImageJobStatusMock.mockResolvedValue(completedStatus)
+      swapFaceMock.mockResolvedValue({
+        bytes: Buffer.from('merged-image-bytes'),
+        contentType: 'image/jpeg',
+      })
+      persistMock.mockResolvedValue({
+        mediaAssetId: 'asset-sw',
+        publicUrl: 'https://cdn/sw.jpg',
+        storageKey: 'k',
+      })
+
+      const payload = payloadWithFaceRef('https://cdn/reference.jpg')
+      const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+
+      expect(result.phase).toBe('completed')
+      expect(swapFaceMock).toHaveBeenCalledWith({
+        faceImageUrl: 'https://cdn/reference.jpg',
+        targetImageUrl: 'https://novita/img.jpg',
+      })
+      // The merged bytes are what gets stored — not the raw generated URL.
+      const persistArgs = persistMock.mock.calls[0]![0] as { fromBytes?: Buffer; fromUrl?: string }
+      expect(persistArgs.fromBytes?.toString()).toBe('merged-image-bytes')
+      expect(persistArgs.fromUrl).toBeUndefined()
+      expect((payload.__store.messages[0]!.generationMetadata as { faceSwap?: unknown }).faceSwap)
+        .toEqual({ applied: true })
+    })
+
+    it('keeps the un-swapped frame when the swap fails (a paid generation is not lost)', async () => {
+      fetchImageJobStatusMock.mockResolvedValue(completedStatus)
+      swapFaceMock.mockRejectedValue(new Error('merge-face: no face detected'))
+      persistMock.mockResolvedValue({
+        mediaAssetId: 'asset-nosw',
+        publicUrl: 'https://cdn/nosw.jpg',
+        storageKey: 'k',
+      })
+
+      const payload = payloadWithFaceRef('https://cdn/reference.jpg')
+      const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+
+      expect(result.phase).toBe('completed')
+      const persistArgs = persistMock.mock.calls[0]![0] as { fromBytes?: Buffer; fromUrl?: string }
+      expect(persistArgs.fromUrl).toBe('https://novita/img.jpg')
+      expect(persistArgs.fromBytes).toBeUndefined()
+      expect(autoRefundMock).not.toHaveBeenCalled()
+      expect((payload.__store.messages[0]!.generationMetadata as { faceSwap?: { applied: boolean; error?: string } }).faceSwap)
+        .toMatchObject({ applied: false, error: expect.stringContaining('no face detected') })
+    })
+
+    it('does not call the swap when no reference was stashed (edit path already has the face)', async () => {
+      fetchImageJobStatusMock.mockResolvedValue(completedStatus)
+      persistMock.mockResolvedValue({
+        mediaAssetId: 'asset-plain',
+        publicUrl: 'https://cdn/plain.jpg',
+        storageKey: 'k',
+      })
+
+      const payload = payloadWithFaceRef(null)
+      const result = await finalizeChatImageJob({ payload, messageId: 'msg-1', userId: 'user-1' })
+
+      expect(result.phase).toBe('completed')
+      expect(swapFaceMock).not.toHaveBeenCalled()
+    })
   })
 
   it('treats missing fal handles as failed (defensive)', async () => {

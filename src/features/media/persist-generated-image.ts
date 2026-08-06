@@ -1,10 +1,17 @@
 import 'server-only'
 import type { BasePayload } from 'payload'
-import { mirrorFromUrl, buildR2Key, getStorageProvider } from '@/shared/storage'
+import { mirrorFromUrl, uploadBuffer, buildR2Key, getStorageProvider } from '@/shared/storage'
+
+// Either mirror from a provider CDN URL, or upload bytes we already hold in
+// memory. The bytes path exists for images we post-process before storing —
+// today the face-swapped explicit chat photo, which never has a URL of its own
+// (Novita's merge-face returns base64 inline).
+type ImageSource =
+  | { fromUrl: string; fromBytes?: never }
+  | { fromBytes: Buffer | Uint8Array; fromUrl?: never }
 
 export type PersistGeneratedImageInput = {
   payload: BasePayload
-  fromUrl: string
   width: number
   height: number
   contentType: string
@@ -13,7 +20,7 @@ export type PersistGeneratedImageInput = {
   ownerCharacterId?: string | number
   relatedMessageId?: string | number
   generationMetadata?: Record<string, unknown>
-}
+} & ImageSource
 
 export type PersistGeneratedImageResult = {
   mediaAssetId: string | number
@@ -74,11 +81,17 @@ export async function persistGeneratedImage(
     ext,
   })
 
-  // Mirror from fal CDN to R2.
-  const uploadResult = await mirrorFromUrl({
-    sourceUrl: input.fromUrl,
-    destKey: key,
-  })
+  // Mirror from the provider CDN to R2, or upload post-processed bytes directly.
+  const uploadResult = input.fromBytes
+    ? await uploadBuffer({
+        key,
+        body: input.fromBytes,
+        contentType: input.contentType,
+      })
+    : await mirrorFromUrl({
+        sourceUrl: input.fromUrl!,
+        destKey: key,
+      })
 
   // Create the media-assets row via Payload.
   const doc = await input.payload.create({
