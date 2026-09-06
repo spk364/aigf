@@ -35,8 +35,10 @@ import {
   isExplicitPhotoScene,
   looksLikePhotoRefusal,
   photoSendCaption,
+  photoDeclinedCaption,
   resolveExplicitScene,
 } from '@/features/chat/photo-consistency'
+import { resolveCharacterGender, type SubjectGender } from '@/shared/ai/subject-gender'
 import { pickModelIdForStyle, isPonyModelId, isSd15ModelId } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
@@ -609,28 +611,50 @@ export async function POST(req: NextRequest) {
       let timeToFirstToken: number | null = null
 
       try {
-        const generator = streamChatCompletion({
-          model: LLM_MODEL,
-          messages: openrouterMessages,
-          temperature: LLM_TEMPERATURE,
-          maxTokens: LLM_MAX_TOKENS,
-          signal: abortController.signal,
-        })
+        // OpenRouter hiccups (a 429, a 5xx, a dropped upstream connection) used
+        // to end the turn on the spot: the user got "generation failed" on a
+        // message that would have gone through a second later. Retry once — but
+        // only while nothing has been streamed yet, so a mid-reply failure can
+        // never duplicate text the user has already seen.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const generator = streamChatCompletion({
+              model: LLM_MODEL,
+              messages: openrouterMessages,
+              temperature: LLM_TEMPERATURE,
+              maxTokens: LLM_MAX_TOKENS,
+              signal: abortController.signal,
+            })
 
-        for await (const chunk of generator) {
-          if (chunk.usage) usageData = chunk.usage
-          if (!chunk.delta) continue
+            for await (const chunk of generator) {
+              if (chunk.usage) usageData = chunk.usage
+              if (!chunk.delta) continue
 
-          if (timeToFirstToken === null) {
-            timeToFirstToken = Date.now() - startTime
-          }
+              if (timeToFirstToken === null) {
+                timeToFirstToken = Date.now() - startTime
+              }
 
-          const safe = directiveFilter.push(chunk.delta)
-          if (!safe) continue
-          const shown = replyFilter.push(safe)
-          if (shown) {
-            streamedText += shown
-            send('delta', { text: shown })
+              const safe = directiveFilter.push(chunk.delta)
+              if (!safe) continue
+              const shown = replyFilter.push(safe)
+              if (shown) {
+                streamedText += shown
+                send('delta', { text: shown })
+              }
+            }
+            break
+          } catch (streamErr) {
+            // timeToFirstToken is stamped before anything reaches the filters,
+            // so a null value proves the retry starts from a clean slate.
+            if (attempt >= 1 || timeToFirstToken !== null || abortController.signal.aborted) {
+              throw streamErr
+            }
+            log.warn({
+              msg: 'chat.stream.retry',
+              conversationId,
+              err: streamErr instanceof Error ? streamErr.message : streamErr,
+            })
+            await delay(400)
           }
         }
 
@@ -690,6 +714,16 @@ export async function POST(req: NextRequest) {
         // is actually going out and the text reads like a refusal.
         if (photoRequested && looksLikePhotoRefusal(finalContent)) {
           finalContent = photoSendCaption(convLanguage, Number(assistantMsgId) || 0)
+        }
+
+        // A directive-only reply whose photo we are NOT sending (the user's
+        // message gave no photo signal, or the output filter cancelled it) used
+        // to leave the turn with nothing at all: the placeholder was deleted and
+        // no image message took its place, so the user's message was answered by
+        // silence — which reads as a failed turn. Substitute a short in-character
+        // line and let it commit through the normal path below.
+        if (!finalContent.trim() && parsed.requested && !photoRequested) {
+          finalContent = photoDeclinedCaption(convLanguage, Number(assistantMsgId) || 0)
         }
 
         const hasText = finalContent.trim().length > 0
@@ -891,6 +925,11 @@ export async function POST(req: NextRequest) {
               // fresh text-to-image roll, so only the described traits (hair,
               // body) stay stable while the face/tattoos change each time.
               let referenceImageUrl: string | null = null
+              // Which body the photo should depict. Female-only prompt tokens
+              // ("1girl", "adult woman", a `flat chest` age negative) used to be
+              // baked into every chat photo, so a male character's explicit
+              // request came back clothed or feminised.
+              let subjectGender: SubjectGender = 'female'
               try {
                 const liveChar = await payload.findByID({
                   collection: 'characters',
@@ -903,6 +942,11 @@ export async function POST(req: NextRequest) {
                   if (a && typeof a === 'object') sceneAppearance = a as typeof sceneAppearance
                   const s = (liveChar as { artStyle?: unknown }).artStyle
                   if (s === 'anime' || s === 'realistic') artStyle = s
+                  // The live doc carries `category`, which is the only gender
+                  // signal seeded boys have beyond their appearance text.
+                  subjectGender = resolveCharacterGender(
+                    liveChar as { appearance?: unknown; category?: unknown },
+                  )
 
                   const denormRef = (liveChar as { referenceImageUrl?: unknown }).referenceImageUrl
                   if (typeof denormRef === 'string' && denormRef.trim()) {
@@ -924,6 +968,9 @@ export async function POST(req: NextRequest) {
                   appearance?: CharacterAppearance | null
                 }
                 sceneAppearance = (snap.appearance as typeof sceneAppearance) ?? null
+                // Deleted character / failed lookup: the snapshot has no
+                // `category`, so this falls back to the appearance text scan.
+                subjectGender = resolveCharacterGender({ appearance: snap.appearance })
               }
 
               // Scene resolution. When the USER explicitly asked for a photo and
@@ -945,7 +992,12 @@ export async function POST(req: NextRequest) {
               // imperatives (models read them as a request, not a depiction, so
               // "naked" buried in one leaves the subject clothed) and fold in
               // clean nudity tokens recovered from the request. No-op otherwise.
-              const scene = resolveExplicitScene({ scene: rawScene, message, explicit })
+              const scene = resolveExplicitScene({
+                scene: rawScene,
+                message,
+                explicit,
+                gender: subjectGender,
+              })
 
               // Two dispatch paths:
               //   A. Reference image available (realistic characters) → Atlas WAN
@@ -983,6 +1035,7 @@ export async function POST(req: NextRequest) {
                   scene,
                   artStyle,
                   explicit,
+                  gender: subjectGender,
                 }))
               } else {
                 modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
@@ -999,6 +1052,7 @@ export async function POST(req: NextRequest) {
                   isPony: isPonyModel,
                   explicit,
                   shot,
+                  gender: subjectGender,
                 }))
               }
 
@@ -1089,7 +1143,10 @@ export async function POST(req: NextRequest) {
         }).catch(() => {})
 
         if (!isAbort) {
-          send('error', { message: 'Generation failed. Please try again.' })
+          send('error', {
+            message: 'Generation failed. Please try again.',
+            reason: 'generation_failed',
+          })
         }
       } finally {
         controller.close()

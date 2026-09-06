@@ -13,15 +13,23 @@
 //     when we ARE sending a paid photo but the reply reads like a refusal, swap
 //     in a short willing caption so words and image agree.
 
+import type { SubjectGender } from '@/shared/ai/subject-gender'
+
 // Explicit-nudity markers across EN/RU/ES. Deliberately about bare skin /
 // nudity, NOT mere spice (lingerie/swimwear stay on the fast FLUX path).
+// Male-coded markers are listed alongside the female ones — the list used to be
+// female-only, so "shirtless" / "покажи член" never reached the explicit path
+// and a male character's nude request was built as an ordinary clothed scene.
 const EXPLICIT_MARKERS: string[] = [
   // en
   'naked', 'nude', 'nudes', 'topless', 'bottomless', 'no bra', 'no panties',
   'no underwear', 'bare breast', 'bare boobs', 'bare tits', 'tits', 'boobs out',
   'nipple', 'areola', 'pussy', 'vagina', 'cum', 'spread legs', 'legs spread',
   'fully naked', 'completely naked', 'undressed', 'undress', 'take off your',
-  'without clothes', 'no clothes', 'show me your',
+  'without clothes', 'no clothes', 'show me your', 'take it off', 'take them off',
+  // en — male
+  'shirtless', 'bare chest', 'bare torso', 'no shirt', 'no pants', 'penis',
+  'dick', 'cock', 'hard on', 'erection',
   // ru — cover neuter/instrumental/genitive forms too ("голое фото", "голым",
   // "голого"); the bare list previously only had feminine голая/голую/голой, so
   // the very common "пришли голое фото" slipped through undetected.
@@ -29,10 +37,14 @@ const EXPLICIT_MARKERS: string[] = [
   'обнажён', 'обнажен', 'обнажённая', 'обнаженная', 'обнажённой', 'обнаженной',
   'без лифчика', 'без бюстгальтера',
   'без трусиков', 'без белья', 'без одежды', 'голые сиськи', 'сиськи', 'грудь обнаж',
-  'соски', 'разденься', 'раздевайся', 'раздет', 'покажи свои',
+  'соски', 'разденься', 'раздевайся', 'раздет', 'покажи свои', 'сними всё', 'сними все',
+  // ru — male
+  'без рубашки', 'без футболки', 'без штанов', 'голый торс', 'член', 'стояк',
   // es
   'desnuda', 'desnudo', 'sin sujetador', 'sin ropa', 'sin bragas', 'tetas',
   'pechos desnudos', 'pezones', 'enséñame tus', 'muéstrame tus', 'quítate',
+  // es — male
+  'sin camisa', 'sin camiseta', 'sin pantalones', 'torso desnudo', 'pene', 'polla',
 ]
 
 // Match a marker as a whole word for ASCII markers (so "undress" doesn't fire
@@ -73,7 +85,13 @@ export function stripPhotoImperatives(scene: string | null | undefined): string 
 // Turn an explicit request into clean depiction tokens the image model will
 // actually render — "send me your full naked photo" → "completely nude, fully
 // naked, …". Full nudity wins over partial; otherwise emit the specific parts.
-export function explicitNudityTokens(text: string | null | undefined): string {
+// `gender` picks the anatomy words: a male "topless" request rendered with
+// "bare breasts, exposed nipples" comes back feminised, and the male-specific
+// phrasings ("shirtless", "без рубашки") only count as topless for a man.
+export function explicitNudityTokens(
+  text: string | null | undefined,
+  gender: SubjectGender = 'female',
+): string {
   const t = (text ?? '').toLowerCase()
   const fullNude =
     /\b(?:fully|full|completely|totally)\s+(?:naked|nude)\b/.test(t) ||
@@ -86,22 +104,40 @@ export function explicitNudityTokens(text: string | null | undefined): string {
     /\bwithout\s+clothes\b/.test(t) ||
     /\bundress(?:ed)?\b/.test(t) ||
     /голая|голую|голой|голое|голым|голого|голышом|обнаж|раздет|раздева|desnud/.test(t)
-  if (fullNude) return 'completely nude, fully naked, no clothing, bare skin'
+  const isMale = gender === 'male'
+  if (fullNude) {
+    return isMale
+      ? 'completely nude, fully naked, no clothing, bare skin, nude male body, ' +
+          'bare chest, visible penis'
+      : 'completely nude, fully naked, no clothing, bare skin'
+  }
 
   const parts: string[] = []
   const topless =
     /\btopless\b/.test(t) ||
     /\bno\s+bra\b/.test(t) ||
-    /\b(?:bare|naked|exposed)\s+(?:tits?|breasts?|boobs?|chest)\b/.test(t) ||
+    /\b(?:bare|naked|exposed)\s+(?:tits?|breasts?|boobs?|chest|torso)\b/.test(t) ||
     /\bnipples?\b/.test(t) ||
-    /сиськи|соски|без\s+лифчика|без\s+бюстг|tetas|pezones/.test(t)
+    /сиськи|соски|без\s+лифчика|без\s+бюстг|tetas|pezones/.test(t) ||
+    (isMale &&
+      (/\bshirtless\b/.test(t) ||
+        /\bno\s+shirt\b/.test(t) ||
+        /без\s+рубашки|без\s+футболки|голый\s+торс|sin\s+camisa|sin\s+camiseta|torso\s+desnudo/.test(
+          t,
+        )))
   const bottomless =
     /\bbottomless\b/.test(t) ||
-    /\bno\s+(?:panties|underwear)\b/.test(t) ||
-    /\b(?:pussy|vagina)\b/.test(t) ||
-    /без\s+трусиков|без\s+белья|sin\s+bragas/.test(t)
-  if (topless) parts.push('topless, bare breasts, exposed nipples')
-  if (bottomless) parts.push('bottomless, no underwear')
+    /\bno\s+(?:panties|underwear|pants)\b/.test(t) ||
+    /\b(?:pussy|vagina|penis|dick|cock)\b/.test(t) ||
+    /без\s+трусиков|без\s+белья|без\s+штанов|член|sin\s+bragas|sin\s+pantalones|pene|polla/.test(t)
+  if (topless) {
+    parts.push(
+      isMale ? 'shirtless, bare chest, bare torso' : 'topless, bare breasts, exposed nipples',
+    )
+  }
+  if (bottomless) {
+    parts.push(isMale ? 'bottomless, no underwear, visible penis' : 'bottomless, no underwear')
+  }
   return parts.join(', ')
 }
 
@@ -114,9 +150,10 @@ export function resolveExplicitScene(args: {
   scene: string
   message: string
   explicit: boolean
+  gender?: SubjectGender
 }): string {
   if (!args.explicit) return args.scene
-  const nudity = explicitNudityTokens(`${args.scene} ${args.message}`)
+  const nudity = explicitNudityTokens(`${args.scene} ${args.message}`, args.gender)
   const cleaned = stripPhotoImperatives(args.scene)
   return [cleaned, nudity].filter(Boolean).join(', ')
 }
@@ -174,7 +211,35 @@ const CAPTIONS: Record<string, string[]> = {
 // Deterministic pick (no Math.random so it's stable for a given seed) — caller
 // passes a varying integer (e.g. message id) so successive photos differ.
 export function photoSendCaption(locale: string, seed: number): string {
-  const list = CAPTIONS[locale] ?? CAPTIONS.en!
+  return pickCaption(CAPTIONS, locale, seed)
+}
+
+// The inverse case: the model replied with the photo directive and NOTHING else,
+// but the photo is not going out (the user's message gave no photo signal, or
+// the output filter cancelled it). Stripping the directive leaves an empty
+// reply, and committing that answered the user with silence — which reads as a
+// failed turn. These lines keep the turn alive and nudge the user to say what
+// they want to see, which then trips the deterministic photo request.
+const DECLINED_CAPTIONS: Record<string, string[]> = {
+  en: [
+    'Mmm… tell me what you want to see 😏',
+    'Ask me for it properly and it\'s yours 😘',
+    'What do you want to see? 😏',
+  ],
+  ru: [
+    'Ммм… скажи, что хочешь увидеть 😏',
+    'Попроси как следует — и оно твоё 😘',
+    'Что хочешь увидеть? 😏',
+  ],
+  es: ['Mmm… dime qué quieres ver 😏', 'Pídemelo bien y es tuyo 😘', '¿Qué quieres ver? 😏'],
+}
+
+export function photoDeclinedCaption(locale: string, seed: number): string {
+  return pickCaption(DECLINED_CAPTIONS, locale, seed)
+}
+
+function pickCaption(table: Record<string, string[]>, locale: string, seed: number): string {
+  const list = table[locale] ?? table.en!
   const idx = Math.abs(Math.trunc(seed)) % list.length
   return list[idx]!
 }

@@ -12,6 +12,8 @@
 // realistic-21+ policy. Fal/Atlas safety scorers and the apparent-age
 // classifier downstream still apply on top of these markers.
 
+import type { SubjectGender } from './subject-gender'
+
 export type ArtStyleHint = 'realistic' | 'anime' | null | undefined
 
 export type AgePolicy = {
@@ -62,9 +64,14 @@ export function getAgePolicy(artStyle: ArtStyleHint): AgePolicy {
 
 // Convenience for legacy "(adult woman, (18+ years old:1.3))" call sites.
 // Returns the comma-separated marker block ready to splice into a prompt.
-export function getSafetyAdultMarkerString(artStyle: ArtStyleHint): string {
+// The subject noun follows the character's gender — a male character rendered
+// with "adult woman" in the positive prompt comes back feminised.
+export function getSafetyAdultMarkerString(
+  artStyle: ArtStyleHint,
+  gender: SubjectGender = 'female',
+): string {
   const p = getAgePolicy(artStyle)
-  return `adult woman, ${p.positiveMarkers}`
+  return `adult ${gender === 'male' ? 'man' : 'woman'}, ${p.positiveMarkers}`
 }
 
 // Clamps any provided age up to the policy minimum. Use in prompt builders

@@ -39,7 +39,8 @@ describe('buildCharacterEditPrompt', () => {
     const explicit = buildCharacterEditPrompt({ scene: 'topless', explicit: true }).prompt
     expect(explicit).toMatch(/undress the subject/i)
     expect(explicit).toMatch(/remove all clothing/i)
-    expect(explicit).toMatch(/do not cover, censor, blur, add lingerie, or re-clothe/i)
+    expect(explicit).toMatch(/do not cover, censor, blur/i)
+    expect(explicit).toMatch(/add lingerie or underwear, or re-clothe/i)
     // Explicit must NOT use the "change the outfit" framing (implies clothing kept).
     expect(explicit).not.toMatch(/change only the outfit/i)
     const clothed = buildCharacterEditPrompt({ scene: 'in a dress' }).prompt
@@ -266,5 +267,107 @@ describe('buildCharacterScenePrompt anime style hardening', () => {
     // Realistic still gets the natural-iris guard.
     expect(prompt).toMatch(/natural realistic eye color/i)
     expect(negativePrompt).toMatch(/score_4/)
+  })
+})
+
+describe('explicit negatives', () => {
+  it('does not negate garments a partial-nudity scene deliberately keeps', () => {
+    const { negativePrompt } = buildCharacterScenePrompt({
+      appearance: { subjectTokens: 'woman, brown hair' },
+      artStyle: 'realistic',
+      scene: 'in black stockings, topless, bare breasts, exposed nipples',
+      explicit: true,
+    })
+    // Anti-censor always applies…
+    expect(negativePrompt).toMatch(/\(censored:1\.4\)/)
+    // …but negating clothing would undo the stockings that were asked for.
+    expect(negativePrompt).not.toMatch(/\(clothed:1\.3\)/)
+    expect(negativePrompt).not.toMatch(/\(panties:1\.4\)/)
+  })
+
+  it('negates garments on a strip-it-all request', () => {
+    const { negativePrompt } = buildCharacterScenePrompt({
+      appearance: { subjectTokens: 'woman, brown hair' },
+      artStyle: 'realistic',
+      scene: 'completely nude, fully naked, no clothing, bare skin',
+      explicit: true,
+    })
+    expect(negativePrompt).toMatch(/\(clothed:1\.3\)/)
+    expect(negativePrompt).toMatch(/\(bra:1\.4\)/)
+  })
+})
+
+describe('male characters', () => {
+  const male = { subjectTokens: 'caucasian 30 year old man, athletic toned body, short messy hair' }
+
+  it('never asks a realistic male scene for female anatomy or a female age guard', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: male,
+      artStyle: 'realistic',
+      scene: 'completely nude, fully naked',
+      explicit: true,
+      gender: 'male',
+    })
+    expect(prompt).toMatch(/visible penis/i)
+    expect(prompt).not.toMatch(/bare breasts/i)
+    // `flat chest` is an age cue for a female subject only — negating it fights
+    // a man's own anatomy.
+    expect(negativePrompt).not.toMatch(/flat chest/i)
+    expect(negativePrompt).toMatch(/\(breasts:1\.4\)/)
+    // …and the explicit guard against hedging with underwear is present.
+    expect(negativePrompt).toMatch(/\(underwear:1\.4\)/)
+  })
+
+  it('tags an anime male scene 1boy, not 1girl', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: male,
+      artStyle: 'anime',
+      scene: 'completely nude',
+      explicit: true,
+      gender: 'male',
+    })
+    expect(prompt).toMatch(/^1boy, solo/)
+    expect(prompt).not.toMatch(/1girl/)
+    expect(prompt).toMatch(/detailed penis/i)
+    expect(prompt).not.toMatch(/detailed pussy/i)
+    expect(negativePrompt).toMatch(/2boys/)
+    expect(negativePrompt).not.toMatch(/2girls/)
+  })
+
+  it('keeps the female defaults when no gender is passed', () => {
+    const { prompt, negativePrompt } = buildCharacterScenePrompt({
+      appearance: { subjectTokens: 'woman, brown hair' },
+      artStyle: 'anime',
+      scene: 'completely nude',
+      explicit: true,
+    })
+    expect(prompt).toMatch(/^1girl, solo/)
+    expect(prompt).toMatch(/detailed pussy/i)
+    expect(negativePrompt).toMatch(/flat chest/i)
+  })
+
+  it('names the male body in the explicit edit prompt', () => {
+    const male = buildCharacterEditPrompt({ scene: 'fully naked', explicit: true, gender: 'male' })
+      .prompt
+    expect(male).toMatch(/bare hips and penis/i)
+    expect(male).not.toMatch(/bare breasts/i)
+    const female = buildCharacterEditPrompt({ scene: 'fully naked', explicit: true }).prompt
+    expect(female).toMatch(/bare breasts/i)
+    // Neither variant leaks anatomy into a clothed edit.
+    const clothed = buildCharacterEditPrompt({ scene: 'in a leather jacket', gender: 'male' }).prompt
+    expect(clothed).not.toMatch(/penis|breasts/i)
+  })
+
+  it('does not call a male subject a woman on the FLUX path', () => {
+    const { prompt } = buildCharacterScenePrompt({
+      appearance: null,
+      artStyle: 'realistic',
+      scene: 'at home',
+      isFlux: true,
+      gender: 'male',
+    })
+    expect(prompt).toMatch(/The man is/)
+    expect(prompt).toMatch(/21\+ adult man/)
+    expect(prompt).not.toMatch(/woman/i)
   })
 })

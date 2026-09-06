@@ -315,7 +315,10 @@ export async function POST(req: NextRequest) {
         }).catch(() => {})
 
         if (!isAbort) {
-          send('error', { message: 'Regeneration failed. Please try again.' })
+          send('error', {
+            message: 'Regeneration failed. Please try again.',
+            reason: 'generation_failed',
+          })
         }
       } finally {
         controller.close()

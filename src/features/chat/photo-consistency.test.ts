@@ -137,4 +137,34 @@ describe('resolveExplicitScene', () => {
     expect(resolveExplicitScene({ scene: 'in a dress at a cafe', message: 'x', explicit: false }))
       .toBe('in a dress at a cafe')
   })
+
+  it('depicts a male body when the character is male', () => {
+    const out = resolveExplicitScene({
+      scene: 'lying on the bed',
+      message: 'fully naked',
+      explicit: true,
+      gender: 'male',
+    })
+    expect(out).toMatch(/nude male body/)
+    expect(out).toMatch(/visible penis/)
+  })
+})
+
+describe('male explicit markers', () => {
+  it.each(['shirtless', 'no pants', 'без рубашки', 'sin camisa', 'torso desnudo'])(
+    'treats %s as an explicit request',
+    (t) => {
+      expect(isExplicitPhotoScene(t)).toBe(true)
+    },
+  )
+
+  it('maps a male topless cue to a bare chest, never to breasts', () => {
+    const out = explicitNudityTokens('shirtless on the balcony', 'male')
+    expect(out).toMatch(/shirtless, bare chest/)
+    expect(out).not.toMatch(/breasts/)
+  })
+
+  it('leaves a female subject unchanged', () => {
+    expect(explicitNudityTokens('topless')).toMatch(/topless, bare breasts/)
+  })
 })
