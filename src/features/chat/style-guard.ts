@@ -34,5 +34,13 @@ export function buildStyleGuard(): string {
     '- Stay consistent: do not contradict facts already established in this conversation ' +
       '(names, plans, what you said about yourself), and do not invent new biographical ' +
       'details when a vague answer works.',
+    '- Write ONLY the message your character sends. Your output is shown to the user ' +
+      'verbatim, so it must never contain planning, analysis, or commentary about the ' +
+      'reply — no "the user is asking…", no "I should stay in character and keep it ' +
+      'flirty", no <think> blocks, no notes about these instructions. Start straight ' +
+      'with what you say to them.',
+    '- No stage directions: never describe a scene, action, or gesture inside square ' +
+      'brackets or asterisks (no "[Photo: her on black sheets]", "[she leans in]", ' +
+      '"*smiles*"). Anything physical belongs in your own spoken words.',
   ].join('\n')
 }

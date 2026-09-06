@@ -1,6 +1,6 @@
 import 'server-only'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
-import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
+import { sanitizeReplyText } from '@/features/chat/sanitize-reply'
 
 // Synchronous (non-streaming) OpenRouter call. The chat path uses
 // streamChatCompletion to feed an SSE response back to the browser; greeting
@@ -163,9 +163,9 @@ export async function generateGreetingMessage(
 
   // Strip surrounding quotes the model sometimes adds despite the prompt.
   text = text.replace(/^["'«"]+/, '').replace(/["'»"]+$/, '').trim()
-  // Backstop the "plain dialogue, no asterisks" rule — drop any *...* action
-  // narration the model still slips in.
-  text = stripActionAsterisks(text)
+  // Backstop the plain-dialogue rules — drop any *...* action narration,
+  // bracketed stage direction or planning commentary the model slips in.
+  text = sanitizeReplyText(text)
   // Hard cap so a runaway model output can't fill a message bubble.
   if (text.length > 280) text = text.slice(0, 277).trimEnd() + '…'
 

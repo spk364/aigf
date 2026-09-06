@@ -19,7 +19,7 @@ import {
   explicitPhotoRequestInstruction,
 } from '@/features/chat/photo-directive'
 import { type CharacterAppearance } from '@/features/chat/image-prompt'
-import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
+import { makeReplyStreamFilter, sanitizeReplyText } from '@/features/chat/sanitize-reply'
 import { buildCharacterScenePrompt, buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
 import { buildOutputGuard, resolveReplyLocale } from '@/features/chat/language-guard'
 import { buildStyleGuard } from '@/features/chat/style-guard'
@@ -597,6 +597,13 @@ export async function POST(req: NextRequest) {
       // included) and holds back any in-progress [SEND_PHOTO...] marker so it
       // never flashes at the user.
       const directiveFilter = makeDirectiveStreamFilter()
+      // Second stage over the directive-free text: drops the model's planning
+      // commentary and bracketed stage directions before they reach the bubble,
+      // instead of letting them flash and be yanked back by `replace`.
+      const replyFilter = makeReplyStreamFilter()
+      // Exactly what the client has appended so far, so the reconciliation
+      // below can tell whether the committed text still matches the bubble.
+      let streamedText = ''
       let usageData: { prompt_tokens: number; completion_tokens: number } | undefined
       const startTime = Date.now()
       let timeToFirstToken: number | null = null
@@ -619,21 +626,30 @@ export async function POST(req: NextRequest) {
           }
 
           const safe = directiveFilter.push(chunk.delta)
-          if (safe) send('delta', { text: safe })
+          if (!safe) continue
+          const shown = replyFilter.push(safe)
+          if (shown) {
+            streamedText += shown
+            send('delta', { text: shown })
+          }
+        }
+
+        const tail = replyFilter.flush()
+        if (tail) {
+          streamedText += tail
+          send('delta', { text: tail })
         }
 
         const latencyMs = Date.now() - startTime
 
         // Pull the [SEND_PHOTO] directive (if any) out of the assembled reply.
         const parsed = directiveFilter.finish()
-        // Backstop the "no asterisk action narration" prompt rule: existing
-        // conversations carry a frozen system-prompt snapshot, so the prompt
-        // change can't reach them — strip any *...* spans here. When this
-        // removes text the client already streamed, `strippedActions` triggers
-        // a `replace` below so the committed bubble matches the persisted text.
-        const directiveCleaned = parsed.cleaned
-        let finalContent = stripActionAsterisks(directiveCleaned)
-        const strippedActions = finalContent !== directiveCleaned
+        // Backstop the prompt rules the frozen characterSnapshot can't carry:
+        // no planning commentary, no bracketed stage directions, no *...* action
+        // narration. Authoritative — the streaming filter above keeps the live
+        // bubble clean, this decides what is persisted, and the two are
+        // reconciled by the `replace` below.
+        let finalContent = sanitizeReplyText(parsed.cleaned)
         // Send a photo when the user asked this turn and can pay. Two triggers:
         //  1. The explicit-request regex (deterministic, always honoured).
         //  2. A model-emitted [SEND_PHOTO] directive, but ONLY when the user's
@@ -678,10 +694,11 @@ export async function POST(req: NextRequest) {
 
         const hasText = finalContent.trim().length > 0
 
-        // The streamed text (directive stripped) can drift from finalContent via
-        // the whitespace tidy or a safety replacement — reconcile the client to
-        // the canonical text whenever we touched it.
-        if (hasText && (photoRequested || !outputVerdict.safe || strippedActions)) {
+        // The streamed text can drift from finalContent via the whitespace tidy,
+        // a safety replacement, or commentary the stream filter only recognised
+        // once the whole reply was in — reconcile the bubble to the canonical
+        // text whenever the two disagree.
+        if (hasText && finalContent !== streamedText) {
           send('replace', { text: finalContent })
         }
 
@@ -1059,7 +1076,7 @@ export async function POST(req: NextRequest) {
 
         // Strip any (possibly partial) directive from the salvaged text so a
         // raw [SEND_PHOTO marker never lands in a persisted message.
-        const salvaged = stripActionAsterisks(directiveFilter.finish().cleaned)
+        const salvaged = sanitizeReplyText(directiveFilter.finish().cleaned)
         await payload.update({
           collection: 'messages',
           id: assistantMsgId,
