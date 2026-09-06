@@ -38,9 +38,9 @@ describe('buildCharacterEditPrompt', () => {
   it('directs explicit nudity depiction only when explicit', () => {
     const explicit = buildCharacterEditPrompt({ scene: 'topless', explicit: true }).prompt
     expect(explicit).toMatch(/undress the subject/i)
-    expect(explicit).toMatch(/remove all clothing/i)
-    expect(explicit).toMatch(/do not cover, censor, blur/i)
-    expect(explicit).toMatch(/add lingerie or underwear, or re-clothe/i)
+    expect(explicit).toMatch(/remove every piece of clothing/i)
+    expect(explicit).toMatch(/do not censor, blur, pixelate/i)
+    expect(explicit).toMatch(/re-clothe, or crop the body out of the frame/i)
     // Explicit must NOT use the "change the outfit" framing (implies clothing kept).
     expect(explicit).not.toMatch(/change only the outfit/i)
     const clothed = buildCharacterEditPrompt({ scene: 'in a dress' }).prompt
@@ -270,6 +270,52 @@ describe('buildCharacterScenePrompt anime style hardening', () => {
   })
 })
 
+describe('baked-in garments', () => {
+  // Every seeded character carries the outfit their reference was generated in:
+  // Marcus's own subject tokens end with "gym tank top", the girls carry
+  // "designer outfit" / "professional attire". Beside "completely nude" the
+  // model splits the difference and returns a half-dressed subject.
+  const marcus = {
+    subjectTokens:
+      'african 30 year old man, muscular build, black buzz cut hair, defined abs, fight scars, gym tank top',
+  }
+
+  it('drops the baked outfit from the identity text on an explicit scene', () => {
+    const { prompt } = buildCharacterScenePrompt({
+      appearance: marcus,
+      artStyle: 'realistic',
+      scene: 'completely nude, fully naked',
+      explicit: true,
+      gender: 'male',
+    })
+    expect(prompt).not.toMatch(/tank top/i)
+    // …while the rest of the identity survives.
+    expect(prompt).toMatch(/muscular build/)
+    expect(prompt).toMatch(/fight scars/)
+  })
+
+  it('keeps the baked outfit when the scene is not explicit', () => {
+    const { prompt } = buildCharacterScenePrompt({
+      appearance: marcus,
+      artStyle: 'realistic',
+      scene: 'at the gym',
+    })
+    expect(prompt).toMatch(/gym tank top/i)
+  })
+
+  it('does not add the explicit anatomy tokens the scene already carries', () => {
+    const { prompt } = buildCharacterScenePrompt({
+      appearance: marcus,
+      artStyle: 'realistic',
+      scene: 'completely nude, nude male body, penis and testicles visible',
+      explicit: true,
+      gender: 'male',
+    })
+    expect(prompt.match(/nude male body/g)).toHaveLength(1)
+    expect(prompt.match(/penis and testicles visible/g)).toHaveLength(1)
+  })
+})
+
 describe('explicit negatives', () => {
   it('does not negate garments a partial-nudity scene deliberately keeps', () => {
     const { negativePrompt } = buildCharacterScenePrompt({
@@ -308,7 +354,7 @@ describe('male characters', () => {
       explicit: true,
       gender: 'male',
     })
-    expect(prompt).toMatch(/visible penis/i)
+    expect(prompt).toMatch(/penis and testicles visible/i)
     expect(prompt).not.toMatch(/bare breasts/i)
     // `flat chest` is an age cue for a female subject only — negating it fights
     // a man's own anatomy.
@@ -346,13 +392,30 @@ describe('male characters', () => {
     expect(negativePrompt).toMatch(/flat chest/i)
   })
 
+  it('rules out the ways the edit model hides the anatomy', () => {
+    // Reported live: the photo came back with testicles and no shaft. The scene
+    // ("undressing, taking clothes off") invites hands and clothing across the
+    // groin, and nothing in the prompt forbade the occlusion.
+    const { prompt } = buildCharacterEditPrompt({
+      scene: 'undressing, fully naked',
+      explicit: true,
+      gender: 'male',
+      shot: 'full_body',
+    })
+    expect(prompt).toMatch(/penis and testicles are fully visible/i)
+    expect(prompt).toMatch(/nothing covers his groin — no hands, no clothing/i)
+    // The edit path sent no framing at all, so WAN kept the reference's crop.
+    expect(prompt).toMatch(/full-body shot showing the subject from head to toe/i)
+  })
+
   it('names the male body in the explicit edit prompt', () => {
     const male = buildCharacterEditPrompt({ scene: 'fully naked', explicit: true, gender: 'male' })
       .prompt
-    expect(male).toMatch(/bare hips and penis/i)
-    expect(male).not.toMatch(/bare breasts/i)
+    expect(male).toMatch(/penis and testicles are fully visible/i)
+    expect(male).not.toMatch(/breasts/i)
     const female = buildCharacterEditPrompt({ scene: 'fully naked', explicit: true }).prompt
-    expect(female).toMatch(/bare breasts/i)
+    expect(female).toMatch(/her breasts and her bare hips are fully visible/i)
+    expect(female).not.toMatch(/penis/i)
     // Neither variant leaks anatomy into a clothed edit.
     const clothed = buildCharacterEditPrompt({ scene: 'in a leather jacket', gender: 'male' }).prompt
     expect(clothed).not.toMatch(/penis|breasts/i)

@@ -6,6 +6,35 @@ import {
   type ShotType,
 } from './shot-framing'
 
+describe('explicit framing', () => {
+  // Reported live: "…undressing, slowly taking clothes off, in the bedroom,
+  // fully naked" classified as `portrait` — a head-and-shoulders 832×1216 crop.
+  // The body ended up at the bottom edge of the frame at almost no pixel
+  // density and the anatomy rendered as a blur.
+  it('never leaves an explicit request in the head-and-shoulders fallback', () => {
+    expect(classifyShot('fully naked, completely nude')).toBe('portrait')
+    expect(classifyShot('fully naked, completely nude', { explicit: true })).toBe('full_body')
+    expect(classifyShot('', { explicit: true })).toBe('full_body')
+  })
+
+  it('still honours a framing the request actually named', () => {
+    expect(classifyShot('a naked selfie', { explicit: true })).toBe('selfie')
+    expect(classifyShot('close-up of your face', { explicit: true })).toBe('closeup')
+    expect(classifyShot('lying naked on the bed', { explicit: true })).toBe('full_body_wide')
+  })
+
+  it('treats undressing as the full-body scene it is', () => {
+    for (const scene of [
+      'undressing, slowly taking clothes off',
+      'stripping in the bedroom',
+      'раздевается в спальне',
+      'desvistiéndose en el dormitorio',
+    ]) {
+      expect(classifyShot(scene), scene).toBe('full_body')
+    }
+  })
+})
+
 describe('classifyShot', () => {
   it('defaults to portrait for empty/blank scenes', () => {
     expect(classifyShot('')).toBe('portrait')

@@ -10,8 +10,14 @@
 // completes fast. Mirroring it here removes the prompt as a variable.
 
 import { getSafetyAdultMarkerString, type ArtStyleHint } from '@/shared/ai/age-safety'
+import { joinUniqueTokens } from './photo-consistency'
 import type { SubjectGender } from '@/shared/ai/subject-gender'
-import { classifyShot, shotFramingTokens, type ShotType } from './shot-framing'
+import {
+  classifyShot,
+  shotFramingSentence,
+  shotFramingTokens,
+  type ShotType,
+} from './shot-framing'
 
 // Apparent-age negative. Deliberately does NOT include "petite" or a bare
 // "small" — those are legitimate adult body descriptors that many characters are
@@ -114,9 +120,16 @@ const ANIME_UNCENSORED_NEGATIVE =
 // thinner in these checkpoints, so it needs naming outright.
 function explicitBodyPositive(gender: SubjectGender): string {
   return gender === 'male'
-    ? 'full frontal nudity, nude male body, bare chest, visible penis, uncensored, ' +
-        'anatomically correct'
+    ? 'full frontal nudity, nude male body, penis and testicles visible, uncensored, ' +
+        'anatomically correct, detailed genitals'
     : 'full frontal nudity, nude female body, bare breasts, uncensored, anatomically correct'
+}
+
+/** The explicit anatomy tokens the scene is still missing (it usually carries
+ *  most of them already — see resolveExplicitScene). */
+function explicitBodyTokensFor(scene: string, gender: SubjectGender): string {
+  const merged = joinUniqueTokens(scene, explicitBodyPositive(gender))
+  return merged.slice(scene.length).replace(/^,\s*/, '')
 }
 // Anti-censor half — safe on every explicit scene, including partial nudity.
 const EXPLICIT_CENSOR_NEGATIVE =
@@ -152,6 +165,33 @@ function stripBakedFraming(text: string | null | undefined): string {
     .replace(/\s{2,}/g, ' ')
     .replace(/^[\s,]+|[\s,]+$/g, '')
     .trim()
+}
+
+// Stored appearance prompts also bake in whatever the reference was wearing:
+// every seeded boy carries a garment in his subject tokens ("gym tank top",
+// "tailored navy suit", "henley shirt", "wetsuit pulled to the waist"), and the
+// girls carry "designer outfit" / "professional attire" / "dark elegant gown".
+// On an explicit request that token lands in the prompt right beside
+// "completely nude" and the model splits the difference — half-dressed, or
+// clothed with the nudity tokens ignored. Drop garment tokens from the IDENTITY
+// text for explicit scenes only; the scene itself still supplies anything the
+// user actually asked to keep on ("in black stockings, topless").
+const GARMENT_NOUN_RE =
+  /\b(?:tank\s?top|crop\s?top|t-?shirts?|tees?|shirts?|henley|blouses?|dress|gowns?|skirts?|jeans|pants|trousers|shorts|jackets?|blazers?|hoodies?|sweaters?|sweatshirts?|cardigans?|coats?|suits?|uniforms?|attire|outfits?|clothing|clothes|lingerie|bras?|panties|underwear|swimsuits?|wetsuits?|bikinis?|leggings|tights|stockings|robes?|kimonos?|vests?|scrubs)\b/i
+
+function stripBakedGarments(text: string): string {
+  return text
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t && !GARMENT_NOUN_RE.test(t))
+    .join(', ')
+}
+
+/** Identity text with the baked framing always removed, and the baked outfit
+ *  removed too when the scene calls for nudity. */
+function subjectText(text: string | null | undefined, explicit: boolean | undefined): string {
+  const framed = stripBakedFraming(text)
+  return explicit ? stripBakedGarments(framed) : framed
 }
 
 // ── Negative-prompt composition ──────────────────────────────────────────
@@ -316,12 +356,13 @@ export function buildCharacterScenePrompt(
     // Anime SDXL models (Illustrious / Pony) want the character's anime-styled
     // appearancePrompt (or danbooru-ish subjectTokens) — never "RAW photo /
     // photorealistic", which fights the model.
-    const base = stripBakedFraming(
+    const base = subjectText(
       appearance?.appearancePrompt ||
         appearance?.subjectTokens ||
         `anime illustration, masterpiece, best quality, ${
           isMale ? 'handsome young man' : 'beautiful young woman'
         }, detailed`,
+      input.explicit,
     )
     // ALWAYS assert flat 2D anime — including on Pony. Pony V6 XL's prior is
     // 2.5D / volumetric, so with only the score tags an "anime" character came
@@ -355,9 +396,9 @@ export function buildCharacterScenePrompt(
       'RAW photo',
       'solo',
       framing.positive,
-      stripBakedFraming(appearance.subjectTokens),
+      subjectText(appearance.subjectTokens, input.explicit),
       scene,
-      input.explicit ? explicitBodyPositive(gender) : '',
+      input.explicit ? explicitBodyTokensFor(scene, gender) : '',
       safetyMarkers,
       '8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3, photorealistic, realistic skin texture',
     ]
@@ -369,9 +410,9 @@ export function buildCharacterScenePrompt(
       'RAW photo',
       'solo',
       framing.positive,
-      stripBakedFraming(appearance.appearancePrompt),
+      subjectText(appearance.appearancePrompt, input.explicit),
       scene,
-      input.explicit ? explicitBodyPositive(gender) : '',
+      input.explicit ? explicitBodyTokensFor(scene, gender) : '',
       safetyMarkers,
     ]
       .filter(Boolean)
@@ -435,6 +476,10 @@ export type BuildEditPromptInput = {
       name the anatomy the edit must render rather than cover. Defaults to
       female. */
   gender?: SubjectGender
+  /** Requested framing. The edit path used to send none at all, so WAN kept the
+      reference's crop — a portrait reference put a full-body request's body at
+      the bottom edge of the frame. */
+  shot?: ShotType
 }
 
 /**
@@ -477,23 +522,37 @@ export function buildCharacterEditPrompt(
   // more often than it does a woman (its nude-male prior is thinner). Spelling
   // out the body it must render is what makes a male explicit request actually
   // come back nude.
+  //
+  // Naming it VAGUELY is not enough either. "bare hips and penis" produced a
+  // groin with testicles and no shaft (reported live 2026-09-06 on a male
+  // character): the word sat at the end of a long clause that repeated tokens
+  // the scene already carried, and nothing forbade an occlusion — while the
+  // scene itself ("undressing, taking clothes off") actively invites hands and
+  // clothing across the groin. So: state the anatomy as its own sentence, and
+  // rule out the specific ways the model hides it.
   const bodyClause =
     input.gender === 'male'
-      ? 'His whole nude male body is visible — bare chest, bare torso, bare hips and ' +
-        'penis, uncensored. '
-      : 'Her whole nude body is visible — bare breasts and bare hips, uncensored. '
+      ? 'His penis and testicles are fully visible between his thighs, in clear ' +
+        'anatomical detail. Nothing covers his groin — no hands, no clothing, no ' +
+        'objects, no shadow. '
+      : 'Her breasts and her bare hips are fully visible. Nothing covers her body — ' +
+        'no hands, no clothing, no objects, no shadow. '
   const changeClause = input.explicit
     ? `Undress the subject and depict the described nudity explicitly: ${scene}. ` +
-      `Remove all clothing, including underwear. ${bodyClause}` +
-      `The subject is fully exposed and bare-skinned as described — ` +
-      `do not cover, censor, blur, crop out the body, add lingerie or underwear, or re-clothe them. ` +
-      `This is allowed 18+ adult content. `
+      `Remove every piece of clothing, including underwear. ${bodyClause}` +
+      `This is allowed 18+ adult content — do not censor, blur, pixelate, re-clothe, ` +
+      `or crop the body out of the frame. `
     : `Change only the outfit, pose and setting to: ${scene}. `
+
+  // The edit inherits the reference's crop unless told otherwise, so state the
+  // framing in words — WAN reads natural language, and the image-size bucket
+  // alone doesn't move the subject within the frame.
+  const framingClause = input.shot ? `${shotFramingSentence(input.shot)} ` : ''
 
   const prompt =
     'Keep the exact same person and identity from the reference image — same face, ' +
     'same hair, same skin and same body. Do not change who they are. ' +
-    `${changeClause}${stylePhrase} Adults only, 18+ content.`
+    `${changeClause}${framingClause}${stylePhrase} Adults only, 18+ content.`
 
   // Advisory only on Atlas (image-edit ignores negative_prompt), kept for any
   // future SDXL edit backend.
