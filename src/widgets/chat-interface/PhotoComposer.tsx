@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { PHOTO_OPTION_GROUPS, buildPhotoRequest } from '@/features/chat/photo-options'
+import { useMemo, useState } from 'react'
+import { buildPhotoRequest, photoOptionGroupsFor } from '@/features/chat/photo-options'
+import type { SubjectGender } from '@/shared/ai/subject-gender'
 
 export type PhotoComposerStrings = {
   title: string
@@ -17,6 +18,9 @@ export type PhotoComposerStrings = {
 type Props = {
   strings: PhotoComposerStrings
   cost: number
+  /** Which chips to offer — a boyfriend thread gets "Shirtless"/"Boxers" where a
+      girlfriend thread gets "Elegant dress"/"Lingerie". Defaults to female. */
+  gender?: SubjectGender
   onSubmit: (message: string) => void
   onClose: () => void
 }
@@ -24,11 +28,14 @@ type Props = {
 // A small sheet that opens above the composer when the user taps the photo chip.
 // Lets them pick an outfit / pose / setting (all optional), then builds a natural
 // photo-request message that flows through the existing image-intent pipeline.
-export function PhotoComposer({ strings: s, cost, onSubmit, onClose }: Props) {
+export function PhotoComposer({ strings: s, cost, gender, onSubmit, onClose }: Props) {
   const [outfit, setOutfit] = useState<string | undefined>()
   const [pose, setPose] = useState<string | undefined>()
   const [setting, setSetting] = useState<string | undefined>()
   const [extra, setExtra] = useState('')
+
+  // Gender-filtered chips with each fragment already resolved for this subject.
+  const groups = useMemo(() => photoOptionGroupsFor(gender), [gender])
 
   const selByGroup: Record<string, [string | undefined, (v: string | undefined) => void]> = {
     outfit: [outfit, setOutfit],
@@ -38,7 +45,7 @@ export function PhotoComposer({ strings: s, cost, onSubmit, onClose }: Props) {
 
   const handleSend = () => {
     const fragments: { outfit?: string; pose?: string; setting?: string; extra?: string } = {}
-    for (const g of PHOTO_OPTION_GROUPS) {
+    for (const g of groups) {
       const [selectedKey] = selByGroup[g.group]!
       if (!selectedKey) continue
       const opt = g.options.find((o) => o.key === selectedKey)
@@ -69,7 +76,7 @@ export function PhotoComposer({ strings: s, cost, onSubmit, onClose }: Props) {
         </div>
 
         <div className="max-h-[40dvh] space-y-3 overflow-y-auto">
-          {PHOTO_OPTION_GROUPS.map((g) => {
+          {groups.map((g) => {
             const [selectedKey, setSelected] = selByGroup[g.group]!
             return (
               <div key={g.group}>

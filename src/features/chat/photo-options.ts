@@ -11,9 +11,17 @@
 // the filters.
 //
 // Fragments are written WITHOUT gendered pronouns ("looking back over the
-// shoulder", not "over her shoulder"): the composer is the same sheet for every
-// character, and a female pronoun in the scene fights a male character's own
-// appearance tokens downstream.
+// shoulder", not "over her shoulder"): most chips are shared, and a female
+// pronoun in the scene fights a male character's own appearance tokens
+// downstream.
+//
+// The chips that CAN'T be shared are marked. Offering "Elegant dress" and
+// "Lingerie" on an AI-boyfriend thread was the reported problem — the sheet
+// was built for the girls catalogue and never adapted. `gender` hides a chip
+// from the other side and `malePrompt` retunes a shared chip whose neutral
+// wording still reads female to the image model ("in swimwear" → a bikini).
+
+import type { SubjectGender } from '@/shared/ai/subject-gender'
 
 export type PhotoOption = {
   key: string
@@ -21,6 +29,13 @@ export type PhotoOption = {
   labelKey: string
   // English scene fragment used to build the request message.
   prompt: string
+  /** Show this chip only for the given subject gender. Omitted = both. */
+  gender?: SubjectGender
+  /** Scene fragment to use instead of `prompt` when the subject is male. */
+  malePrompt?: string
+  /** Label to use instead of `labelKey` when the subject is male. Needed where
+      the noun itself is gendered — RU "Купальник" vs "Плавки". */
+  maleLabelKey?: string
 }
 
 export type PhotoOptionGroup = {
@@ -34,17 +49,47 @@ export const PHOTO_OPTION_GROUPS: PhotoOptionGroup[] = [
     group: 'outfit',
     options: [
       { key: 'casual', labelKey: 'outfit.casual', prompt: 'in casual clothes' },
-      { key: 'dress', labelKey: 'outfit.dress', prompt: 'wearing an elegant dress' },
+      {
+        key: 'dress',
+        labelKey: 'outfit.dress',
+        prompt: 'wearing an elegant dress',
+        gender: 'female',
+      },
       { key: 'suit', labelKey: 'outfit.suit', prompt: 'in a sharp tailored suit' },
       { key: 'cozy', labelKey: 'outfit.cozy', prompt: 'in a cozy oversized sweater' },
       { key: 'shirt', labelKey: 'outfit.shirt', prompt: 'in an oversized white shirt' },
+      {
+        key: 'open_shirt',
+        labelKey: 'outfit.openShirt',
+        prompt: 'in an unbuttoned shirt, bare chest showing',
+        gender: 'male',
+      },
       { key: 'leather', labelKey: 'outfit.leather', prompt: 'in a leather jacket' },
       { key: 'workout', labelKey: 'outfit.workout', prompt: 'in workout clothes' },
       { key: 'pajamas', labelKey: 'outfit.pajamas', prompt: 'in pajamas' },
-      { key: 'swimwear', labelKey: 'outfit.swimwear', prompt: 'in swimwear' },
+      {
+        key: 'swimwear',
+        labelKey: 'outfit.swimwear',
+        prompt: 'in swimwear',
+        // Bare "swimwear" resolves to a bikini on every checkpoint we dispatch to.
+        malePrompt: 'in swim shorts, bare chest',
+        maleLabelKey: 'outfit.swimwearMale',
+      },
       { key: 'robe', labelKey: 'outfit.robe', prompt: 'in a silk robe, loosely tied' },
       { key: 'towel', labelKey: 'outfit.towel', prompt: 'wrapped in a towel, fresh out of the shower' },
-      { key: 'lingerie', labelKey: 'outfit.lingerie', prompt: 'in lingerie' },
+      {
+        key: 'shirtless',
+        labelKey: 'outfit.shirtless',
+        prompt: 'shirtless, bare chest, bare torso',
+        gender: 'male',
+      },
+      { key: 'lingerie', labelKey: 'outfit.lingerie', prompt: 'in lingerie', gender: 'female' },
+      {
+        key: 'boxers',
+        labelKey: 'outfit.boxers',
+        prompt: 'in tight boxer briefs, shirtless',
+        gender: 'male',
+      },
       { key: 'nude', labelKey: 'outfit.nude', prompt: 'wearing nothing at all, completely nude' },
     ],
   },
@@ -58,7 +103,20 @@ export const PHOTO_OPTION_GROUPS: PhotoOptionGroup[] = [
       { key: 'sitting', labelKey: 'pose.sitting', prompt: 'sitting by the window' },
       { key: 'lying', labelKey: 'pose.lying', prompt: 'lying on the bed, relaxed' },
       { key: 'looking_back', labelKey: 'pose.lookingBack', prompt: 'looking back over the shoulder' },
-      { key: 'stretching', labelKey: 'pose.stretching', prompt: 'stretching, just woke up' },
+      {
+        key: 'stretching',
+        labelKey: 'pose.stretching',
+        prompt: 'stretching, just woke up',
+        // RU/ES render this as a past participle, which carries grammatical
+        // gender ("Только проснулась" / "Только проснулся").
+        maleLabelKey: 'pose.stretchingMale',
+      },
+      {
+        key: 'flexing',
+        labelKey: 'pose.flexing',
+        prompt: 'flexing, showing off the arms and chest',
+        gender: 'male',
+      },
       { key: 'kiss', labelKey: 'pose.kiss', prompt: 'blowing a kiss to the camera' },
       { key: 'undressing', labelKey: 'pose.undressing', prompt: 'undressing, slowly taking clothes off' },
     ],
@@ -104,11 +162,46 @@ export function buildPhotoRequest(selected: {
   return base
 }
 
+/** The fragment this option contributes for the given subject. */
+export function optionPrompt(option: PhotoOption, gender: SubjectGender = 'female'): string {
+  return gender === 'male' && option.malePrompt ? option.malePrompt : option.prompt
+}
+
+/**
+ * The chips to show for a character, with each option's prompt already resolved
+ * for that subject — so the composer can stay gender-agnostic and just read
+ * `option.prompt`.
+ */
+export function photoOptionGroupsFor(gender: SubjectGender = 'female'): PhotoOptionGroup[] {
+  return PHOTO_OPTION_GROUPS.map((g) => ({
+    ...g,
+    options: g.options
+      .filter((o) => !o.gender || o.gender === gender)
+      .map((o) => ({
+        ...o,
+        prompt: optionPrompt(o, gender),
+        labelKey: gender === 'male' && o.maleLabelKey ? o.maleLabelKey : o.labelKey,
+      })),
+  }))
+}
+
+/** Every i18n key the composer can ask for, both gender variants included. */
+export function allPhotoOptionLabelKeys(): string[] {
+  return PHOTO_OPTION_GROUPS.flatMap((g) =>
+    g.options.flatMap((o) => (o.maleLabelKey ? [o.labelKey, o.maleLabelKey] : [o.labelKey])),
+  )
+}
+
 // Resolves a fragment's English prompt by group+key. Used by the composer to map
 // the user's chip selection back to the prompt fragment.
-export function fragmentFor(group: string, key: string): string | undefined {
+export function fragmentFor(
+  group: string,
+  key: string,
+  gender: SubjectGender = 'female',
+): string | undefined {
   const g = PHOTO_OPTION_GROUPS.find((x) => x.group === group)
-  return g?.options.find((o) => o.key === key)?.prompt
+  const option = g?.options.find((o) => o.key === key)
+  return option ? optionPrompt(option, gender) : undefined
 }
 
 // Counterpart to buildPhotoRequest: recover the scene description from a user's

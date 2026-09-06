@@ -10,7 +10,8 @@ import type { PaywallSurface } from '@/widgets/paywall/admin-config'
 import type { ChatPaywallReason, ChatPaywallStrings } from '@/widgets/paywall'
 import { PLANS } from '@/features/billing/plans'
 import { getActiveExitIntentPromo } from '@/features/promotions/exit-intent-promo'
-import { PHOTO_OPTION_GROUPS } from '@/features/chat/photo-options'
+import { allPhotoOptionLabelKeys } from '@/features/chat/photo-options'
+import { resolveCharacterGender } from '@/shared/ai/subject-gender'
 import type { PhotoComposerStrings } from '@/widgets/chat-interface/PhotoComposer'
 import { ensureGreeting } from '@/features/chat/ensure-greeting'
 
@@ -322,9 +323,18 @@ export default async function ConversationPage({ params }: Props) {
   // sent to the image pipeline stay English, see photo-options.ts).
   const tPhoto = await getTranslations('chat.photoComposer')
   const photoOptions: Record<string, string> = {}
-  for (const g of PHOTO_OPTION_GROUPS) {
-    for (const o of g.options) photoOptions[o.labelKey] = tPhoto(`options.${o.labelKey}`)
+  for (const key of allPhotoOptionLabelKeys()) {
+    photoOptions[key] = tPhoto(`options.${key}`)
   }
+  // Which chips the composer offers. The character doc is already loaded above
+  // for the header photo; when it is gone (deleted character) the conversation's
+  // frozen appearance snapshot still carries enough to tell.
+  const characterGender = resolveCharacterGender(
+    (character as { appearance?: unknown; category?: unknown } | null) ?? {
+      appearance: (conversation.characterSnapshot as { appearance?: unknown } | null)?.appearance,
+    },
+  )
+
   const photoComposer: PhotoComposerStrings = {
     title: tPhoto('title'),
     subtitle: tPhoto('subtitle'),
@@ -355,6 +365,7 @@ export default async function ConversationPage({ params }: Props) {
   return (
     <ChatInterface
       photoComposer={photoComposer}
+      characterGender={characterGender}
       gallery={galleryStrings}
       initialConversationId={conversationId}
       initialMessages={initialMessages}
