@@ -7,6 +7,16 @@ import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import { getEmbedding, toVectorLiteral } from '@/shared/ai/embeddings'
 import { logger } from '@/shared/lib/logger'
 
+// Payload doubles the suffix on relationship columns: the field `userId` becomes
+// the column `user_id`, then the relationship itself appends `_id` → `user_id_id`.
+// These queries are raw SQL (Payload has no vector field type) so the mapping is
+// not done for us. Getting this wrong is silent: the query throws, the catch
+// below swallows it, and retrieval returns [] on every single message — which is
+// exactly what prod did until 2026-09-06. Keep in sync with
+// `src/payload/collections/memory-entries.ts`.
+const USER_COL = 'user_id_id'
+const CHARACTER_COL = 'character_id_id'
+
 export type MemoryEntry = {
   id: string | number
   category: string
@@ -43,8 +53,8 @@ export async function retrieveMemories(input: RetrieveMemoriesInput): Promise<Me
       }>(
         `SELECT id, category, content, importance
          FROM memory_entries
-         WHERE user_id = $1
-           AND character_id = $2
+         WHERE ${USER_COL} = $1
+           AND ${CHARACTER_COL} = $2
            AND deleted_at IS NULL
            AND embedding IS NOT NULL
          ORDER BY (embedding <=> $3::vector) + (1.0 / (importance + 1)) ASC
@@ -62,8 +72,8 @@ export async function retrieveMemories(input: RetrieveMemoriesInput): Promise<Me
       }>(
         `SELECT id, category, content, importance
          FROM memory_entries
-         WHERE user_id = $1
-           AND character_id = $2
+         WHERE ${USER_COL} = $1
+           AND ${CHARACTER_COL} = $2
            AND deleted_at IS NULL
          ORDER BY importance DESC, extracted_at DESC
          LIMIT $3`,

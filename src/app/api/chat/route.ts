@@ -1,6 +1,6 @@
 export const maxDuration = 60
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { z } from 'zod'
@@ -57,15 +57,17 @@ const LLM_MODEL = OPENROUTER_MODEL
 // stay consistent across photos. submitChatImageJob passes the source image
 // when referenceImageUrl is set.
 //
-// Used for clothed / spicy (non-nude) photos ONLY. Explicit nudity does not take
-// the edit path: WAN image-edit conditions hard on the clothed reference and
-// re-clothes the subject — an explicit "fully naked" request came back dressed
-// no matter how forcefully the prompt asked to undress (observed on both WAN 2.6
-// and 2.5 image-edit). Explicit requests fall through to the NSFW-strong
-// text-to-image path instead, which actually renders the nudity (see the
-// dispatch block in the photo branch below).
+// Used for clothed/spicy AND explicit photos. WAN 2.5 / 2.6 image-edit condition
+// hard on the clothed reference and re-clothe the subject, so explicit requests
+// used to come back dressed no matter how forcefully the prompt asked to
+// undress — those requests were routed to text-to-image instead, at the cost of
+// face drift. WAN 2.7 image-edit does undress on command AND preserves the face,
+// hair, pose and setting (verified live 2026-09-05, 3/3 across different sources
+// and phrasings), so explicit requests can keep the reference now. Do NOT point
+// CHAT_IMAGE_EDIT_MODEL_ID back at 2.5/2.6 without also re-excluding explicit in
+// the dispatch block below.
 const ATLAS_IMAGE_EDIT_MODEL_ID =
-  process.env.CHAT_IMAGE_EDIT_MODEL_ID || 'alibaba/wan-2.6/image-edit'
+  process.env.CHAT_IMAGE_EDIT_MODEL_ID || 'alibaba/wan-2.7/image-edit'
 // DeepSeek-V3 vendor guidance: 0.6–1.0 for chat / roleplay. We were running 1.3,
 // which pushes the sampler into the low-probability tail and produces
 // hallucinated biographical facts and broken character consistency. 0.85 keeps
@@ -742,31 +744,53 @@ export async function POST(req: NextRequest) {
           turnMessages.push({ role: 'user', content: message, id: 'current-user' })
           turnMessages.push({ role: 'assistant', content: finalContent, id: assistantMsgId })
 
-          // Trigger memory extraction every 10 user messages (fire-and-forget).
+          // Both jobs below run AFTER the response is finished, via next/server
+          // `after`. They used to be bare `void fn()` calls, which on Vercel is
+          // silently lost work: the function returns the stream and the runtime
+          // freezes the instance before an un-awaited promise settles. Verified
+          // against prod on 2026-09-06 — memory_entries had 0 rows and 0 of 34
+          // conversations had a summary, while every awaited write in this same
+          // block (messageCount, relationshipScore, lastMessagePreview) was
+          // populated. `after` hands the work to the platform instead, which
+          // keeps the invocation alive until the callback settles.
+          //
+          // Do NOT turn these back into `void` calls, and do NOT `await` them
+          // inline either — extraction is an LLM round-trip and would stall the
+          // stream close by seconds.
+
+          // Trigger memory extraction every 10 user messages.
           if (userTurns > 0 && userTurns % 10 === 0) {
-            void extractMemories({
-              payload,
-              userId: user.id,
-              characterId: convCharacterId,
-              conversationId,
-              messages: turnMessages,
-            }).catch((err: unknown) => {
-              log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+            after(async () => {
+              try {
+                await extractMemories({
+                  payload,
+                  userId: user.id,
+                  characterId: convCharacterId,
+                  conversationId,
+                  messages: turnMessages,
+                })
+              } catch (err: unknown) {
+                log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+              }
             })
           }
 
-          // Refresh the rolling summary (fire-and-forget) so context older than
-          // the 30-message history window survives — without it the character
-          // forgot everything beyond the window on long conversations.
+          // Refresh the rolling summary so context older than the 30-message
+          // history window survives — without it the character forgot everything
+          // beyond the window on long conversations.
           if (shouldUpdateSummary(newCnt)) {
-            void updateConversationSummary({
-              payload,
-              conversationId,
-              previousSummary: (conversation.summary as string | null) ?? null,
-              messages: turnMessages,
-              language: convLanguage,
-            }).catch((err: unknown) => {
-              log.warn({ msg: 'chat.summary.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+            after(async () => {
+              try {
+                await updateConversationSummary({
+                  payload,
+                  conversationId,
+                  previousSummary: (conversation.summary as string | null) ?? null,
+                  messages: turnMessages,
+                  language: convLanguage,
+                })
+              } catch (err: unknown) {
+                log.warn({ msg: 'chat.summary.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+              }
             })
           }
         } else {
@@ -907,34 +931,41 @@ export async function POST(req: NextRequest) {
               const scene = resolveExplicitScene({ scene: rawScene, message, explicit })
 
               // Two dispatch paths:
-              //   A. Reference image available AND request is non-explicit →
-              //      Atlas WAN image-edit, conditioned on the reference. Keeps the
-              //      same face/tattoos across photos while the prompt changes only
-              //      the outfit/pose/setting. Warm (~12 s), no platform filter.
-              //   B. No reference, OR explicit nudity → text-to-image on an NSFW-
-              //      strong checkpoint: realistic → warm Atlas WAN t2i, anime →
-              //      warm Novita Pony. Identity is only as stable as the appearance
-              //      description (face/tattoos drift), but the nudity renders.
+              //   A. Reference image available (realistic characters) → Atlas WAN
+              //      2.7 image-edit, conditioned on the reference. Keeps the same
+              //      face/tattoos across photos while the prompt changes the
+              //      outfit/pose/setting — and, for explicit requests, actually
+              //      undresses. Warm (~15–40 s), no platform filter.
+              //   B. No reference, OR an explicit request on an anime character →
+              //      text-to-image on an NSFW-strong checkpoint: realistic → warm
+              //      Atlas t2i, anime → warm Novita Pony. Identity is only as
+              //      stable as the appearance description (face/tattoos drift),
+              //      but the nudity renders.
               //
-              // Why explicit nudity always takes path B, even with a reference:
-              // WAN image-edit conditions hard on the (clothed) reference and
-              // re-clothes the subject, so an explicit request came back tame/
-              // dressed regardless of how forcefully the prompt asked to undress.
-              // We drop the reference for ALL explicit requests — face consistency
-              // yields to actually delivering the nudity, the same tradeoff already
-              // made for anime (whose references also photoreal-ize + re-clothe).
-              const conditionOnRef = !!referenceImageUrl && !explicit
+              // Explicit used to be forced onto path B for every style: WAN 2.5 /
+              // 2.6 image-edit condition hard on the (clothed) reference and
+              // re-clothe the subject, so the photo came back tame regardless of
+              // how forcefully the prompt asked to undress. WAN 2.7 image-edit
+              // undresses on command while preserving identity, so realistic
+              // characters now keep their reference on explicit requests too.
+              // Anime is still excluded — a WAN edit photoreal-izes a 2D reference,
+              // which costs more than the face drift it saves.
+              const conditionOnRef =
+                !!referenceImageUrl && (!explicit || artStyle !== 'anime')
               let modelId: string
               let prompt: string
               let negativePrompt: string
               if (conditionOnRef) {
-                // Clothed / spicy edit on the reference. Explicit never reaches
-                // here — conditionOnRef excludes it and takes the t2i path below.
+                // Edit on the reference — clothed/spicy, or explicit on a
+                // realistic character. buildCharacterEditPrompt switches from
+                // "change only the outfit" to a direct undress command when
+                // explicit is set; the outfit-change framing would otherwise make
+                // WAN preserve the reference's clothes.
                 modelId = ATLAS_IMAGE_EDIT_MODEL_ID
                 ;({ prompt, negativePrompt } = buildCharacterEditPrompt({
                   scene,
                   artStyle,
-                  explicit: false,
+                  explicit,
                 }))
               } else {
                 modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })
@@ -967,9 +998,9 @@ export async function POST(req: NextRequest) {
                 // large bucket.
                 imageSize: shotImageSize(shot, { sd15: isSd15ModelId(modelId) }),
                 // Only condition on the reference when we actually took the
-                // image-edit path (clothed/spicy). Explicit nudity runs pure
-                // text-to-image on the NSFW-strong checkpoint — passing a ref
-                // would re-clothe the subject (WAN edit) or fight the anime style.
+                // image-edit path. The remaining t2i cases (no reference at all,
+                // or explicit on an anime character) run unconditioned — passing a
+                // ref there would fight the anime style.
                 referenceImageUrl: conditionOnRef ? referenceImageUrl : null,
                 // …but the identity still has to survive. On the unconditioned
                 // path the checkpoint re-rolls the face from the appearance text,

@@ -18,6 +18,7 @@
     "seed:token-packages": "tsx --env-file-if-exists=.env.local src/payload/seed/run-seed.ts token-packages",
     "seed:dev": "tsx --env-file-if-exists=.env.local src/payload/seed/run-seed.ts dev-user",
     "backfill:character-images": "tsx --env-file-if-exists=.env.local scripts/backfill-character-images.ts",
+    "backfill:memory-embeddings": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/backfill-memory-embeddings.ts",
     "builder:gen-option-images": "tsx --env-file-if-exists=.env.local scripts/generate-builder-option-images.ts",
     "seed:voice-previews": "tsx --conditions=react-server --env-file-if-exists=.env.local scripts/seed-voice-previews.ts",
     "migrate:memory": "node --env-file-if-exists=.env.local --experimental-vm-modules scripts/migrate-memory.mjs",
@@ -27,6 +28,7 @@
     "verify:fal-nsfw": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/verify-fal-nsfw.ts",
     "compare:realistic": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/compare-realistic-models.ts",
     "compare:anime": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/compare-anime-models.ts",
+    "compare:atlas": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/compare-atlas-image-models.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -1,5 +1,6 @@
 // Memory extraction job — spec §3.6.
-// Triggered every 30 user messages per conversation (fire-and-forget in chat route).
+// Triggered every 10 user messages per conversation, via next/server `after` in
+// the chat route (NOT a bare `void` call — see the comment there).
 // Calls DeepSeek V3 to extract structured facts, embeds them, saves to memory_entries.
 import 'server-only'
 import type { BasePayload } from 'payload'
@@ -94,6 +95,52 @@ async function callLLMForExtraction(messages: Message[]): Promise<ExtractedFact[
     }))
 }
 
+/**
+ * Comparison key for duplicate detection. The extractor is an LLM, so the same
+ * fact comes back with drifting punctuation and casing ("User's name is Alex."
+ * vs "user's name is Alex") — compare on letters and digits only.
+ */
+export function normaliseFact(content: string): string {
+  return content
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+/** Normalised contents already stored for this (user, character) pair. */
+async function loadKnownContent(
+  payload: BasePayload,
+  userId: string | number,
+  characterId: string | number,
+): Promise<Set<string>> {
+  try {
+    // Read through Payload rather than raw SQL — it maps the relationship
+    // column names (`user_id_id`, `character_id_id`) for us.
+    const existing = await payload.find({
+      collection: 'memory-entries',
+      where: {
+        and: [
+          { userId: { equals: userId } },
+          { characterId: { equals: characterId } },
+          { deletedAt: { exists: false } },
+        ],
+      },
+      limit: 500,
+      depth: 0,
+      pagination: false,
+      overrideAccess: true,
+    })
+    return new Set(
+      existing.docs.map((d) => normaliseFact(String((d as { content?: unknown }).content ?? ''))),
+    )
+  } catch (err) {
+    // A lookup failure must not cost us the extraction — fall back to inserting
+    // everything, which is the pre-dedup behaviour.
+    logger.warn({ msg: 'memory.extraction.dedup_lookup_failed', err: err instanceof Error ? err.message : err })
+    return new Set()
+  }
+}
+
 export type ExtractMemoriesInput = {
   payload: BasePayload
   userId: string | number
@@ -120,10 +167,22 @@ export async function extractMemories(input: ExtractMemoriesInput): Promise<void
 
   const lastMsg = messages[messages.length - 1]
 
+  // Drop facts we already hold for this (user, character). Extraction re-runs
+  // every 10 user turns over an OVERLAPPING ~30-message window, so without this
+  // the same fact ("User's name is Alex.") is re-extracted and re-inserted on
+  // every pass. Retrieval returns only the top 5, so duplicates crowd out real
+  // memories — three copies of one importance-5 fact take three of the slots.
+  const known = await loadKnownContent(payload, userId, characterId)
+  const fresh = facts.filter((f) => !known.has(normaliseFact(f.content)))
+  if (fresh.length === 0) {
+    logger.info({ msg: 'memory.extraction.all_duplicates', conversationId, factsCount: facts.length })
+    return
+  }
+
   // Save each fact with embedding via raw SQL for the vector column.
   const pool = (payload.db as unknown as PostgresAdapter).pool
 
-  for (const fact of facts) {
+  for (const fact of fresh) {
     let embedding: number[] | null = null
     try {
       embedding = await getEmbedding(fact.content)
@@ -162,5 +221,10 @@ export async function extractMemories(input: ExtractMemoriesInput): Promise<void
     }
   }
 
-  logger.info({ msg: 'memory.extraction.done', conversationId, factsCount: facts.length })
+  logger.info({
+    msg: 'memory.extraction.done',
+    conversationId,
+    factsCount: fresh.length,
+    duplicatesSkipped: facts.length - fresh.length,
+  })
 }
