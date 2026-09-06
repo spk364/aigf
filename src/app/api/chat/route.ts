@@ -1,6 +1,6 @@
 export const maxDuration = 60
 
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { z } from 'zod'
@@ -742,31 +742,53 @@ export async function POST(req: NextRequest) {
           turnMessages.push({ role: 'user', content: message, id: 'current-user' })
           turnMessages.push({ role: 'assistant', content: finalContent, id: assistantMsgId })
 
-          // Trigger memory extraction every 10 user messages (fire-and-forget).
+          // Both jobs below run AFTER the response is finished, via next/server
+          // `after`. They used to be bare `void fn()` calls, which on Vercel is
+          // silently lost work: the function returns the stream and the runtime
+          // freezes the instance before an un-awaited promise settles. Verified
+          // against prod on 2026-09-06 — memory_entries had 0 rows and 0 of 34
+          // conversations had a summary, while every awaited write in this same
+          // block (messageCount, relationshipScore, lastMessagePreview) was
+          // populated. `after` hands the work to the platform instead, which
+          // keeps the invocation alive until the callback settles.
+          //
+          // Do NOT turn these back into `void` calls, and do NOT `await` them
+          // inline either — extraction is an LLM round-trip and would stall the
+          // stream close by seconds.
+
+          // Trigger memory extraction every 10 user messages.
           if (userTurns > 0 && userTurns % 10 === 0) {
-            void extractMemories({
-              payload,
-              userId: user.id,
-              characterId: convCharacterId,
-              conversationId,
-              messages: turnMessages,
-            }).catch((err: unknown) => {
-              log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+            after(async () => {
+              try {
+                await extractMemories({
+                  payload,
+                  userId: user.id,
+                  characterId: convCharacterId,
+                  conversationId,
+                  messages: turnMessages,
+                })
+              } catch (err: unknown) {
+                log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+              }
             })
           }
 
-          // Refresh the rolling summary (fire-and-forget) so context older than
-          // the 30-message history window survives — without it the character
-          // forgot everything beyond the window on long conversations.
+          // Refresh the rolling summary so context older than the 30-message
+          // history window survives — without it the character forgot everything
+          // beyond the window on long conversations.
           if (shouldUpdateSummary(newCnt)) {
-            void updateConversationSummary({
-              payload,
-              conversationId,
-              previousSummary: (conversation.summary as string | null) ?? null,
-              messages: turnMessages,
-              language: convLanguage,
-            }).catch((err: unknown) => {
-              log.warn({ msg: 'chat.summary.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+            after(async () => {
+              try {
+                await updateConversationSummary({
+                  payload,
+                  conversationId,
+                  previousSummary: (conversation.summary as string | null) ?? null,
+                  messages: turnMessages,
+                  language: convLanguage,
+                })
+              } catch (err: unknown) {
+                log.warn({ msg: 'chat.summary.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+              }
             })
           }
         } else {
