@@ -141,13 +141,17 @@
           "suit": "Suit",
           "cozy": "Cozy sweater",
           "shirt": "Oversized shirt",
+          "openShirt": "Unbuttoned shirt",
           "leather": "Leather jacket",
           "workout": "Workout",
           "pajamas": "Pajamas",
           "swimwear": "Swimwear",
+          "swimwearMale": "Swim shorts",
           "robe": "Silk robe",
           "towel": "Just a towel",
+          "shirtless": "Shirtless",
           "lingerie": "Lingerie",
+          "boxers": "Boxer briefs",
           "nude": "Nothing at all"
         },
         "pose": {
@@ -159,6 +163,8 @@
           "lying": "Lying down",
           "lookingBack": "Over the shoulder",
           "stretching": "Just woke up",
+          "stretchingMale": "Just woke up",
+          "flexing": "Flexing",
           "kiss": "Blowing a kiss",
           "undressing": "Undressing"
         },

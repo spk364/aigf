@@ -141,13 +141,17 @@
           "suit": "Traje",
           "cozy": "Suéter cómodo",
           "shirt": "Camisa oversize",
+          "openShirt": "Camisa desabotonada",
           "leather": "Chaqueta de cuero",
           "workout": "Ropa deportiva",
           "pajamas": "Pijama",
           "swimwear": "Traje de baño",
+          "swimwearMale": "Bañador",
           "robe": "Bata de seda",
           "towel": "Solo una toalla",
+          "shirtless": "Sin camisa",
           "lingerie": "Lencería",
+          "boxers": "Bóxers",
           "nude": "Sin nada"
         },
         "pose": {
@@ -158,7 +162,9 @@
           "sitting": "Junto a la ventana",
           "lying": "Acostado/a",
           "lookingBack": "Por encima del hombro",
-          "stretching": "Recién despertado/a",
+          "stretching": "Recién despertada",
+          "stretchingMale": "Recién despertado",
+          "flexing": "Marcando músculo",
           "kiss": "Lanzando un beso",
           "undressing": "Desvistiéndose"
         },
