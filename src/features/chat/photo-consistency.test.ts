@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  joinUniqueTokens,
   isExplicitPhotoScene,
   looksLikePhotoRefusal,
   photoSendCaption,
@@ -147,6 +148,29 @@ describe('resolveExplicitScene', () => {
     })
     expect(out).toMatch(/nude male body/)
     expect(out).toMatch(/visible penis/)
+  })
+})
+
+describe('joinUniqueTokens', () => {
+  it('drops tokens the scene already carries', () => {
+    // The user's own "fully naked" + our generated tokens used to produce a
+    // scene saying "fully naked" twice and "bare chest" three times, which
+    // dilutes every token in it.
+    const out = resolveExplicitScene({
+      scene: 'in the bedroom, fully naked',
+      message: 'Send me a photo of you in the bedroom, fully naked',
+      explicit: true,
+      gender: 'male',
+    })
+    expect(out.match(/fully naked/g)).toHaveLength(1)
+    expect(out.match(/bare chest/g)).toHaveLength(1)
+    expect(out).toMatch(/visible penis/)
+  })
+
+  it('is case-insensitive and preserves first-seen order', () => {
+    expect(joinUniqueTokens('Bare skin, nude', 'nude, BARE SKIN, uncensored')).toBe(
+      'Bare skin, nude, uncensored',
+    )
   })
 })
 

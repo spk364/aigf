@@ -987,7 +987,7 @@ export async function POST(req: NextRequest) {
               const rawScene = userScene || directiveScene
 
               const explicit = isExplicitPhotoScene(rawScene) || isExplicitPhotoScene(message)
-              const shot = classifyShot(rawScene)
+              const shot = classifyShot(rawScene, { explicit })
               // For explicit requests, drop embedded "send me a … photo"
               // imperatives (models read them as a request, not a depiction, so
               // "naked" buried in one leaves the subject clothed) and fold in
@@ -1036,6 +1036,7 @@ export async function POST(req: NextRequest) {
                   artStyle,
                   explicit,
                   gender: subjectGender,
+                  shot,
                 }))
               } else {
                 modelId = pickModelIdForStyle(artStyle ?? 'realistic', { explicit })

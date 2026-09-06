@@ -155,7 +155,30 @@ export function resolveExplicitScene(args: {
   if (!args.explicit) return args.scene
   const nudity = explicitNudityTokens(`${args.scene} ${args.message}`, args.gender)
   const cleaned = stripPhotoImperatives(args.scene)
-  return [cleaned, nudity].filter(Boolean).join(', ')
+  return joinUniqueTokens(cleaned, nudity)
+}
+
+/**
+ * Join two comma-separated token lists, dropping tokens the first list already
+ * carries. The user's own words routinely include the words we then add back
+ * ("…, fully naked" + "completely nude, fully naked, …"), and a scene that says
+ * "fully naked" twice and "bare chest" three times dilutes every token in it —
+ * the one that matters ("penis") ends up as 1 of ~20 near-duplicates.
+ */
+export function joinUniqueTokens(...lists: Array<string | null | undefined>): string {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const list of lists) {
+    for (const token of (list ?? '').split(',')) {
+      const trimmed = token.trim()
+      if (!trimmed) continue
+      const key = trimmed.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(trimmed)
+    }
+  }
+  return out.join(', ')
 }
 
 // Refusal / deflection markers. Conservative on purpose — these are phrases a
