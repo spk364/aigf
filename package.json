@@ -28,6 +28,7 @@
     "verify:fal-nsfw": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/verify-fal-nsfw.ts",
     "compare:realistic": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/compare-realistic-models.ts",
     "compare:anime": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/compare-anime-models.ts",
+    "compare:atlas": "node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/compare-atlas-image-models.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

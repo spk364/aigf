@@ -39,25 +39,65 @@ export type ImageModelOption = {
   nsfwFriendly: boolean
 }
 
-// Order matters — index 0 is the default. Atlas WAN 2.6 t2i leads to keep
-// the same provider for image and video flows. FLUX Schnell stays as the
-// "always-warm fal fallback" — switch to it when Atlas is rate-limited or
-// when a flow specifically needs FLUX's natural-language prompt handling.
+// Order matters — index 0 is the default. WAN 2.6 t2i keeps the default: it is
+// the only Atlas t2i that renders the requested amount of clothing across the
+// whole range, which the tease tiers depend on. Z-Image Turbo is cheaper and
+// renders nudity just as well, but it OVERSHOOTS on suggestive scenes — see its
+// entry. FLUX Schnell stays as the "always-warm fal fallback" — switch to it when
+// Atlas is rate-limited or when a flow specifically needs FLUX's natural-language
+// prompt handling.
+//
+// Verified-on-Atlas behaviour, same builder-generated prompt, same size, same
+// seed (do not "upgrade" these on version number alone — see ./scripts/
+// compare-atlas-image-models.ts to re-run the comparison):
+//   explicit t2i     → z-image/turbo, z-image/turbo-lora, WAN 2.6 all deliver
+//   clothed t2i      → WAN 2.6 correct; z-image strips bedroom/lingerie scenes
+//                      (asked for lingerie it returned topless) while rendering
+//                      non-suggestive outfits — sundress, sweater — correctly
+//   WAN 2.7 / 2.7-pro t2i, Qwen Image 3.0 t2i  → refuse (render clothing)
+//   atlascloud/qwen-image, FLUX 2 flex         → hard-blocked by the API
+//   WAN 2.7 image-edit                         → undresses AND keeps identity
+//   WAN 2.5 / 2.6 image-edit, FLUX Kontext dev → keep the source's clothes
+//                      (2.6 even re-dressed a nude source)
 export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
   // ── Atlas Cloud — primary NSFW-strong, single-provider with video ────────
   {
     id: 'alibaba/wan-2.6/text-to-image',
     provider: 'atlas',
     label: '[Atlas] WAN 2.6 text-to-image (recommended)',
-    note: '~10–30 s · $0.021/img · realism + mixed · NSFW-strong, no prompt filter',
+    note: '~10–30 s · $0.021/img · realism + mixed · NSFW-strong, no prompt filter · honours the requested outfit',
     style: 'mixed',
+    nsfwFriendly: true,
+  },
+  {
+    id: 'alibaba/wan-2.7/image-edit',
+    provider: 'atlas',
+    label: '[Atlas] WAN 2.7 image-edit (explicit-capable, requires source img)',
+    note: '~15–40 s · $0.03/img · ⚠ requires existing reference or primary image · undresses AND keeps identity',
+    style: 'mixed',
+    nsfwFriendly: true,
+  },
+  {
+    id: 'z-image/turbo',
+    provider: 'atlas',
+    label: '[Atlas] Z-Image Turbo (cheapest, explicit only)',
+    note: '~5–15 s · $0.005/img · NSFW-strong · ⚠ overshoots on lingerie/bedroom scenes — returns nudity, use for explicit only',
+    style: 'mixed',
+    nsfwFriendly: true,
+  },
+  {
+    id: 'z-image/turbo-lora',
+    provider: 'atlas',
+    label: '[Atlas] Z-Image Turbo + LoRA (explicit only)',
+    note: '~5–15 s · $0.01/img · accepts LoRA weights · ⚠ same lingerie/bedroom overshoot as plain Turbo',
+    style: 'realism',
     nsfwFriendly: true,
   },
   {
     id: 'alibaba/wan-2.6/image-edit',
     provider: 'atlas',
     label: '[Atlas] WAN 2.6 image-edit (requires source img)',
-    note: '~10–30 s · $0.021/img · ⚠ requires existing reference or primary image · NSFW-strong',
+    note: '~10–30 s · $0.021/img · ⚠ requires source img · ⚠ keeps clothes on for explicit — use WAN 2.7 edit',
     style: 'mixed',
     nsfwFriendly: true,
   },
@@ -65,7 +105,7 @@ export const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
     id: 'alibaba/wan-2.5/image-edit',
     provider: 'atlas',
     label: '[Atlas] WAN 2.5 image-edit (requires source img)',
-    note: '~10–30 s · $0.021/img · ⚠ requires existing reference or primary image · NSFW-strong',
+    note: '~10–30 s · $0.021/img · ⚠ requires source img · ⚠ keeps clothes on for explicit — use WAN 2.7 edit',
     style: 'mixed',
     nsfwFriendly: true,
   },
@@ -186,7 +226,11 @@ export function detectImageProvider(id: string): ImageProvider {
   if (
     id.startsWith('atlascloud/') ||
     id.startsWith('alibaba/') ||
-    id.startsWith('bytedance/')
+    id.startsWith('bytedance/') ||
+    // Z-Image is served by Atlas under a bare vendor-less slug (`z-image/turbo`,
+    // `z-image/turbo-lora`) — without this it would fall through to the fal
+    // LoRA branch and be sent to HuggingFace as a repo id.
+    id.startsWith('z-image/')
   ) {
     return 'atlas'
   }
