@@ -10,6 +10,7 @@ import type {
   PaywallTeaser,
 } from '@/widgets/paywall'
 import { PhotoComposer, type PhotoComposerStrings } from './PhotoComposer'
+import type { SubjectGender } from '@/shared/ai/subject-gender'
 import { GalleryOverlay, type GalleryOverlayStrings } from './GalleryOverlay'
 
 type Message = {
@@ -84,6 +85,8 @@ type Props = {
   /** Optional — when provided, the photo chip opens the outfit/pose/setting
       composer instead of sending a plain selfie. */
   photoComposer?: PhotoComposerStrings
+  /** Drives which composer chips are offered. Defaults to female. */
+  characterGender?: SubjectGender
   /** Optional — strings for the in-chat gallery overlay. When provided the
       gallery button opens an overlay instead of navigating to a page. */
   gallery?: GalleryOverlayStrings
@@ -494,6 +497,7 @@ export function ChatInterface({
   characterBackdropFallbackUrl,
   strings: stringsProp,
   photoComposer,
+  characterGender,
   paywall,
   gallery,
 }: Props) {
@@ -1452,6 +1456,7 @@ export function ChatInterface({
           <PhotoComposer
             strings={photoComposer}
             cost={TOKEN_COSTS.photo}
+            gender={characterGender}
             onClose={() => setPhotoComposerOpen(false)}
             onSubmit={(message) => {
               setPhotoComposerOpen(false)
