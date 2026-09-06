@@ -138,24 +138,43 @@
         "outfit": {
           "casual": "Casual",
           "dress": "Vestido elegante",
+          "suit": "Traje",
           "cozy": "Suéter cómodo",
+          "shirt": "Camisa oversize",
+          "leather": "Chaqueta de cuero",
+          "workout": "Ropa deportiva",
+          "pajamas": "Pijama",
           "swimwear": "Traje de baño",
+          "robe": "Bata de seda",
+          "towel": "Solo una toalla",
           "lingerie": "Lencería",
-          "workout": "Ropa deportiva"
+          "nude": "Sin nada"
         },
         "pose": {
           "selfie": "Selfie",
-          "lying": "Acostada",
-          "sitting": "Junto a la ventana",
           "mirror": "Selfie al espejo",
-          "lookingBack": "Por encima del hombro"
+          "closeup": "Primer plano",
+          "standing": "Cuerpo entero",
+          "sitting": "Junto a la ventana",
+          "lying": "Acostado/a",
+          "lookingBack": "Por encima del hombro",
+          "stretching": "Recién despertado/a",
+          "kiss": "Lanzando un beso",
+          "undressing": "Desvistiéndose"
         },
         "setting": {
-          "bedroom": "Dormitorio",
-          "beach": "Playa al atardecer",
-          "cafe": "Cafetería",
           "home": "En casa",
-          "city": "Ciudad de noche"
+          "bedroom": "Dormitorio",
+          "kitchen": "Cocina",
+          "balcony": "Balcón",
+          "cafe": "Cafetería",
+          "gym": "Gimnasio",
+          "car": "En el coche",
+          "city": "Ciudad de noche",
+          "beach": "Playa al atardecer",
+          "pool": "Junto a la piscina",
+          "bathroom": "Baño",
+          "shower": "En la ducha"
         }
       },
       "extraPlaceholder": "¿Algo más? (opcional)",

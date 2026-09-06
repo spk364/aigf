@@ -10,18 +10,35 @@
 // completes fast. Mirroring it here removes the prompt as a variable.
 
 import { getSafetyAdultMarkerString, type ArtStyleHint } from '@/shared/ai/age-safety'
+import type { SubjectGender } from '@/shared/ai/subject-gender'
 import { classifyShot, shotFramingTokens, type ShotType } from './shot-framing'
 
 // Apparent-age negative. Deliberately does NOT include "petite" or a bare
 // "small" — those are legitimate adult body descriptors that many characters are
 // built with (small breasts, petite frame), and negating them overrode the
 // character's own design (a petite, small-breasted character rendered busty).
-// The explicit minor tokens (child/teen/loli/underage/minor/childlike) + flat
-// chest + the positive adult markers carry the age safety.
-const SAFETY_NEGATIVE =
+// The explicit minor tokens (child/teen/loli/underage/minor/childlike) + the
+// gendered body guard below + the positive adult markers carry the age safety.
+const SAFETY_NEGATIVE_BASE =
   '(child:1.5), (teen:1.5), (young:1.4), (kid:1.5), (loli:1.5), (school uniform:1.3), ' +
-  '(flat chest:1.4), (underage:1.5), (minor:1.5), ' +
+  '(underage:1.5), (minor:1.5), ' +
   '(childlike features:1.5), deformed, low quality, multiple people, bad anatomy'
+
+// `flat chest` is an age cue for a FEMALE subject only — a grown man has a flat
+// chest, and negating it at 1.4 fought male anatomy on every male photo (the
+// model either feminised the torso or covered it up). Male characters get the
+// inverse guard instead: no breasts, no feminine face.
+const SAFETY_NEGATIVE_FEMALE = '(flat chest:1.4)'
+const SAFETY_NEGATIVE_MALE = '(breasts:1.4), (feminine face:1.3), (female body:1.3)'
+
+function safetyNegative(gender: SubjectGender): string {
+  return `${SAFETY_NEGATIVE_BASE}, ${
+    gender === 'male' ? SAFETY_NEGATIVE_MALE : SAFETY_NEGATIVE_FEMALE
+  }`
+}
+
+// Kept for the edit path's advisory negative, which has no gender context.
+const SAFETY_NEGATIVE = SAFETY_NEGATIVE_BASE
 
 const BASE_NEGATIVE =
   'low quality, blurry, deformed, bad anatomy, extra limbs, watermark, text, signature'
@@ -45,10 +62,16 @@ const ANIME_STYLE_POSITIVE =
   '2D anime illustration, japanese anime art style, cel-shaded, flat color fill, ' +
   'clean lineart, vibrant anime colors, drawn anime artwork, ' +
   'NOT photorealistic, NOT 3D render, NOT a realistic photo, NOT live action'
-const ANIME_STYLE_NEGATIVE =
+const ANIME_STYLE_NEGATIVE_BASE =
   '(photorealistic:1.4), (3D render:1.4), (realistic photo:1.4), (photograph:1.3), ' +
   '(live action:1.3), (CGI:1.2), (octane render:1.2), (semi-realistic:1.3), ' +
-  '(volumetric:1.2), (depth of field:1.1), 2girls, multiple girls'
+  '(volumetric:1.2), (depth of field:1.1)'
+
+function animeStyleNegative(gender: SubjectGender): string {
+  return `${ANIME_STYLE_NEGATIVE_BASE}, ${
+    gender === 'male' ? '2boys, multiple boys' : '2girls, multiple girls'
+  }`
+}
 
 // Pony/Illustrious SDXL checkpoints (the warm hard-NSFW path on fal — and the
 // Novita fallback) are score-tag trained: without the score_* prefix and
@@ -73,10 +96,42 @@ const ANATOMY_NEGATIVE =
 
 // Anime hentai checkpoints render featureless / censored ("doll-like") genitals
 // unless explicitly told to render them uncensored + detailed. Applied to
-// explicit anime scenes only.
-const ANIME_UNCENSORED_POSITIVE = 'uncensored, detailed pussy, anatomically correct'
+// explicit anime scenes only. Anatomy word follows the subject's gender — asking
+// a male render for "detailed pussy" either feminises it or confuses the
+// checkpoint into covering the crotch.
+function animeUncensoredPositive(gender: SubjectGender): string {
+  return gender === 'male'
+    ? 'uncensored, detailed penis, male genitalia visible, anatomically correct'
+    : 'uncensored, detailed pussy, anatomically correct'
+}
 const ANIME_UNCENSORED_NEGATIVE =
   '(censored:1.4), (mosaic censoring:1.4), (bar censor:1.4), (doll:1.3), (featureless crotch:1.3)'
+
+// Realistic explicit scenes needed the same treatment: with only the nudity
+// tokens in the scene text, photoreal checkpoints hedge — underwear stays on,
+// the crotch is turned away or smoothed over. This is the "men never come back
+// fully naked" report; the male half is worse because the male-nude prior is
+// thinner in these checkpoints, so it needs naming outright.
+function explicitBodyPositive(gender: SubjectGender): string {
+  return gender === 'male'
+    ? 'full frontal nudity, nude male body, bare chest, visible penis, uncensored, ' +
+        'anatomically correct'
+    : 'full frontal nudity, nude female body, bare breasts, uncensored, anatomically correct'
+}
+// Anti-censor half — safe on every explicit scene, including partial nudity.
+const EXPLICIT_CENSOR_NEGATIVE =
+  '(censored:1.4), (mosaic censoring:1.4), (bar censor:1.4), ' +
+  '(featureless crotch:1.3), (blurred crotch:1.3)'
+// Anti-garment half — only for a strip-it-all request. A partial request keeps
+// clothes on purpose ("in black stockings, topless"), and negating garments
+// there would undo exactly what was asked for.
+const EXPLICIT_UNDRESS_NEGATIVE =
+  '(underwear:1.4), (panties:1.4), (bra:1.4), (boxers:1.4), (briefs:1.4), ' +
+  '(swimsuit:1.3), (clothed:1.3)'
+
+// The scene text at this point already carries the resolved nudity tokens from
+// explicitNudityTokens, so "completely nude" is a reliable full-nudity marker.
+const FULL_NUDITY_SCENE = /completely nude|fully naked|no clothing/i
 
 // Stored appearance prompts bake in the framing they were generated at — most
 // notably "portrait of <subject>" (see appearance-prompt.ts) plus head-and-
@@ -216,6 +271,10 @@ export type BuildScenePromptInput = {
   /** Shot framing (selfie / full body / …). Defaults to classifying the scene
       text so callers that don't compute it still get sensible framing. */
   shot?: ShotType
+  /** Which body to depict. Drives the subject noun, the danbooru 1girl/1boy tag,
+      the age-safety body guard and (on explicit scenes) the anatomy tokens.
+      Defaults to female — what every character rendered as before. */
+  gender?: SubjectGender
 }
 
 /**
@@ -227,7 +286,9 @@ export function buildCharacterScenePrompt(
 ): { prompt: string; negativePrompt: string } {
   const appearance = input.appearance ?? null
   const isAnime = input.artStyle === 'anime'
-  const ageMarkerPhrase = getSafetyAdultMarkerString(isAnime ? 'anime' : 'realistic')
+  const gender = input.gender ?? 'female'
+  const isMale = gender === 'male'
+  const ageMarkerPhrase = getSafetyAdultMarkerString(isAnime ? 'anime' : 'realistic', gender)
   const safetyMarkers = appearance?.safetyAdultMarkers?.join(', ') ?? ''
   const scene = (input.scene ?? '').trim()
 
@@ -242,12 +303,15 @@ export function buildCharacterScenePrompt(
     // FLUX wants natural language, not SD tokens, and ignores negative prompts.
     const subjectDesc = appearance?.subjectTokens
       ? appearance.subjectTokens.replace(/, /g, ' with ')
-      : 'a beautiful young woman'
-    const adultPhrase = isAnime ? '18+ adult woman' : '21+ adult woman'
+      : isMale
+        ? 'a handsome young man'
+        : 'a beautiful young woman'
+    const subjectNoun = isMale ? 'man' : 'woman'
+    const adultPhrase = `${isAnime ? '18+' : '21+'} adult ${subjectNoun}`
     const scenePart = scene ? `${scene}. ` : ''
     prompt = isAnime
       ? `${scenePart}${framing.positive} 2D anime illustration, japanese anime art style, cel-shaded, clean lineart, vibrant anime colors. The character is ${subjectDesc}. ${adultPhrase}.`
-      : `${scenePart}${framing.positive} Photorealistic. The woman is ${subjectDesc}. High quality, soft natural lighting, ${adultPhrase}.`
+      : `${scenePart}${framing.positive} Photorealistic. The ${subjectNoun} is ${subjectDesc}. High quality, soft natural lighting, ${adultPhrase}.`
   } else if (isAnime) {
     // Anime SDXL models (Illustrious / Pony) want the character's anime-styled
     // appearancePrompt (or danbooru-ish subjectTokens) — never "RAW photo /
@@ -255,7 +319,9 @@ export function buildCharacterScenePrompt(
     const base = stripBakedFraming(
       appearance?.appearancePrompt ||
         appearance?.subjectTokens ||
-        'anime illustration, masterpiece, best quality, beautiful young woman, detailed',
+        `anime illustration, masterpiece, best quality, ${
+          isMale ? 'handsome young man' : 'beautiful young woman'
+        }, detailed`,
     )
     // ALWAYS assert flat 2D anime — including on Pony. Pony V6 XL's prior is
     // 2.5D / volumetric, so with only the score tags an "anime" character came
@@ -265,8 +331,18 @@ export function buildCharacterScenePrompt(
     // (de-framed) subject description.
     // Explicit anime needs the uncensored/detailed-anatomy cue or the genitals
     // render featureless ("doll-like").
-    const uncensored = input.explicit ? ANIME_UNCENSORED_POSITIVE : ''
-    prompt = ['1girl, solo', uncensored, ANIME_STYLE_POSITIVE, framing.positive, scene, base, safetyMarkers || ageMarkerPhrase]
+    const uncensored = input.explicit
+      ? `${animeUncensoredPositive(gender)}, ${explicitBodyPositive(gender)}`
+      : ''
+    prompt = [
+      isMale ? '1boy, solo' : '1girl, solo',
+      uncensored,
+      ANIME_STYLE_POSITIVE,
+      framing.positive,
+      scene,
+      base,
+      safetyMarkers || ageMarkerPhrase,
+    ]
       .filter(Boolean)
       .join(', ')
   } else if (scene && appearance?.subjectTokens) {
@@ -281,6 +357,7 @@ export function buildCharacterScenePrompt(
       framing.positive,
       stripBakedFraming(appearance.subjectTokens),
       scene,
+      input.explicit ? explicitBodyPositive(gender) : '',
       safetyMarkers,
       '8k uhd, dslr, soft lighting, high quality, film grain, Fujifilm XT3, photorealistic, realistic skin texture',
     ]
@@ -288,13 +365,25 @@ export function buildCharacterScenePrompt(
       .join(', ')
   } else if (appearance?.appearancePrompt) {
     // Framing → identity → scene (see above); "solo" blocks duplicate bodies.
-    prompt = ['RAW photo', 'solo', framing.positive, stripBakedFraming(appearance.appearancePrompt), scene, safetyMarkers]
+    prompt = [
+      'RAW photo',
+      'solo',
+      framing.positive,
+      stripBakedFraming(appearance.appearancePrompt),
+      scene,
+      input.explicit ? explicitBodyPositive(gender) : '',
+      safetyMarkers,
+    ]
       .filter(Boolean)
       .join(', ')
   } else {
     prompt = [
       framing.positive,
-      scene || 'a beautiful young woman, photorealistic, high detail, soft natural lighting',
+      scene ||
+        `${
+          isMale ? 'a handsome young man' : 'a beautiful young woman'
+        }, photorealistic, high detail, soft natural lighting`,
+      input.explicit ? explicitBodyPositive(gender) : '',
       safetyMarkers || ageMarkerPhrase,
       '8k uhd, photorealistic, realistic skin texture',
     ]
@@ -317,14 +406,18 @@ export function buildCharacterScenePrompt(
   // goes last: it is the most redundant of the groups, and after dedup it
   // usually contributes only a handful of genuinely extra tokens.
   const negativePrompt = composeNegativePrompt([
-    SAFETY_NEGATIVE,
-    // Anti-duplicate-limb on every scene; anti-censor/anti-doll on explicit anime.
+    safetyNegative(gender),
+    // Anti-duplicate-limb on every scene; anti-clothing/anti-censor on explicit
+    // (a realistic explicit render hedges with underwear just as readily as an
+    // anime one censors).
     ANATOMY_NEGATIVE,
+    input.explicit ? EXPLICIT_CENSOR_NEGATIVE : null,
+    input.explicit && FULL_NUDITY_SCENE.test(scene) ? EXPLICIT_UNDRESS_NEGATIVE : null,
     input.isPony ? PONY_NEGATIVE : null,
     isAnime && input.explicit ? ANIME_UNCENSORED_NEGATIVE : null,
     // All anime (incl. Pony) gets the anti-3D/anti-photoreal negative so it
     // stays flat; realistic gets the natural-iris guard instead.
-    isAnime ? ANIME_STYLE_NEGATIVE : NATURAL_EYES_NEGATIVE,
+    isAnime ? animeStyleNegative(gender) : NATURAL_EYES_NEGATIVE,
     framing.negative || null,
     appearance?.negativePrompt || BASE_NEGATIVE,
   ])
@@ -338,6 +431,10 @@ export type BuildEditPromptInput = {
   artStyle?: ArtStyleHint
   /** True when the request is explicitly for nudity. */
   explicit?: boolean
+  /** Which body the reference depicts. Only consulted on explicit requests, to
+      name the anatomy the edit must render rather than cover. Defaults to
+      female. */
+  gender?: SubjectGender
 }
 
 /**
@@ -374,10 +471,23 @@ export function buildCharacterEditPrompt(
   // an outfit is kept — WAN image-edit then preserves the clothed reference and
   // returns a dressed photo. Instead command undressing directly and do NOT call
   // the target an "outfit". Clothed/spicy edits keep the outfit-change framing.
+  //
+  // Naming the anatomy matters on the male side: told only to "remove all
+  // clothing", WAN leaves a man in underwear or crops/obscures the crotch far
+  // more often than it does a woman (its nude-male prior is thinner). Spelling
+  // out the body it must render is what makes a male explicit request actually
+  // come back nude.
+  const bodyClause =
+    input.gender === 'male'
+      ? 'His whole nude male body is visible — bare chest, bare torso, bare hips and ' +
+        'penis, uncensored. '
+      : 'Her whole nude body is visible — bare breasts and bare hips, uncensored. '
   const changeClause = input.explicit
     ? `Undress the subject and depict the described nudity explicitly: ${scene}. ` +
-      `Remove all clothing. The subject is fully exposed and bare-skinned as described — ` +
-      `do not cover, censor, blur, add lingerie, or re-clothe them. This is allowed 18+ adult content. `
+      `Remove all clothing, including underwear. ${bodyClause}` +
+      `The subject is fully exposed and bare-skinned as described — ` +
+      `do not cover, censor, blur, crop out the body, add lingerie or underwear, or re-clothe them. ` +
+      `This is allowed 18+ adult content. `
     : `Change only the outfit, pose and setting to: ${scene}. `
 
   const prompt =

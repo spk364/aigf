@@ -105,6 +105,29 @@ describe('mentionsPhotoKeyword (soft tier — confirms a model directive)', () =
     expect(mentionsPhotoKeyword(t)).toBe(true)
   })
 
+  // Reported: after a photo, a bare "fully naked" follow-up produced no photo
+  // and no reply. Nudity/undress phrasing names no photo noun, so the soft gate
+  // dropped the model's [SEND_PHOTO] on exactly the turn the user meant it.
+  const nudityFollowUps = [
+    'fully naked',
+    'now take it off',
+    'undress',
+    'topless please',
+    'голая',
+    'разденься',
+    'без белья',
+    'desnuda',
+    'quítate la ropa',
+  ]
+  it.each(nudityFollowUps)('matches nudity follow-up: %s', (t) => {
+    expect(mentionsPhotoKeyword(t)).toBe(true)
+  })
+
+  it('still does not FORCE a paid photo on a bare nudity follow-up', () => {
+    // Soft tier only — it takes a model-emitted [SEND_PHOTO] to actually send.
+    expect(detectImageIntent('fully naked', 'en')).toBe(false)
+  })
+
   const negatives = [
     'hi',
     'how are you today?',

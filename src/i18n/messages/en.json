@@ -138,24 +138,43 @@
         "outfit": {
           "casual": "Casual",
           "dress": "Elegant dress",
+          "suit": "Suit",
           "cozy": "Cozy sweater",
+          "shirt": "Oversized shirt",
+          "leather": "Leather jacket",
+          "workout": "Workout",
+          "pajamas": "Pajamas",
           "swimwear": "Swimwear",
+          "robe": "Silk robe",
+          "towel": "Just a towel",
           "lingerie": "Lingerie",
-          "workout": "Workout"
+          "nude": "Nothing at all"
         },
         "pose": {
           "selfie": "Selfie",
-          "lying": "Lying down",
-          "sitting": "By the window",
           "mirror": "Mirror selfie",
-          "lookingBack": "Over the shoulder"
+          "closeup": "Close-up",
+          "standing": "Full body",
+          "sitting": "By the window",
+          "lying": "Lying down",
+          "lookingBack": "Over the shoulder",
+          "stretching": "Just woke up",
+          "kiss": "Blowing a kiss",
+          "undressing": "Undressing"
         },
         "setting": {
-          "bedroom": "Bedroom",
-          "beach": "Beach sunset",
-          "cafe": "Cafe",
           "home": "At home",
-          "city": "City at night"
+          "bedroom": "Bedroom",
+          "kitchen": "Kitchen",
+          "balcony": "Balcony",
+          "cafe": "Cafe",
+          "gym": "Gym",
+          "car": "In the car",
+          "city": "City at night",
+          "beach": "Beach sunset",
+          "pool": "By the pool",
+          "bathroom": "Bathroom",
+          "shower": "Shower"
         }
       },
       "extraPlaceholder": "Anything else? (optional)",

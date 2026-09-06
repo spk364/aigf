@@ -1,6 +1,6 @@
 import 'server-only'
 import type { getPayload } from 'payload'
-import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
+import { sanitizeReplyText } from '@/features/chat/sanitize-reply'
 import { fallbackGreeting } from '@/features/chat/generate-greeting'
 
 type Payload = Awaited<ReturnType<typeof getPayload>>
@@ -75,7 +75,7 @@ export async function ensureGreeting(
   //    action narration we now strip.
   const cached =
     character && typeof character.greetingMessage === 'string' && character.greetingMessage.length > 0
-      ? stripActionAsterisks(character.greetingMessage)
+      ? sanitizeReplyText(character.greetingMessage)
       : null
   let greetingText: string | null = cached && cached.length > 0 ? cached : null
 

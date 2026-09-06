@@ -12,7 +12,7 @@ import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/share
 import { CHAT_REGENERATE_LIMIT } from '@/shared/rate-limit/presets'
 import { checkAssistantOutput } from '@/features/safety/output-filter'
 import { parsePhotoDirective } from '@/features/chat/photo-directive'
-import { stripActionAsterisks } from '@/features/chat/sanitize-reply'
+import { makeReplyStreamFilter, sanitizeReplyText } from '@/features/chat/sanitize-reply'
 import { buildOutputGuard, resolveReplyLocale } from '@/features/chat/language-guard'
 import { buildStyleGuard } from '@/features/chat/style-guard'
 import {
@@ -205,6 +205,10 @@ export async function POST(req: NextRequest) {
       send('message', { messageId: newMsgId })
 
       let accumulatedContent = ''
+      // Keeps planning commentary and bracketed stage directions out of the
+      // live bubble; `sanitizeReplyText` below is the authoritative pass.
+      const replyFilter = makeReplyStreamFilter()
+      let streamedText = ''
       let usageData: { prompt_tokens: number; completion_tokens: number } | undefined
       const startTime = Date.now()
       let timeToFirstToken: number | null = null
@@ -223,7 +227,17 @@ export async function POST(req: NextRequest) {
           if (!chunk.delta) continue
           if (timeToFirstToken === null) timeToFirstToken = Date.now() - startTime
           accumulatedContent += chunk.delta
-          send('delta', { text: chunk.delta })
+          const shown = replyFilter.push(chunk.delta)
+          if (shown) {
+            streamedText += shown
+            send('delta', { text: shown })
+          }
+        }
+
+        const tail = replyFilter.flush()
+        if (tail) {
+          streamedText += tail
+          send('delta', { text: tail })
         }
 
         const latencyMs = Date.now() - startTime
@@ -235,10 +249,11 @@ export async function POST(req: NextRequest) {
             : conversation.characterId
         // Regeneration doesn't offer the photo capability, but strip any stray
         // [SEND_PHOTO] marker defensively so it can never reach the user.
-        // Strip the [SEND_PHOTO] marker and any *...* action narration (the
-        // latter backstops the plain-dialogue rule for frozen snapshots).
-        let finalContent = stripActionAsterisks(parsePhotoDirective(accumulatedContent).cleaned)
-        if (finalContent !== accumulatedContent) {
+        // Strip the [SEND_PHOTO] marker, planning commentary, bracketed stage
+        // directions and *...* action narration (the last three backstop the
+        // plain-dialogue rules for frozen snapshots).
+        let finalContent = sanitizeReplyText(parsePhotoDirective(accumulatedContent).cleaned)
+        if (finalContent !== streamedText) {
           send('replace', { text: finalContent })
         }
         const outputVerdict = await checkAssistantOutput({
@@ -300,7 +315,10 @@ export async function POST(req: NextRequest) {
         }).catch(() => {})
 
         if (!isAbort) {
-          send('error', { message: 'Regeneration failed. Please try again.' })
+          send('error', {
+            message: 'Regeneration failed. Please try again.',
+            reason: 'generation_failed',
+          })
         }
       } finally {
         controller.close()

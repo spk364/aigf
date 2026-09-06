@@ -853,7 +853,11 @@ export function ChatInterface({
               setStreamingState('idle')
             } else if (event === 'error') {
               const parsed = JSON.parse(data) as { message: string; reason?: string }
-              setError(parsed.message)
+              // The server's `message` is English-only — it was rendered verbatim
+              // in the banner, so a Russian/Spanish user hit a stray "Generation
+              // failed. Please try again." Localized copy wins for the generic
+              // failure; anything else still shows what the server said.
+              setError(parsed.reason === 'generation_failed' ? s.errorGeneric : parsed.message)
               if (paywall && parsed.reason === 'insufficient_tokens') {
                 setPaywallReason('tokens')
               }
@@ -950,8 +954,9 @@ export function ChatInterface({
             setCurrentMsgId(null)
             setStreamingState('idle')
           } else if (event === 'error') {
-            const parsed = JSON.parse(data) as { message: string }
-            setError(parsed.message)
+            const parsed = JSON.parse(data) as { message: string; reason?: string }
+            // Same as the send path: prefer the localized banner copy.
+            setError(parsed.reason === 'generation_failed' ? s.errorGeneric : parsed.message)
             setStreamingState('idle')
           }
         }

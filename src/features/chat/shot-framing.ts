@@ -124,14 +124,16 @@ const SD_ANIME: Record<ShotType, ShotFramingTokens> = {
   full_body_wide: { positive: 'full body, wide shot', negative: 'close-up, portrait, cropped' },
 }
 
-// FLUX wants a natural-language sentence and ignores negative prompts.
+// FLUX wants a natural-language sentence and ignores negative prompts. Phrased
+// without a gendered pronoun — "showing her face" on a male character's photo
+// fights the subject description the sentence sits next to.
 const FLUX_SENTENCE: Record<ShotType, string> = {
-  selfie: 'A close-up selfie showing her face and upper body.',
-  closeup: 'A close-up shot focused on her face.',
-  portrait: 'A portrait showing her head and shoulders.',
+  selfie: 'A close-up selfie showing the face and upper body.',
+  closeup: 'A close-up shot focused on the face.',
+  portrait: 'A portrait showing the head and shoulders.',
   half_body: 'A waist-up shot.',
-  full_body: 'A full-body shot showing her from head to toe.',
-  full_body_wide: 'A wide full-body shot showing her entire body.',
+  full_body: 'A full-body shot showing the subject from head to toe.',
+  full_body_wide: 'A wide full-body shot showing the entire body.',
 }
 
 /**

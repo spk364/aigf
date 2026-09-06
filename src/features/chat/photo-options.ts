@@ -5,8 +5,15 @@
 // resolve English prompts far better — the chip label the user sees is still
 // translated. Mirrors the existing hardcoded "Send me a selfie" being English.
 //
-// Options are deliberately tasteful/SFW-leaning. The input safety scorer still
-// runs on the assembled message, so nothing here can bypass the filters.
+// Each group runs tasteful → spicy in display order, so the everyday picks sit
+// where the thumb lands and the explicit ones are a deliberate reach. The input
+// safety scorer still runs on the assembled message, so nothing here can bypass
+// the filters.
+//
+// Fragments are written WITHOUT gendered pronouns ("looking back over the
+// shoulder", not "over her shoulder"): the composer is the same sheet for every
+// character, and a female pronoun in the scene fights a male character's own
+// appearance tokens downstream.
 
 export type PhotoOption = {
   key: string
@@ -28,30 +35,49 @@ export const PHOTO_OPTION_GROUPS: PhotoOptionGroup[] = [
     options: [
       { key: 'casual', labelKey: 'outfit.casual', prompt: 'in casual clothes' },
       { key: 'dress', labelKey: 'outfit.dress', prompt: 'wearing an elegant dress' },
+      { key: 'suit', labelKey: 'outfit.suit', prompt: 'in a sharp tailored suit' },
       { key: 'cozy', labelKey: 'outfit.cozy', prompt: 'in a cozy oversized sweater' },
-      { key: 'swimwear', labelKey: 'outfit.swimwear', prompt: 'in swimwear' },
-      { key: 'lingerie', labelKey: 'outfit.lingerie', prompt: 'in lingerie' },
+      { key: 'shirt', labelKey: 'outfit.shirt', prompt: 'in an oversized white shirt' },
+      { key: 'leather', labelKey: 'outfit.leather', prompt: 'in a leather jacket' },
       { key: 'workout', labelKey: 'outfit.workout', prompt: 'in workout clothes' },
+      { key: 'pajamas', labelKey: 'outfit.pajamas', prompt: 'in pajamas' },
+      { key: 'swimwear', labelKey: 'outfit.swimwear', prompt: 'in swimwear' },
+      { key: 'robe', labelKey: 'outfit.robe', prompt: 'in a silk robe, loosely tied' },
+      { key: 'towel', labelKey: 'outfit.towel', prompt: 'wrapped in a towel, fresh out of the shower' },
+      { key: 'lingerie', labelKey: 'outfit.lingerie', prompt: 'in lingerie' },
+      { key: 'nude', labelKey: 'outfit.nude', prompt: 'wearing nothing at all, completely nude' },
     ],
   },
   {
     group: 'pose',
     options: [
       { key: 'selfie', labelKey: 'pose.selfie', prompt: 'taking a selfie, smiling' },
-      { key: 'lying', labelKey: 'pose.lying', prompt: 'lying on the bed, relaxed' },
-      { key: 'sitting', labelKey: 'pose.sitting', prompt: 'sitting by the window' },
       { key: 'mirror', labelKey: 'pose.mirror', prompt: 'a mirror selfie' },
-      { key: 'looking_back', labelKey: 'pose.lookingBack', prompt: 'looking over her shoulder' },
+      { key: 'closeup', labelKey: 'pose.closeup', prompt: 'a close-up of the face, looking at the camera' },
+      { key: 'standing', labelKey: 'pose.standing', prompt: 'standing, full body, head to toe' },
+      { key: 'sitting', labelKey: 'pose.sitting', prompt: 'sitting by the window' },
+      { key: 'lying', labelKey: 'pose.lying', prompt: 'lying on the bed, relaxed' },
+      { key: 'looking_back', labelKey: 'pose.lookingBack', prompt: 'looking back over the shoulder' },
+      { key: 'stretching', labelKey: 'pose.stretching', prompt: 'stretching, just woke up' },
+      { key: 'kiss', labelKey: 'pose.kiss', prompt: 'blowing a kiss to the camera' },
+      { key: 'undressing', labelKey: 'pose.undressing', prompt: 'undressing, slowly taking clothes off' },
     ],
   },
   {
     group: 'setting',
     options: [
-      { key: 'bedroom', labelKey: 'setting.bedroom', prompt: 'in the bedroom' },
-      { key: 'beach', labelKey: 'setting.beach', prompt: 'on the beach at sunset' },
-      { key: 'cafe', labelKey: 'setting.cafe', prompt: 'in a cozy cafe' },
       { key: 'home', labelKey: 'setting.home', prompt: 'at home' },
+      { key: 'bedroom', labelKey: 'setting.bedroom', prompt: 'in the bedroom' },
+      { key: 'kitchen', labelKey: 'setting.kitchen', prompt: 'in the kitchen' },
+      { key: 'balcony', labelKey: 'setting.balcony', prompt: 'on the balcony at golden hour' },
+      { key: 'cafe', labelKey: 'setting.cafe', prompt: 'in a cozy cafe' },
+      { key: 'gym', labelKey: 'setting.gym', prompt: 'at the gym' },
+      { key: 'car', labelKey: 'setting.car', prompt: 'in the car' },
       { key: 'city', labelKey: 'setting.city', prompt: 'in the city at night' },
+      { key: 'beach', labelKey: 'setting.beach', prompt: 'on the beach at sunset' },
+      { key: 'pool', labelKey: 'setting.pool', prompt: 'by the pool' },
+      { key: 'bathroom', labelKey: 'setting.bathroom', prompt: 'in the bathroom' },
+      { key: 'shower', labelKey: 'setting.shower', prompt: 'in the shower, wet skin' },
     ],
   },
 ]

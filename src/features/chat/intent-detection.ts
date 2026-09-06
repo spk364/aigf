@@ -14,6 +14,8 @@
 //    message gives photo-ish signal. This keeps regex-missed phrasings working
 //    without letting the model spontaneously charge for photos on a plain "hi".
 
+import { isExplicitPhotoScene } from './photo-consistency'
+
 export type ChatIntent = 'image_request' | 'text'
 
 const HARD_PATTERNS: Record<'en' | 'ru' | 'es', RegExp> = {
@@ -42,7 +44,15 @@ const SOFT_PATTERN =
  * True when the user's message plausibly references a photo / the character's
  * looks. Looser than {@link detectImageIntent} — used only to confirm a
  * model-emitted [SEND_PHOTO] directive, never to force a photo by itself.
+ *
+ * Nudity/undress phrasing counts too. The most common way users refine a photo
+ * they just received is a bare follow-up — "fully naked", "без белья", "take it
+ * off" — which names no photo noun at all. The soft gate rejected those, so the
+ * model's [SEND_PHOTO] was dropped and the turn produced neither a photo nor
+ * (when the model replied with the directive alone) any text. Reusing the
+ * explicit-scene markers keeps the gate honest: it still takes the model
+ * deciding a photo fits before one is generated and charged.
  */
 export function mentionsPhotoKeyword(text: string): boolean {
-  return SOFT_PATTERN.test(text)
+  return SOFT_PATTERN.test(text) || isExplicitPhotoScene(text)
 }
