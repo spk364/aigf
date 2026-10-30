@@ -1,5 +1,5 @@
-// TODO(phase-3-auth): tighten access control
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 /**
  * Editable paywall blocks (exit-intent modal + in-chat paywall variants).
@@ -10,12 +10,7 @@ import type { CollectionConfig } from 'payload'
 export const PaywallBlocks: CollectionConfig = {
   slug: 'paywall-blocks',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   admin: {
     useAsTitle: 'internalName',
     defaultColumns: ['internalName', 'surface', 'isActive', 'updatedAt'],

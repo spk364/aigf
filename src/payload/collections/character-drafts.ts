@@ -1,16 +1,11 @@
-// TODO(phase-3-auth): tighten access control
 // TODO(draft-ttl-cleanup): add a scheduled cron to purge rows where expiresAt < now
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 export const CharacterDrafts: CollectionConfig = {
   slug: 'character-drafts',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   indexes: [
     { fields: ['userId', 'deletedAt'] },
     { fields: ['expiresAt'] },

@@ -1,15 +1,10 @@
-// TODO(phase-3-auth): tighten access control
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 export const MediaAssets: CollectionConfig = {
   slug: 'media-assets',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   // Lead the list view with a thumbnail of the asset (rendered by the
   // custom Cell on `publicUrl` below) so admins can scan generated images
   // / videos straight from the table without opening each row.

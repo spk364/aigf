@@ -1,16 +1,11 @@
-// TODO(phase-3-auth): tighten access control
 // Only grant/spend/refundByAdmin should write to token_balances
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 export const TokenBalances: CollectionConfig = {
   slug: 'token-balances',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   fields: [
     {
       name: 'userId',

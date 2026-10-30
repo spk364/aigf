@@ -4,16 +4,12 @@
 //   migrations/0001_memory_embeddings.sql
 // Insert/query of the embedding column uses payload.db.pool directly.
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 export const MemoryEntries: CollectionConfig = {
   slug: 'memory-entries',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   indexes: [
     { fields: ['userId', 'characterId', 'deletedAt'] },
     { fields: ['category'] },

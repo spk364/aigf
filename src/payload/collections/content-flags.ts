@@ -5,18 +5,13 @@
 //
 // Data-model §6. Partition by month + retain ~1 year once volume warrants
 // (raw SQL via afterMigrate — not needed at launch scale).
-// TODO(phase-3-auth): tighten access control to admin-only reads.
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 export const ContentFlags: CollectionConfig = {
   slug: 'content-flags',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   indexes: [
     // Powers the escalation window query: flags for a user, newest first.
     { fields: ['userId', 'flagType', 'createdAt'] },

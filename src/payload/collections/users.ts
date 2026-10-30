@@ -1,7 +1,7 @@
-// TODO(phase-3-auth): tighten access control further (rate limiting, admin-only field updates)
 // Only grant/spend/refundByAdmin should write to token_balances
 import type { CollectionConfig } from 'payload'
 import { ValidationError } from 'payload'
+import { adminOnly, adminOrSelf, canAccessAdminPanel } from '@/payload/access'
 import { ensureBalanceRow } from '@/features/tokens/ledger'
 import { SESSION_TOKEN_EXPIRATION_SECONDS } from '@/shared/auth/session'
 
@@ -73,18 +73,16 @@ export const Users: CollectionConfig = {
     useAsTitle: 'email',
   },
   access: {
-    read: ({ req: { user } }) => {
-      if (!user) return false
-      if ((user as { roles?: string[] }).roles?.includes('admin')) return true
-      return { id: { equals: user.id } }
-    },
-    create: () => true,
-    update: ({ req: { user } }) => {
-      if (!user) return false
-      if ((user as { roles?: string[] }).roles?.includes('admin')) return true
-      return { id: { equals: user.id } }
-    },
-    delete: () => true,
+    // Only admins may open /admin — every end user is a Payload-authenticated
+    // user of this collection, so without this anyone who signed up could.
+    admin: canAccessAdminPanel,
+    read: adminOrSelf,
+    // Signup, profile edits, password changes and GDPR purges all run through
+    // server actions on the local API (overrideAccess), never REST. Self-update
+    // over REST stays closed: it would let a user PATCH their own `roles`.
+    create: adminOnly,
+    update: adminOnly,
+    delete: adminOnly,
   },
   hooks: {
     beforeValidate: [
