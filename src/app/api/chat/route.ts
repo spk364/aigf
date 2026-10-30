@@ -28,7 +28,6 @@ import {
   buildRelationshipBlock,
   daysSince,
 } from '@/features/chat/relationship-stage'
-import { shouldUpdateSummary, updateConversationSummary } from '@/features/chat/conversation-summary'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
 import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
 import {
@@ -42,8 +41,8 @@ import { resolveCharacterGender, type SubjectGender } from '@/shared/ai/subject-
 import { pickModelIdForStyle, isPonyModelId, isSd15ModelId } from '@/features/builder/prompt-builder'
 import { findImageModel } from '@/shared/ai/image-models'
 import { computeRelationshipScore, isNewActiveDay } from '@/features/chat/relationship-score'
-import { retrieveMemories, formatMemoriesForPrompt } from '@/features/memory/retrieve-memories'
-import { extractMemories } from '@/features/memory/extract-memories'
+import { loadMemoryContext, formatSummaryForPrompt } from '@/features/memory/retrieve-memories'
+import { countUnprocessed, relId, runMemoryJob, shouldRunMemoryJob } from '@/features/memory/memory-job'
 import { getBalance, spend } from '@/features/tokens/ledger'
 import { checkRateLimit, rateLimitHeaders, rateLimitResponseBody } from '@/shared/rate-limit/limiter'
 import { CHAT_LIMIT, IMAGE_GEN_LIMIT } from '@/shared/rate-limit/presets'
@@ -459,14 +458,15 @@ export async function POST(req: NextRequest) {
     // Character gone or lookup failed — keep the frozen snapshot.
   }
 
-  // Retrieve top-5 relevant memories for this (user, character) pair.
-
-  const memories = await retrieveMemories({
+  // Long-term memory for this (user, character) pair: the always-on profile
+  // plus episodic memories relevant to the last few turns. historyResult is
+  // newest-first and already includes this turn's user message.
+  const memoryContext = await loadMemoryContext({
     payload,
     userId: user.id,
     characterId: convCharacterId,
-    queryText: message,
-  }).catch(() => [])
+    recentMessages: historyResult.docs.slice(0, 3).reverse(),
+  }).catch(() => ({ profileBlock: '', episodicBlock: '' }))
 
   const openrouterMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = []
 
@@ -522,24 +522,19 @@ export async function POST(req: NextRequest) {
     openrouterMessages.push({ role: 'system', content: photoUnavailableInstruction() })
   }
 
-  const memoryBlock = formatMemoriesForPrompt(memories)
-  if (memoryBlock) {
-    openrouterMessages.push({ role: 'system', content: memoryBlock })
-  }
-
-  if (conversation.summary) {
-    openrouterMessages.push({
-      role: 'system',
-      content: `Earlier conversation summary: ${conversation.summary}`,
-    })
+  // Stable blocks first, per-turn blocks last: the profile only changes when
+  // the memory job runs, so everything up to here forms a prefix that repeats
+  // turn after turn and can be served from the provider's prompt cache.
+  if (memoryContext.profileBlock) {
+    openrouterMessages.push({ role: 'system', content: memoryContext.profileBlock })
   }
 
   // Walk history from newest → oldest, accumulating until the char-budget is
   // hit; then reverse so the LLM sees chronological order. Drops the oldest
-  // messages on long convos rather than always passing the full 30. Summary +
-  // memories above cover anything older.
+  // messages on long convos rather than always passing the full 30. The
+  // summary and long-term memory cover anything older.
   // Restore chronological (oldest → newest) order after the newest-first fetch
-  // so the budget walk below and the memory-extraction block work on a normal
+  // so the budget walk below and the memory-job trigger work on a normal
   // timeline.
   const historyDocs = historyResult.docs.slice().reverse()
   const tailMessages: Array<{ role: 'user' | 'assistant'; content: string }> = []
@@ -553,7 +548,20 @@ export async function POST(req: NextRequest) {
     usedChars += content.length
   }
   tailMessages.reverse()
+
+  // The summary covers what has scrolled out of the history window. When the
+  // whole conversation still fits, it only repeats the transcript — skip it.
+  const historyTruncated = historyResult.totalDocs > tailMessages.length
+  const summaryBlock = historyTruncated ? formatSummaryForPrompt(conversation.summary as string | null) : ''
+  if (summaryBlock) openrouterMessages.push({ role: 'system', content: summaryBlock })
+
   for (const m of tailMessages) openrouterMessages.push(m)
+
+  // Episodic memories change every turn (they're matched to the latest
+  // messages), so they go after the history to keep the prefix above cacheable.
+  if (memoryContext.episodicBlock) {
+    openrouterMessages.push({ role: 'system', content: memoryContext.episodicBlock })
+  }
 
   // When an eligible user clearly asked for a photo, force the directive this
   // turn so an explicit request is never dropped (the regex booster behind the
@@ -775,72 +783,40 @@ export async function POST(req: NextRequest) {
             },
           })
 
-          // Derived user-turn count. Math.floor matters: the greeting message
-          // makes newCnt odd (1 + 2 per turn), and the previous exact-division
-          // check `(newCnt / 2) % 30 === 0` could never be true on an odd
-          // count — memory extraction NEVER fired for any greeted conversation.
-          // floor(newCnt / 2) advances by exactly 1 per turn with or without a
-          // greeting, so the modulo fires reliably.
-          const userTurns = Math.floor(newCnt / 2)
+          // Long-term memory: once enough messages sit past the memory job's
+          // checkpoint, run it. historyDocs already includes this turn's user
+          // message; +1 for the reply just committed. Counting from the
+          // checkpoint (not a turn-number modulo) makes a failed run self-heal:
+          // the backlog stays over the threshold and the next turn retries it.
+          const unprocessed =
+            countUnprocessed(historyDocs.map((m) => m.id), relId(conversation.summaryUpToMessageId)) + 1
 
-          // Recent history (chronological) + this turn, shared by the memory
-          // extraction and summary jobs below.
-          const turnMessages = historyDocs
-            .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
-            .map((m) => ({
-              role: m.role as 'user' | 'assistant',
-              content: (m.content as string | null) ?? '',
-              id: m.id,
-            }))
-          turnMessages.push({ role: 'user', content: message, id: 'current-user' })
-          turnMessages.push({ role: 'assistant', content: finalContent, id: assistantMsgId })
-
-          // Both jobs below run AFTER the response is finished, via next/server
-          // `after`. They used to be bare `void fn()` calls, which on Vercel is
-          // silently lost work: the function returns the stream and the runtime
-          // freezes the instance before an un-awaited promise settles. Verified
-          // against prod on 2026-09-06 — memory_entries had 0 rows and 0 of 34
-          // conversations had a summary, while every awaited write in this same
-          // block (messageCount, relationshipScore, lastMessagePreview) was
-          // populated. `after` hands the work to the platform instead, which
-          // keeps the invocation alive until the callback settles.
+          // Runs AFTER the response is finished, via next/server `after`. It used
+          // to be bare `void fn()` calls, which on Vercel is silently lost work:
+          // the function returns the stream and the runtime freezes the instance
+          // before an un-awaited promise settles. Verified against prod on
+          // 2026-09-06 — memory_entries had 0 rows and 0 of 34 conversations had
+          // a summary, while every awaited write in this same block
+          // (messageCount, relationshipScore, lastMessagePreview) was populated.
+          // `after` hands the work to the platform instead, which keeps the
+          // invocation alive until the callback settles. The daily
+          // /api/cron/process-memory sweep is the backstop if it doesn't.
           //
-          // Do NOT turn these back into `void` calls, and do NOT `await` them
-          // inline either — extraction is an LLM round-trip and would stall the
-          // stream close by seconds.
-
-          // Trigger memory extraction every 10 user messages.
-          if (userTurns > 0 && userTurns % 10 === 0) {
+          // Do NOT turn this back into a `void` call, and do NOT `await` it
+          // inline either — it's an LLM round-trip and would stall the stream
+          // close by seconds.
+          if (shouldRunMemoryJob(unprocessed)) {
             after(async () => {
               try {
-                await extractMemories({
+                await runMemoryJob({
                   payload,
+                  conversationId,
                   userId: user.id,
                   characterId: convCharacterId,
-                  conversationId,
-                  messages: turnMessages,
-                })
-              } catch (err: unknown) {
-                log.warn({ msg: 'memory.extraction.background_failed', conversationId, err: err instanceof Error ? err.message : err })
-              }
-            })
-          }
-
-          // Refresh the rolling summary so context older than the 30-message
-          // history window survives — without it the character forgot everything
-          // beyond the window on long conversations.
-          if (shouldUpdateSummary(newCnt)) {
-            after(async () => {
-              try {
-                await updateConversationSummary({
-                  payload,
-                  conversationId,
-                  previousSummary: (conversation.summary as string | null) ?? null,
-                  messages: turnMessages,
                   language: convLanguage,
                 })
               } catch (err: unknown) {
-                log.warn({ msg: 'chat.summary.background_failed', conversationId, err: err instanceof Error ? err.message : err })
+                log.warn({ msg: 'memory.job.background_failed', conversationId, err: err instanceof Error ? err.message : err })
               }
             })
           }

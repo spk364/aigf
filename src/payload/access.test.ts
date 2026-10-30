@@ -10,6 +10,7 @@ import { Conversations } from './collections/conversations'
 import { FeatureFlags } from './collections/feature-flags'
 import { MediaAssets } from './collections/media-assets'
 import { MemoryEntries } from './collections/memory-entries'
+import { MemoryProfiles } from './collections/memory-profiles'
 import { Messages } from './collections/messages'
 import { PaymentTransactions } from './collections/payment-transactions'
 import { PaymentWebhooks } from './collections/payment-webhooks'
@@ -36,6 +37,7 @@ const ADMIN_ONLY: CollectionConfig[] = [
   FeatureFlags,
   MediaAssets,
   MemoryEntries,
+  MemoryProfiles,
   Messages,
   PaymentTransactions,
   PaymentWebhooks,

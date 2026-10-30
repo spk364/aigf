@@ -1,8 +1,8 @@
-// Backfill embeddings for memory_entries rows written while OPENAI_API_KEY was
-// unset. Those rows have `embedding IS NULL`, and retrieve-memories.ts filters
-// the vector branch on `embedding IS NOT NULL` — so the moment the key is added,
-// every pre-existing memory becomes invisible to retrieval. This script closes
-// that gap.
+// Backfill embeddings for memory_entries rows that have none: rows written while
+// OPENAI_API_KEY was unset, and rows whose vector was dropped when
+// migrations/0012_memory_v2.sql switched the column to halfvec(512).
+// Vector search and semantic dedup skip rows with `embedding IS NULL`, so they
+// stay invisible until this runs.
 //
 //   pnpm backfill:memory-embeddings [--limit N] [--dry-run]
 //   node node_modules/tsx/dist/cli.mjs --env-file-if-exists=.env.local scripts/backfill-memory-embeddings.ts
@@ -13,7 +13,7 @@
 
 // @ts-expect-error — pg resolved by deep pnpm path (no bundled types there).
 import pg from '../node_modules/.pnpm/pg@8.20.0/node_modules/pg/lib/index.js'
-import { getEmbedding, toVectorLiteral, EMBEDDING_MODEL } from '../src/shared/ai/embeddings'
+import { getEmbedding, toVectorLiteral, EMBEDDING_MODEL_TAG } from '../src/shared/ai/embeddings'
 
 // text-embedding-3-small allows generous throughput, but a backfill is bursty
 // and unattended — pace it so a large table can't trip a rate limit mid-run.
@@ -78,8 +78,8 @@ async function main() {
         continue
       }
       await client.query(
-        `UPDATE memory_entries SET embedding = $1::vector, embedding_model = $2 WHERE id = $3`,
-        [toVectorLiteral(embedding), EMBEDDING_MODEL, row.id],
+        `UPDATE memory_entries SET embedding = $1::halfvec, embedding_model = $2 WHERE id = $3`,
+        [toVectorLiteral(embedding), EMBEDDING_MODEL_TAG, row.id],
       )
       done++
       if (done % 25 === 0) console.log(`  ${done}/${rows.length}…`)
