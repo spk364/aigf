@@ -30,7 +30,7 @@ const RECLINING =
   /\b(lying|laying|lie down|reclin\w*|sprawled|sunbathing|in bed|on (?:the|a) (?:bed|couch|sofa|floor))\b|лёжа|лежа|лежу|лежишь|лежит|лежим|лежать|лежащ|приля?г|разлёгш|на кровати|на диване|на полу|загора|tumbad[ao]|acostad[ao]|recostad[ao]|echad[ao]|en la cama|en el sof|en el suelo|tomando el sol/i
 
 const FULL_BODY =
-  /\b(full[\s-]?body|full[\s-]?length|head[\s-]?to[\s-]?toe|whole body|entire body|standing|stands?|walking|dancing|twirling|posing|mirror selfie|outfit|what (?:i'?m|i am|you'?re|you are) wearing|show (?:me )?(?:your|the) (?:outfit|dress|look))\b|в полный рост|во весь рост|полный рост|стою|стоя|стоит|иду|идёт|шагаю|танцу|кружусь|наряд|во что .{0,6}одет|что на тебе надето|в зеркал|cuerpo entero|cuerpo completo|de pie|parad[ao]|caminando|bailando|selfie en el espejo|atuendo|qué llevas puesto/i
+  /\b(full[\s-]?body|full[\s-]?length|head[\s-]?to[\s-]?toe|whole body|entire body|standing|stands?|walking|dancing|twirling|posing|mirror selfie|outfit|undress\w*|stripping|taking (?:your |his |her |my )?clothes off|what (?:i'?m|i am|you'?re|you are) wearing|show (?:me )?(?:your|the) (?:outfit|dress|look))\b|в полный рост|во весь рост|полный рост|стою|стоя|стоит|иду|идёт|шагаю|танцу|кружусь|наряд|раздева|снима\w+ одежду|во что .{0,6}одет|что на тебе надето|в зеркал|cuerpo entero|cuerpo completo|de pie|parad[ao]|caminando|bailando|desvist|quit[aá]ndose la ropa|selfie en el espejo|atuendo|qué llevas puesto/i
 
 const SELFIE = /\b(selfie|self[\s-]?portrait|selca)\b|селфи|автопортрет|autofoto|autorretrato/i
 
@@ -45,16 +45,27 @@ const CLOSEUP =
  * matters: a reclining pose ("lying on the bed") outranks the cafe/outfit
  * hints that may sit alongside it, and "mirror selfie" resolves to a full-body
  * shot before the plain "selfie" rule can claim it.
+ *
+ * `explicit` upgrades the FALLBACK only. "Fully naked" says nothing about
+ * framing, so it used to fall through to `portrait` — a head-and-shoulders
+ * 832×1216 crop, which puts the body at the very bottom edge of the frame at
+ * almost no pixel density. That is how a nude came back with the anatomy
+ * rendered as a blur. A request that DID name its framing (a naked selfie, a
+ * close-up) still gets exactly what it asked for.
  */
-export function classifyShot(scene: string | undefined | null): ShotType {
+export function classifyShot(
+  scene: string | undefined | null,
+  opts?: { explicit?: boolean },
+): ShotType {
   const s = (scene ?? '').toLowerCase()
-  if (!s.trim()) return 'portrait'
+  const fallback: ShotType = opts?.explicit ? 'full_body' : 'portrait'
+  if (!s.trim()) return fallback
   if (RECLINING.test(s)) return 'full_body_wide'
   if (FULL_BODY.test(s)) return 'full_body'
   if (SELFIE.test(s)) return 'selfie'
   if (HALF_BODY.test(s)) return 'half_body'
   if (CLOSEUP.test(s)) return 'closeup'
-  return 'portrait'
+  return fallback
 }
 
 // Maps a shot type to one of the SDXL-native buckets in IMAGE_SIZE_PRESETS:
@@ -134,6 +145,12 @@ const FLUX_SENTENCE: Record<ShotType, string> = {
   half_body: 'A waist-up shot.',
   full_body: 'A full-body shot showing the subject from head to toe.',
   full_body_wide: 'A wide full-body shot showing the entire body.',
+}
+
+/** The natural-language framing sentence for a shot. Used by FLUX and by the
+ *  WAN image-edit prompt, both of which read prose rather than booru tags. */
+export function shotFramingSentence(shot: ShotType): string {
+  return FLUX_SENTENCE[shot]
 }
 
 /**
