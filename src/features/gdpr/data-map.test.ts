@@ -20,7 +20,7 @@ describe('GDPR data-map invariants', () => {
 
   it('financial + compliance records are retained, personal content is deleted', () => {
     const retained = ['payment-transactions', 'token-transactions', 'subscriptions', 'age-verifications', 'safety-incidents', 'content-flags']
-    const deleted = ['conversations', 'memory-entries', 'character-drafts', 'characters', 'media-assets', 'token-balances']
+    const deleted = ['conversations', 'memory-entries', 'memory-profiles', 'character-drafts', 'characters', 'media-assets', 'token-balances']
     for (const slug of retained) {
       expect(USER_DATA_SOURCES.find((s) => s.collection === slug)?.purge).toBe('retain')
     }

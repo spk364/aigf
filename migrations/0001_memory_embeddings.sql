@@ -1,3 +1,4 @@
+-- SUPERSEDED by 0012_memory_v2.sql (halfvec(512), no HNSW). Do not run after 0012.
 -- Supplemental migration: add vector embedding column to memory_entries.
 -- Must run AFTER `pnpm payload:migrate` has created the memory_entries table.
 -- Requires pgvector extension (migrations/0000_pgvector.sql must run first).
