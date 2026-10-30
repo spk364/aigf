@@ -25,6 +25,7 @@ import { FeatureFlags } from './collections/feature-flags'
 import { AuditLogs } from './collections/audit-logs'
 import { CharacterDrafts } from './collections/character-drafts'
 import { MemoryEntries } from './collections/memory-entries'
+import { MemoryProfiles } from './collections/memory-profiles'
 import { Banners } from './collections/banners'
 import { ContentFlags } from './collections/content-flags'
 import { SafetyIncidents } from './collections/safety-incidents'
@@ -154,6 +155,7 @@ export default buildConfig({
     FeatureFlags,
     AuditLogs,
     MemoryEntries,
+    MemoryProfiles,
     Banners,
     ContentFlags,
     SafetyIncidents,

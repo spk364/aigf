@@ -13,6 +13,7 @@ export type CollectionSlug =
   | 'conversations'
   | 'media-assets'
   | 'memory-entries'
+  | 'memory-profiles'
   | 'payment-transactions'
   | 'safety-incidents'
   | 'subscriptions'
@@ -38,6 +39,7 @@ export const USER_DATA_SOURCES: UserDataSource[] = [
   // Personal content — exported, then purged.
   { collection: 'conversations', userField: 'userId', export: true, purge: 'delete' },
   { collection: 'memory-entries', userField: 'userId', export: true, purge: 'delete' },
+  { collection: 'memory-profiles', userField: 'userId', export: true, purge: 'delete' },
   { collection: 'character-drafts', userField: 'userId', export: true, purge: 'delete' },
   { collection: 'characters', userField: 'createdBy', export: true, purge: 'delete' },
   { collection: 'media-assets', userField: 'ownerUserId', export: true, purge: 'delete' },

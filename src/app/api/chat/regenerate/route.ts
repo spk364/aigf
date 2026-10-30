@@ -19,6 +19,8 @@ import {
   resolveRelationshipStage,
   buildRelationshipBlock,
 } from '@/features/chat/relationship-stage'
+import { loadMemoryContext, formatSummaryForPrompt } from '@/features/memory/retrieve-memories'
+import { relId } from '@/features/memory/memory-job'
 import { getAccountState } from '@/shared/auth/account-status'
 
 // Keep aligned with chat/route.ts — see note there on temperature choice.
@@ -167,11 +169,20 @@ export async function POST(req: NextRequest) {
     ),
   })
 
-  if (conversation.summary) {
-    openrouterMessages.push({
-      role: 'system',
-      content: `Earlier conversation summary: ${conversation.summary}`,
-    })
+  // Same long-term memory as chat/route.ts — a regenerated reply must not
+  // forget what the original knew. historyResult is newest-first; skip the
+  // empty streaming placeholder just created for the new reply.
+  const memoryContext = await loadMemoryContext({
+    payload,
+    userId: user.id,
+    characterId: relId(conversation.characterId) ?? '',
+    recentMessages: historyResult.docs
+      .filter((d) => String(d.id) !== newMsgId)
+      .slice(0, 3)
+      .reverse(),
+  }).catch(() => ({ profileBlock: '', episodicBlock: '' }))
+  if (memoryContext.profileBlock) {
+    openrouterMessages.push({ role: 'system', content: memoryContext.profileBlock })
   }
 
   // Same char-budget walk as chat/route.ts — newest backwards until budget,
@@ -190,7 +201,17 @@ export async function POST(req: NextRequest) {
     usedChars += content.length
   }
   tailMessages.reverse()
+
+  // Same summary + episodic placement as chat/route.ts.
+  const historyTruncated = historyResult.totalDocs - 1 > tailMessages.length
+  const summaryBlock = historyTruncated ? formatSummaryForPrompt(conversation.summary as string | null) : ''
+  if (summaryBlock) openrouterMessages.push({ role: 'system', content: summaryBlock })
+
   for (const m of tailMessages) openrouterMessages.push(m)
+
+  if (memoryContext.episodicBlock) {
+    openrouterMessages.push({ role: 'system', content: memoryContext.episodicBlock })
+  }
 
   const abortController = new AbortController()
   req.signal.addEventListener('abort', () => abortController.abort())
