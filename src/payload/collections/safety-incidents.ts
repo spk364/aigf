@@ -3,19 +3,14 @@
 // any image_filter rejection. CSAM-class incidents are retained 7 years and may
 // trigger reporting obligations (handled operationally, not in code).
 //
-// Data-model §6. Admin-only in production once auth is tightened.
-// TODO(phase-3-auth): restrict read/update to admin role.
+// Data-model §6. Admin-only — see src/payload/access.ts.
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 export const SafetyIncidents: CollectionConfig = {
   slug: 'safety-incidents',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   indexes: [
     { fields: ['userId', 'createdAt'] },
     { fields: ['status', 'severity'] },

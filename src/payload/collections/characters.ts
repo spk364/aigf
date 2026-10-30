@@ -1,15 +1,10 @@
-// TODO(phase-3-auth): tighten access control
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 export const Characters: CollectionConfig = {
   slug: 'characters',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   indexes: [
     { fields: ['kind', 'isPublished', 'displayOrder'] },
     { fields: ['createdBy', 'deletedAt'] },

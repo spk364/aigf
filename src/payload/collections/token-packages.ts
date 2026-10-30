@@ -1,15 +1,10 @@
-// TODO(phase-3-auth): tighten access control
 import type { CollectionConfig } from 'payload'
+import { adminOnlyAccess } from '@/payload/access'
 
 export const TokenPackages: CollectionConfig = {
   slug: 'token-packages',
   timestamps: true,
-  access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
-  },
+  access: adminOnlyAccess,
   fields: [
     {
       name: 'sku',
