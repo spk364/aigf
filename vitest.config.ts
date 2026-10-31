@@ -11,8 +11,8 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.{test,spec}.ts'],
     // Tests run unit-only against an in-memory mock payload — no DB required.
-    // Integration tests against a real Postgres will live in tests/integration
-    // and run separately when added.
+    // Integration tests against the real database live in tests/integration
+    // and run separately: `pnpm test:integration` (vitest.integration.config.ts).
     exclude: ['node_modules', '.next', 'tests/integration/**'],
   },
 })
