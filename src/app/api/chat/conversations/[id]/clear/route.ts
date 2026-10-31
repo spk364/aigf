@@ -24,13 +24,13 @@ export const maxDuration = 30
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import config from '@payload-config'
 import { getCurrentUser } from '@/shared/auth/current-user'
 import { ensureGreeting } from '@/features/chat/ensure-greeting'
 import { relId } from '@/features/memory/memory-job'
 import { CHARACTER_COL, USER_COL } from '@/features/memory/retrieve-memories'
 import { createLogger } from '@/shared/lib/logger'
+import { getSqlPool } from '@/shared/db/sql-pool'
 
 const log = createLogger({ route: '/api/chat/conversations/[id]/clear' })
 
@@ -62,7 +62,11 @@ export async function POST(
   }
   const characterId = relId(conversation.characterId)
 
-  const pool = (payload.db as unknown as PostgresAdapter).pool
+  const pool = getSqlPool(payload)
+  if (!pool) {
+    log.error({ msg: 'chat.conversation.clear_failed', conversationId: conversation.id, err: 'no SQL pool' })
+    return NextResponse.json({ error: 'clear_failed' }, { status: 500 })
+  }
   const client = await pool.connect()
   try {
     await client.query('BEGIN')

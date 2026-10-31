@@ -12,7 +12,7 @@
 // The write side is memory-job.ts.
 import 'server-only'
 import type { BasePayload } from 'payload'
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import { getSqlPool } from '@/shared/db/sql-pool'
 import { getEmbedding, toVectorLiteral } from '@/shared/ai/embeddings'
 import { logger } from '@/shared/lib/logger'
 
@@ -51,12 +51,6 @@ export type MemoryEntry = {
   category: string
   content: string
   importance: number
-}
-
-type Pool = PostgresAdapter['pool']
-
-function getPool(payload: BasePayload): Pool | null {
-  return (payload.db as unknown as Partial<PostgresAdapter>).pool ?? null
 }
 
 /**
@@ -103,7 +97,7 @@ export type RetrieveMemoriesInput = {
 export async function retrieveMemories(input: RetrieveMemoriesInput): Promise<MemoryEntry[]> {
   const { payload, userId, characterId, queryText, limit = EPISODIC_LIMIT } = input
 
-  const pool = getPool(payload)
+  const pool = getSqlPool(payload)
   if (!pool) return []
 
   try {

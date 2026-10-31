@@ -129,7 +129,9 @@ export async function generateGreetingMessage(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${key}`,
       'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000',
-      'X-Title': 'AI Companion — greeting generator',
+      // ASCII only: fetch rejects any header byte above 0xFF, and an em dash here
+      // made every greeting generation throw (silently falling back to the stock line).
+      'X-Title': 'AI Companion - greeting generator',
     },
     body: JSON.stringify({
       model,
