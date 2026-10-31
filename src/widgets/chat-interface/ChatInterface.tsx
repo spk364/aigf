@@ -990,15 +990,25 @@ export function ChatInterface({
     try {
       const res = await fetch(
         `/api/chat/conversations/${encodeURIComponent(convId)}/clear`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locale }),
+        },
       )
       if (!res.ok) {
         setError(s.errorGeneric)
         return
       }
-      // Keep generated photos (still in the gallery); drop the text transcript
-      // locally so the UI matches the now-cleared server context.
-      setMessages((prev) => prev.filter((m) => m.type === 'image'))
+      // The server wiped the whole thread (photos stay in the gallery only) and
+      // seeded a fresh greeting, so the chat restarts like a brand-new one.
+      const data = (await res.json().catch(() => null)) as {
+        greeting?: { id: string; content: string } | null
+      } | null
+      const greeting = data?.greeting
+      setMessages(
+        greeting ? [{ id: String(greeting.id), role: 'assistant', content: greeting.content }] : [],
+      )
       setDraft('')
       setError(null)
       setClearConfirmOpen(false)
@@ -1007,7 +1017,7 @@ export function ChatInterface({
     } finally {
       setClearing(false)
     }
-  }, [clearing, s.errorGeneric])
+  }, [clearing, locale, s.errorGeneric])
 
   const stopPlayback = useCallback(() => {
     if (audioRef.current) {
