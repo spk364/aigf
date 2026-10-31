@@ -75,7 +75,7 @@
     "clearHistory": "Clear chat history",
     "clearConfirm": {
       "title": "Clear chat history?",
-      "body": "This deletes the text of this conversation so you can start with a clean slate. Your generated photos stay in the gallery.",
+      "body": "This deletes the whole conversation and everything the character remembers about you, so you start over as strangers. Your generated photos stay in the gallery.",
       "confirm": "Clear history",
       "cancel": "Cancel"
     },

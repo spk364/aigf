@@ -8,7 +8,12 @@ import type { BasePayload } from 'payload'
 // but NOT ownerCharacterId (see persist-generated-image.ts), so the link to the
 // character runs message → conversation → characterId. We resolve it the other
 // way for efficiency: conversations(user, character) → image messages →
-// media-assets, all soft-delete-filtered.
+// media-assets.
+//
+// Image messages are read regardless of their own deletedAt: "clear history"
+// soft-deletes them to empty the chat, but the photos are meant to stay here.
+// Whether a photo is gone for good is decided by its media-assets row (pulled
+// assets are soft-deleted there) and by the conversation itself.
 
 export type GalleryItem = {
   id: string
@@ -55,7 +60,8 @@ export async function getCharacterGallery(
   const convoIds = convos.docs.map((c) => c.id)
   if (convoIds.length === 0) return []
 
-  // 2. Completed image messages in those conversations, newest first.
+  // 2. Completed image messages in those conversations, newest first —
+  //    including ones cleared out of the chat (see the header comment).
   const messages = await payload.find({
     collection: 'messages',
     where: {
@@ -63,7 +69,6 @@ export async function getCharacterGallery(
         { conversationId: { in: convoIds.map(String) } },
         { type: { equals: 'image' } },
         { status: { equals: 'completed' } },
-        { deletedAt: { exists: false } },
       ],
     },
     sort: '-createdAt',

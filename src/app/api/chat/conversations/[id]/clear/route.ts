@@ -1,32 +1,44 @@
-// Clear a conversation's text history without touching generated photos.
+// Clear a conversation: a full "start over" with this character.
 //
-// "Start fresh" for a single thread: soft-deletes the text transcript (and any
-// non-media rows) so the next message begins with a clean LLM context, while
-// image/video messages are preserved — they stay visible in the per-character
-// gallery (getCharacterGallery filters on type='image' + deletedAt) and in the
-// chat. We also drop the rolling summary, which is the other context carrier;
-// long-term memory (profile + episodic memories) is intentionally left intact —
-// and before the transcript goes, its not-yet-processed tail is handed to the
-// memory job so whatever the user said since the last run isn't lost with it.
+// Wipes everything that carries the relationship forward, so the next message
+// meets a character who has never spoken to the user:
+//   - every message in the thread is soft-deleted, photos and videos included,
+//     so the chat comes back empty except for a fresh greeting. The
+//     photos stay in the per-character gallery: getCharacterGallery reads image
+//     messages regardless of their deletedAt, and purge-deleted-messages never
+//     hard-deletes media rows;
+//   - the rolling summary and the relationship counters (messageCount, score,
+//     days active) are reset; lastMessageAt is re-stamped so the next reply
+//     doesn't open with a "you've been away N days" line;
+//   - long-term memory for the (user, character) pair — the memory-profiles
+//     document and every memory-entries fact — is hard-deleted. The user asked
+//     to be forgotten; keeping it would make the character recall a history the
+//     user just erased.
+//
+// All of it runs as raw SQL in ONE transaction. It used to be a Payload bulk
+// update, which updates each row separately and collects per-row failures in
+// `errors` instead of throwing — a failed row silently stayed live, so a clear
+// could leave stray messages behind while still answering ok.
 
 export const maxDuration = 30
 
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getPayload } from 'payload'
+import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import config from '@payload-config'
 import { getCurrentUser } from '@/shared/auth/current-user'
-import { loadUnprocessedMessages, relId, runMemoryJob } from '@/features/memory/memory-job'
+import { ensureGreeting } from '@/features/chat/ensure-greeting'
+import { relId } from '@/features/memory/memory-job'
+import { CHARACTER_COL, USER_COL } from '@/features/memory/retrieve-memories'
 import { createLogger } from '@/shared/lib/logger'
 
 const log = createLogger({ route: '/api/chat/conversations/[id]/clear' })
 
-// Message types that carry generated media we want to keep. Everything else
-// (text, voice, action, request rows) is part of the conversational history and
-// gets cleared.
-const KEEP_TYPES = ['image', 'video'] as const
+const LOCALES = ['en', 'ru', 'es'] as const
+type Locale = (typeof LOCALES)[number]
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const user = await getCurrentUser()
@@ -40,77 +52,94 @@ export async function POST(
   const payload = await getPayload({ config })
 
   const conversation = await payload
-    .findByID({ collection: 'conversations', id: conversationId })
+    .findByID({ collection: 'conversations', id: conversationId, depth: 0 })
     .catch(() => null)
   if (!conversation || conversation.deletedAt) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
-
-  const convUserId =
-    typeof conversation.userId === 'object' && conversation.userId !== null
-      ? (conversation.userId as { id: string | number }).id
-      : conversation.userId
-  if (String(convUserId) !== String(user.id)) {
+  if (String(relId(conversation.userId)) !== String(user.id)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
-
-  // Snapshot the messages the memory job hasn't seen yet — they're about to be
-  // soft-deleted, and the checkpoint reset below would otherwise skip them.
-  const unprocessed = await loadUnprocessedMessages(
-    payload,
-    conversationId,
-    relId(conversation.summaryUpToMessageId),
-  ).catch(() => [])
-
-  const now = new Date().toISOString()
-
-  // Soft-delete every non-media message still live in this conversation.
-  const result = (await payload.update({
-    collection: 'messages',
-    where: {
-      and: [
-        { conversationId: { equals: conversationId } },
-        { type: { not_in: [...KEEP_TYPES] } },
-        { deletedAt: { exists: false } },
-      ],
-    } as never,
-    data: { deletedAt: now } as never,
-    overrideAccess: true,
-  })) as { docs?: unknown[] }
-
-  // Drop the rolling summary so it can't reinject the just-cleared context.
-  // Leave long-term memories alone — those are the cross-conversation "she
-  // remembers you" layer, not this thread's transcript.
-  await payload.update({
-    collection: 'conversations',
-    id: conversationId,
-    data: {
-      summary: null,
-      summaryUpToMessageId: null,
-      summaryUpdatedAt: null,
-      lastMessagePreview: null,
-    } as never,
-    overrideAccess: true,
-  })
-
   const characterId = relId(conversation.characterId)
-  if (unprocessed.length > 0 && characterId !== null) {
-    after(async () => {
-      try {
-        await runMemoryJob({
-          payload,
-          conversationId,
-          userId: user.id,
-          characterId,
-          language: (conversation.language as string | null) ?? 'en',
-          messages: unprocessed,
-        })
-      } catch (err: unknown) {
-        log.warn({ msg: 'memory.job.flush_failed', conversationId, err: err instanceof Error ? err.message : err })
-      }
+
+  const pool = (payload.db as unknown as PostgresAdapter).pool
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    const cleared = await client.query(
+      `UPDATE messages SET deleted_at = now(), updated_at = now()
+       WHERE conversation_id_id = $1 AND deleted_at IS NULL`,
+      [conversation.id],
+    )
+    await client.query(
+      `UPDATE conversations
+       SET summary = NULL,
+           summary_up_to_message_id_id = NULL,
+           summary_updated_at = NULL,
+           last_message_preview = NULL,
+           message_count = 0,
+           relationship_score = 0,
+           days_active_count = 0,
+           last_message_at = now(),
+           updated_at = now()
+       WHERE id = $1`,
+      [conversation.id],
+    )
+    let forgotten = 0
+    if (characterId !== null) {
+      const entries = await client.query(
+        `DELETE FROM memory_entries WHERE ${USER_COL} = $1 AND ${CHARACTER_COL} = $2`,
+        [user.id, characterId],
+      )
+      await client.query(
+        `DELETE FROM memory_profiles WHERE ${USER_COL} = $1 AND ${CHARACTER_COL} = $2`,
+        [user.id, characterId],
+      )
+      forgotten = entries.rowCount ?? 0
+    }
+    await client.query('COMMIT')
+
+    log.info({
+      msg: 'chat.conversation.cleared',
+      conversationId: conversation.id,
+      clearedMessages: cleared.rowCount ?? 0,
+      forgottenMemories: forgotten,
     })
+  } catch (err: unknown) {
+    await client.query('ROLLBACK').catch(() => {})
+    log.error({
+      msg: 'chat.conversation.clear_failed',
+      conversationId: conversation.id,
+      err: err instanceof Error ? err.message : String(err),
+    })
+    return NextResponse.json({ error: 'clear_failed' }, { status: 500 })
+  } finally {
+    client.release()
   }
 
-  const clearedCount = Array.isArray(result.docs) ? result.docs.length : 0
-  return NextResponse.json({ ok: true, clearedCount })
+  // The character speaks first, exactly as in a brand-new chat. Best-effort:
+  // the clear already committed, and the chat page seeds the greeting on its
+  // next load anyway if this fails.
+  const locale = await readLocale(req, conversation.language)
+  const character =
+    characterId !== null
+      ? await payload
+          .findByID({ collection: 'characters', id: characterId, depth: 0, locale, overrideAccess: true })
+          .catch(() => null)
+      : null
+  const greeting = await ensureGreeting(payload, {
+    conversationId: conversation.id,
+    character,
+    fallbackName: (conversation.characterSnapshot as { name?: string } | null)?.name ?? 'Companion',
+    locale,
+  }).catch(() => null)
+
+  return NextResponse.json({ ok: true, greeting })
+}
+
+async function readLocale(req: NextRequest, fallback: unknown): Promise<Locale> {
+  const body = (await req.json().catch(() => null)) as { locale?: unknown } | null
+  const pick = (v: unknown): Locale | null =>
+    typeof v === 'string' && (LOCALES as readonly string[]).includes(v) ? (v as Locale) : null
+  return pick(body?.locale) ?? pick(fallback) ?? 'en'
 }

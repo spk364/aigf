@@ -9,8 +9,9 @@
 // the LLM, only widening the table and its indexes.
 //
 // Retention: 30 days after soft-deletion, then gone for good. Media messages
-// are NOT deleted here even when soft-deleted — their media-assets rows manage
-// the R2 object lifecycle; we only drop the message rows.
+// are NOT deleted here even when soft-deleted — the per-character gallery still
+// lists photos cleared out of the chat, and their media-assets rows manage the
+// R2 object lifecycle; we only drop the text rows.
 //
 // Auth: bearer CRON_SECRET, same contract as the other /api/cron routes.
 export const maxDuration = 300

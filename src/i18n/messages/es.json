@@ -75,7 +75,7 @@
     "clearHistory": "Borrar historial del chat",
     "clearConfirm": {
       "title": "¿Borrar el historial del chat?",
-      "body": "Esto elimina el texto de esta conversación para empezar de cero. Tus fotos generadas se mantienen en la galería.",
+      "body": "Esto elimina toda la conversación y todo lo que el personaje recuerda de ti, para empezar de cero como desconocidos. Tus fotos generadas se mantienen en la galería.",
       "confirm": "Borrar historial",
       "cancel": "Cancelar"
     },
