@@ -45,7 +45,8 @@ function setup(opts: { conversation?: Record<string, unknown> | null; failOn?: R
       ? { id: 10, userId: 8, characterId: { id: 28 }, language: 'ru', characterSnapshot: { name: 'Mara' } }
       : opts.conversation
   const payload = {
-    db: { pool: { connect: vi.fn(async () => client) } },
+    // Shaped like vercelPostgresAdapter: no `pool`, the VercelPool sits on drizzle.$client.
+    db: { drizzle: { $client: { connect: vi.fn(async () => client) } } },
     findByID: vi.fn(async ({ collection }: { collection: string }) => {
       if (collection === 'conversations') return conversation
       return { id: 28, name: 'Mara' }

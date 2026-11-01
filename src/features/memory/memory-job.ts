@@ -20,7 +20,7 @@
 // Read side: retrieve-memories.ts.
 import 'server-only'
 import type { BasePayload } from 'payload'
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
+import { getSqlPool, type SqlPool } from '@/shared/db/sql-pool'
 import { OPENROUTER_MODEL } from '@/shared/ai/openrouter'
 import { getEmbeddings, toVectorLiteral, EMBEDDING_MODEL_TAG } from '@/shared/ai/embeddings'
 import { env } from '@/shared/config/env'
@@ -174,8 +174,6 @@ export function buildMemoryPrompt(args: {
 
 // ── IO ───────────────────────────────────────────────────────────────────────
 
-type Pool = PostgresAdapter['pool']
-
 async function callMemoryLLM(prompt: { system: string; user: string }): Promise<MemoryUpdate | null> {
   if (!env.OPENROUTER_API_KEY) return null
 
@@ -280,7 +278,7 @@ async function saveProfile(
 
 async function saveFacts(args: {
   payload: BasePayload
-  pool: Pool | null
+  pool: SqlPool | null
   userId: string | number
   characterId: string | number
   conversationId: string | number
@@ -447,7 +445,7 @@ export async function runMemoryJob(input: RunMemoryJobInput): Promise<MemoryJobR
     const lastMessageId = messages[messages.length - 1]!.id
     const factsAdded = await saveFacts({
       payload,
-      pool: (payload.db as unknown as Partial<PostgresAdapter>).pool ?? null,
+      pool: getSqlPool(payload),
       userId,
       characterId,
       conversationId,

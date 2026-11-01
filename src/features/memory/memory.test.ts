@@ -58,7 +58,7 @@ import {
 
 /** Minimal BasePayload stand-in exposing the pg pool the raw queries use. */
 function payloadWithPool(query: ReturnType<typeof vi.fn>) {
-  return { db: { pool: { query } } } as never
+  return { db: { drizzle: { $client: { query } } } } as never
 }
 
 type QueryFn = (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>
@@ -287,7 +287,7 @@ function fakePayload(opts: {
   const calls: Call[] = []
   const query = vi.fn<QueryFn>(async (sql) => ({ rows: opts.poolRows?.(sql) ?? [] }))
   const payload = {
-    db: { pool: { query } },
+    db: { drizzle: { $client: { query } } },
     findByID: vi.fn(async (args: Record<string, unknown>) => {
       calls.push({ op: 'findByID', args })
       return { id: 1, summary: 'old summary', summaryUpToMessageId: 100, ...opts.conversation }

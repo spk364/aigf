@@ -13,10 +13,10 @@ export const maxDuration = 300
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { getPayload } from 'payload'
-import type { PostgresAdapter } from '@payloadcms/db-postgres'
 import * as Sentry from '@sentry/nextjs'
 import config from '@payload-config'
 import { createLogger } from '@/shared/lib/logger'
+import { getSqlPool } from '@/shared/db/sql-pool'
 import { MIN_BATCH_MESSAGES, runMemoryJob } from '@/features/memory/memory-job'
 
 const log = createLogger({ route: '/api/cron/process-memory' })
@@ -48,7 +48,8 @@ async function handle(req: NextRequest): Promise<NextResponse> {
   const startedAt = Date.now()
   try {
     const payload = await getPayload({ config })
-    const pool = (payload.db as unknown as PostgresAdapter).pool
+    const pool = getSqlPool(payload)
+    if (!pool) throw new Error('no SQL pool on the Payload db adapter')
 
     // Raw SQL: "messages past this conversation's own checkpoint" compares two
     // columns, which Payload's where-clause can't express.
