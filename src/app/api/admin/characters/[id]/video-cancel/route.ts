@@ -4,14 +4,14 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { cancelFalJob } from '@/shared/ai/fal'
 import { cancelAtlasJob } from '@/shared/ai/atlas'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 
 const bodySchema = z.object({
   cancelUrl: z.string().url(),
 })
 
 export async function POST(req: Request) {
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }

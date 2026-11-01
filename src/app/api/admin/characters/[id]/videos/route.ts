@@ -3,7 +3,7 @@ export const maxDuration = 30
 import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 
 function coerceRelId(v: string | number): string | number {
   if (typeof v === 'number') return v
@@ -24,7 +24,7 @@ type VideoAsset = {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }

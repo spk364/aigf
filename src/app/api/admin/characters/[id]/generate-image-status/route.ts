@@ -11,7 +11,7 @@ import {
   findImageModel,
 } from '@/shared/ai/image-models'
 import { persistGeneratedImage } from '@/features/media/persist-generated-image'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 import { saveGeneratedImageToDisk } from '@/shared/debug/save-generated-image'
 import { fetchAndAnalyzeImage, detectSafetyFilteredFrame } from '@/shared/ai/image-analysis'
 
@@ -34,7 +34,7 @@ const querySchema = z.object({
 })
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }

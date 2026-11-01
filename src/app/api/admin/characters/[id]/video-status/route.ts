@@ -8,7 +8,7 @@ import { fetchVideoJobStatus } from '@/shared/ai/fal'
 import { fetchAtlasVideoJobStatus } from '@/shared/ai/atlas'
 import { detectVideoProvider, findVideoModel } from '@/shared/ai/video-models'
 import { persistGeneratedVideo } from '@/features/media/persist-generated-video'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 
 const querySchema = z.object({
   requestId: z.string().min(1),
@@ -25,7 +25,7 @@ const querySchema = z.object({
 })
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }

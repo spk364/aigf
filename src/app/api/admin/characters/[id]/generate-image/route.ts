@@ -12,7 +12,7 @@ import {
   FAL_ENDPOINT_IP_ADAPTER_FACE_ID,
 } from '@/shared/ai/fal'
 import { submitAtlasImageJob } from '@/shared/ai/atlas'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 import {
   IMAGE_MODEL_OPTIONS,
   DEFAULT_IMAGE_MODEL_ID,
@@ -58,12 +58,12 @@ const bodySchema = z.object({
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const rl = await checkRateLimit(IMAGE_GEN_LIMIT, `u:${user.id}`)
+  const rl = await checkRateLimit(IMAGE_GEN_LIMIT, `admin:${user.id}`)
   if (!rl.allowed) {
     return NextResponse.json(rateLimitResponseBody(rl), {
       status: 429,

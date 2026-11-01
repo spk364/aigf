@@ -3,7 +3,7 @@ export const maxDuration = 60
 import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 import { submitAtlasImageJob, fetchAtlasImageJobStatus } from '@/shared/ai/atlas'
 import { removeBackground } from '@/shared/ai/fal'
 import { buildCharacterEditPrompt } from '@/features/chat/scene-prompt'
@@ -66,10 +66,7 @@ function coerceRelId(v: string | number): string | number {
 }
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  // Authenticated-only, matching the other /api/admin/characters/* routes.
-  // A stricter roles.includes('admin') gate 403'd this for non-'admin'-role
-  // accounts inside the admin panel. Tightening tracked under TODO(phase-3-auth).
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const { id } = await params

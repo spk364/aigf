@@ -3,7 +3,7 @@ export const maxDuration = 30
 import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 
 // Admin-only: list images USERS generated with this character in chat. Unlike
 // admin-generated media (ownerCharacterId on media-assets), chat images are
@@ -32,11 +32,8 @@ export type ChatImageItem = {
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
-  // Authenticated-only, matching the other /api/admin/characters/* routes
-  // (e.g. .../media). A stricter roles.includes('admin') gate 403'd this block
-  // inside the admin panel for non-'admin'-role accounts. Tightening every
-  // /api/admin route is tracked under TODO(phase-3-auth).
+  // Admins only: this lists every user's chat photos of the character.
+  const user = await getCurrentAdmin()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const { id } = await params

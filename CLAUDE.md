@@ -23,6 +23,14 @@ tests must only touch rows they create themselves (owned by the seeded dev user
 
 ## Gotchas
 
+- Admins are the `admins` collection, not `users` with a role. `/admin` signs
+  in against `admins` only; guard `/api/admin/*` with `getCurrentAdmin()`, never
+  `getCurrentUser()` (that one is site customers only). Both kinds share the
+  `payload-token` cookie, so one browser holds one session at a time.
+- This repo is public and the seed passwords (`dev@local.test`,
+  `demo@girlfriend.ai`) are in it, against the production database. Never give
+  those accounts anything privileged.
+
 - Raw SQL: get the pool with `getSqlPool(payload)`, never `payload.db.pool` —
   `vercelPostgresAdapter` leaves it `undefined`.
 - Payload relationship columns double the suffix: field `userId` → column

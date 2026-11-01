@@ -1,7 +1,7 @@
 // Only grant/spend/refundByAdmin should write to token_balances
 import type { CollectionConfig } from 'payload'
 import { ValidationError } from 'payload'
-import { adminOnly, adminOrSelf, canAccessAdminPanel } from '@/payload/access'
+import { adminOnly, adminOrSelf } from '@/payload/access'
 import { ensureBalanceRow } from '@/features/tokens/ledger'
 import { SESSION_TOKEN_EXPIRATION_SECONDS } from '@/shared/auth/session'
 
@@ -73,13 +73,13 @@ export const Users: CollectionConfig = {
     useAsTitle: 'email',
   },
   access: {
-    // Only admins may open /admin — every end user is a Payload-authenticated
-    // user of this collection, so without this anyone who signed up could.
-    admin: canAccessAdminPanel,
+    // Site customers never sign in to /admin — that is the `admins` collection.
+    admin: () => false,
     read: adminOrSelf,
     // Signup, profile edits, password changes and GDPR purges all run through
     // server actions on the local API (overrideAccess), never REST. Self-update
-    // over REST stays closed: it would let a user PATCH their own `roles`.
+    // over REST stays closed: it would let a user PATCH their own status,
+    // subscription fields or verification flags.
     create: adminOnly,
     update: adminOnly,
     delete: adminOnly,
@@ -167,10 +167,10 @@ export const Users: CollectionConfig = {
       type: 'select',
       hasMany: true,
       defaultValue: ['user'],
-      options: [
-        { label: 'User', value: 'user' },
-        { label: 'Admin', value: 'admin' },
-      ],
+      // No 'admin' option on purpose: admins are the separate `admins`
+      // collection. The DB enum still carries the old 'admin' value; nothing
+      // reads it.
+      options: [{ label: 'User', value: 'user' }],
     },
     {
       name: 'emailVerified',
