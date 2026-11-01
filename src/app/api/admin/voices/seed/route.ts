@@ -9,7 +9,7 @@
 // skipped. Pass {"force": true} to regenerate (and soft-delete the previous
 // row) so callers can recover from corrupted/local-storage seeds.
 //
-// Auth: admin role only — runs on Vercel and we don't want random users to
+// Auth: admins only — runs on Vercel and we don't want random users to
 // burn fal.ai budget. Each call costs ~$0.13 (1300 chars total).
 //
 // Why an HTTP endpoint instead of just running scripts/seed-voice-previews.ts:
@@ -23,7 +23,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 import { generateSpeech } from '@/shared/ai/tts'
 import { VOICE_CATALOG, type VoiceLocale } from '@/shared/ai/voice-catalog'
 import { persistGeneratedAudio } from '@/features/media/persist-generated-audio'
@@ -43,16 +43,9 @@ const bodySchema = z
   })
   .default({})
 
-function isAdmin(user: { roles?: unknown } | null): boolean {
-  if (!user) return false
-  const roles = user.roles
-  return Array.isArray(roles) && roles.includes('admin')
-}
-
 export async function POST(req: Request) {
-  const user = (await getCurrentUser()) as ({ id: string | number; roles?: string[] } | null)
+  const user = await getCurrentAdmin()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  if (!isAdmin(user)) return NextResponse.json({ error: 'forbidden_admin_only' }, { status: 403 })
 
   let body: z.infer<typeof bodySchema>
   try {

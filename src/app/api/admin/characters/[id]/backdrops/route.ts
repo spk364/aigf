@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getPayload } from 'payload'
 import config from '@payload-config'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 
 // Admin: manage a character's chat-backdrop candidates.
 //   GET  → list character_backdrop assets + the currently active URL.
@@ -33,7 +33,7 @@ async function loadCharacter(payload: Awaited<ReturnType<typeof getPayload>>, id
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   const { id } = await params
@@ -83,7 +83,7 @@ const postSchema = z.object({
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
   let body: z.infer<typeof postSchema>

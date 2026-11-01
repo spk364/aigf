@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import sharp from 'sharp'
-import { getCurrentUser } from '@/shared/auth/current-user'
+import { getCurrentAdmin } from '@/shared/auth/current-user'
 import { buildR2Key, getStorageProvider, uploadBuffer } from '@/shared/storage'
 
 const MAX_BYTES = 60 * 1024 * 1024 // 60 MB — covers short clips + large photos
@@ -57,7 +57,7 @@ type UploadOutcome =
   | { ok: false; filename: string; error: string }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser()
+  const user = await getCurrentAdmin()
   if (!user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
@@ -153,7 +153,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const key = buildR2Key({
       kind: isImage ? 'character-gallery' : 'character-video',
       characterId: characterIdCoerced,
-      ownerId: typeof user.id === 'string' || typeof user.id === 'number' ? user.id : undefined,
       ext,
     })
 
@@ -188,12 +187,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           width: width ?? undefined,
           height: height ?? undefined,
           ownerCharacterId: characterIdCoerced,
-          ownerUserId:
-            typeof user.id === 'string' || typeof user.id === 'number' ? user.id : undefined,
+          // No ownerUserId: that field points at `users`, and the uploader is
+          // an admin (a different table, so the id would name some customer).
           generationMetadata: {
             source: 'admin_upload',
             originalFilename: file.name,
-            uploadedBy: user.id,
+            uploadedBy: `admin:${user.id}`,
             uploadedAt: new Date().toISOString(),
           },
           moderationStatus: 'pending',

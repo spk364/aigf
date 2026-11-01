@@ -39,9 +39,6 @@ export async function seedDevUser(payload: Payload): Promise<void> {
       data: {
         email: DEV_USER_EMAIL,
         password: DEV_USER_PASSWORD,
-        // Never 'admin': this password is public (the repo is public) and the
-        // local env shares the production database, so an admin dev user is an
-        // open door into the production /admin.
         roles: ['user'],
         emailVerified: true,
         emailVerifiedAt: new Date().toISOString(),

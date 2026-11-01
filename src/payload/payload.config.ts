@@ -8,6 +8,7 @@ import { en } from '@payloadcms/translations/languages/en'
 import { ru } from '@payloadcms/translations/languages/ru'
 import { es } from '@payloadcms/translations/languages/es'
 import { OAuth2Plugin } from 'payload-oauth2'
+import { Admins } from './collections/admins'
 import { Users } from './collections/users'
 import { AgeVerifications } from './collections/age-verifications'
 import { Characters } from './collections/characters'
@@ -138,6 +139,7 @@ export default buildConfig({
   editor: lexicalEditor(),
 
   collections: [
+    Admins,
     Users,
     AgeVerifications,
     Characters,
@@ -167,6 +169,8 @@ export default buildConfig({
   },
 
   admin: {
+    // /admin signs in against `admins` only; site customers (`users`) never can.
+    user: Admins.slug,
     importMap: {
       baseDir: path.resolve(dirname, '../app/(payload)'),
     },
