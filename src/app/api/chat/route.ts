@@ -29,7 +29,7 @@ import {
   daysSince,
 } from '@/features/chat/relationship-stage'
 import { classifyShot, shotImageSize } from '@/features/chat/shot-framing'
-import { sceneFromPhotoRequest } from '@/features/chat/photo-options'
+import { sceneFromPhotoRequest, sceneFromPhotoSelection } from '@/features/chat/photo-options'
 import {
   isExplicitPhotoScene,
   looksLikePhotoRefusal,
@@ -99,6 +99,17 @@ const bodySchema = z.object({
   characterId: idSchema.optional(),
   message: z.string().min(1).max(2000),
   locale: z.enum(['en', 'ru', 'es']).default('en'),
+  // Set by the photo composer. `message` is then the request in the UI language
+  // (what the chat shows and the LLM answers in); these chip keys are what the
+  // English image scene is built from. Unknown keys are dropped downstream.
+  photoRequest: z
+    .object({
+      outfit: z.string().max(40).optional(),
+      pose: z.string().max(40).optional(),
+      setting: z.string().max(40).optional(),
+      extra: z.string().max(200).optional(),
+    })
+    .optional(),
 })
 
 function sseEvent(event: string, data: unknown): string {
@@ -174,7 +185,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request', details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { conversationId: incomingConversationId, characterId, message, locale } = parsed.data
+  const { conversationId: incomingConversationId, characterId, message, locale, photoRequest } =
+    parsed.data
 
   const payload = await getPayload({ config })
 
@@ -186,7 +198,12 @@ export async function POST(req: NextRequest) {
   const inputVerdict = await checkUserInput({
     payload,
     userId: user.id,
-    text: message,
+    // The composer's free-text extra is part of the image prompt, so it is
+    // screened even if a client left it out of the message.
+    text:
+      photoRequest?.extra && !message.includes(photoRequest.extra)
+        ? `${message}\n${photoRequest.extra}`
+        : message,
     locale,
     relatedCharacterId: characterId ?? null,
     source: 'web',
@@ -354,7 +371,9 @@ export async function POST(req: NextRequest) {
   log.info({ msg: 'chat.message.user_saved', conversationId, isNewConversation })
 
   const convLanguage = (conversation.language as string | null | undefined) ?? 'en'
-  const explicitPhotoRequest = detectImageIntent(message, convLanguage)
+  // A composer submission is a photo request by construction, whatever its
+  // localized wording.
+  const explicitPhotoRequest = !!photoRequest || detectImageIntent(message, convLanguage)
 
   // ---------------------------------------------------------------------------
   // Unified text + photo path
@@ -959,7 +978,11 @@ export async function POST(req: NextRequest) {
               // bare user requests and model-initiated photos, where the user's
               // message isn't a photo description).
               const directiveScene = parsed.scene?.trim() ?? ''
-              const userScene = explicitPhotoRequest ? sceneFromPhotoRequest(message) : ''
+              const userScene = photoRequest
+                ? sceneFromPhotoSelection(photoRequest, subjectGender)
+                : explicitPhotoRequest
+                  ? sceneFromPhotoRequest(message)
+                  : ''
               const rawScene = userScene || directiveScene
 
               const explicit = isExplicitPhotoScene(rawScene) || isExplicitPhotoScene(message)

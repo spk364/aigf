@@ -408,13 +408,53 @@ describe('male characters', () => {
     expect(prompt).toMatch(/full-body shot showing the subject from head to toe/i)
   })
 
+  it('leads a full-nudity edit with the target state, not an undress command', () => {
+    // Reported live 2026-11-01: "undress the subject" on a crop-top-and-jeans
+    // reference came back with the top still on. Describing the naked subject
+    // first and naming the garment categories undressed it fully.
+    const { prompt } = buildCharacterEditPrompt({
+      scene: 'lying on the bed, relaxed, wearing nothing at all, completely nude, at home',
+      explicit: true,
+      artStyle: 'realistic',
+      shot: 'full_body_wide',
+    })
+    expect(prompt).toMatch(/^A completely naked woman, fully nude/)
+    expect(prompt).toMatch(/no top, no shirt, no bra, no pants, no underwear/)
+    expect(prompt).toMatch(/same woman as in the reference image: same face, same hair/)
+    expect(prompt).toMatch(/Scene: lying on the bed/)
+    expect(prompt).not.toMatch(/undress the subject/i)
+    // Identity stays tied to the reference — the clause just moves after the nudity.
+    expect(prompt).toMatch(/photorealistic/i)
+  })
+
+  it('uses the male nude body for a male full-nudity edit', () => {
+    const { prompt } = buildCharacterEditPrompt({
+      scene: 'completely nude, fully naked',
+      explicit: true,
+      gender: 'male',
+    })
+    expect(prompt).toMatch(/^A completely naked man/)
+    expect(prompt).toMatch(/He is the same man as in the reference image/)
+    expect(prompt).toMatch(/penis and testicles are fully visible/i)
+    expect(prompt).not.toMatch(/breasts|woman/i)
+  })
+
+  it('keeps partial nudity on the command form so named garments survive', () => {
+    const { prompt } = buildCharacterEditPrompt({
+      scene: 'in black stockings, topless, bare breasts',
+      explicit: true,
+    })
+    expect(prompt).toMatch(/undress the subject/i)
+    expect(prompt).not.toMatch(/completely naked/i)
+  })
+
   it('names the male body in the explicit edit prompt', () => {
     const male = buildCharacterEditPrompt({ scene: 'fully naked', explicit: true, gender: 'male' })
       .prompt
     expect(male).toMatch(/penis and testicles are fully visible/i)
     expect(male).not.toMatch(/breasts/i)
     const female = buildCharacterEditPrompt({ scene: 'fully naked', explicit: true }).prompt
-    expect(female).toMatch(/her breasts and her bare hips are fully visible/i)
+    expect(female).toMatch(/her bare breasts and nipples are visible/i)
     expect(female).not.toMatch(/penis/i)
     // Neither variant leaks anatomy into a clothed edit.
     const clothed = buildCharacterEditPrompt({ scene: 'in a leather jacket', gender: 'male' }).prompt

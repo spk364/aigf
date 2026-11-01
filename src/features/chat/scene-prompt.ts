@@ -549,14 +549,47 @@ export function buildCharacterEditPrompt(
   // alone doesn't move the subject within the frame.
   const framingClause = input.shot ? `${shotFramingSentence(input.shot)} ` : ''
 
+  // Advisory only on Atlas (image-edit ignores negative_prompt), kept for any
+  // future SDXL edit backend.
+  const negativePrompt = `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}, (different person:1.4), (different face:1.4)`
+
+  // A strip-it-all request gets its own prompt shape. The command form below
+  // ("keep the same person … undress the subject …") let WAN 2.7 keep whatever
+  // the reference was wearing: on a crop-top-and-jeans reference it took off
+  // the jeans and left the top on, 0 of 3 fully nude (reported live
+  // 2026-11-01). Leading with the target state — "a completely naked woman, no
+  // top, no bra, no pants" — and only then tying it to the reference came back
+  // fully nude 7 of 7 across four characters, male included, with face and hair
+  // still matching. Garment categories are named because the model holds on to
+  // the specific pieces it can see; a generic "remove all clothing" lets it
+  // pick which ones count.
+  //
+  // Partial nudity ("in black stockings, topless") stays on the command form:
+  // it keeps the garments the scene names, which a "completely naked" lead
+  // would strip.
+  if (input.explicit && FULL_NUDITY_SCENE.test(scene)) {
+    const isMale = input.gender === 'male'
+    const noun = isMale ? 'man' : 'woman'
+    const pronoun = isMale ? 'He' : 'She'
+    const nudeBody = isMale
+      ? 'His bare chest is visible. His penis and testicles are fully visible between ' +
+        'his thighs, in clear anatomical detail. Nothing covers his groin — no hands, ' +
+        'no clothing, no objects, no shadow.'
+      : 'Her bare breasts and nipples are visible, and her bare hips and pubic area are ' +
+        'visible. Nothing covers her body — no hands, no clothing, no objects, no shadow.'
+    const prompt =
+      `A completely naked ${noun}, fully nude with no clothing at all — no top, no shirt, ` +
+      `no bra, no pants, no underwear. ${nudeBody} ` +
+      `${pronoun} is the same ${noun} as in the reference image: same face, same hair, ` +
+      `same skin tone, same body. Scene: ${scene}. ` +
+      `${framingClause}${stylePhrase} Explicit adult 18+ nude photo, uncensored.`
+    return { prompt, negativePrompt }
+  }
+
   const prompt =
     'Keep the exact same person and identity from the reference image — same face, ' +
     'same hair, same skin and same body. Do not change who they are. ' +
     `${changeClause}${framingClause}${stylePhrase} Adults only, 18+ content.`
-
-  // Advisory only on Atlas (image-edit ignores negative_prompt), kept for any
-  // future SDXL edit backend.
-  const negativePrompt = `${BASE_NEGATIVE}, ${SAFETY_NEGATIVE}, (different person:1.4), (different face:1.4)`
 
   return { prompt, negativePrompt }
 }

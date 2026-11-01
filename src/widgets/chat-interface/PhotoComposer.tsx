@@ -1,7 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { buildPhotoRequest, photoOptionGroupsFor } from '@/features/chat/photo-options'
+import {
+  buildLocalizedPhotoRequest,
+  photoOptionGroupsFor,
+  type PhotoSelection,
+} from '@/features/chat/photo-options'
 import type { SubjectGender } from '@/shared/ai/subject-gender'
 
 export type PhotoComposerStrings = {
@@ -10,10 +14,18 @@ export type PhotoComposerStrings = {
   groups: { outfit: string; pose: string; setting: string }
   // labelKey ("outfit.dress") → translated chip label
   options: Record<string, string>
+  // labelKey → the chip as a phrase inside the request ("лёжа на кровати")
+  phrases: Record<string, string>
+  /** Request line with a literal `{details}` slot for the joined phrases. */
+  request: string
+  /** Sent when nothing is picked. */
+  requestSelfie: string
   extraPlaceholder: string
   send: string
   cancel: string
 }
+
+type PhotoGroup = 'outfit' | 'pose' | 'setting'
 
 type Props = {
   strings: PhotoComposerStrings
@@ -21,13 +33,17 @@ type Props = {
   /** Which chips to offer — a boyfriend thread gets "Shirtless"/"Boxers" where a
       girlfriend thread gets "Elegant dress"/"Lingerie". Defaults to female. */
   gender?: SubjectGender
-  onSubmit: (message: string) => void
+  /** `message` is what the chat shows and the LLM reads, in the UI language;
+      `selection` carries the chip keys the server builds the English image
+      scene from. */
+  onSubmit: (message: string, selection: PhotoSelection) => void
   onClose: () => void
 }
 
 // A small sheet that opens above the composer when the user taps the photo chip.
 // Lets them pick an outfit / pose / setting (all optional), then builds a natural
-// photo-request message that flows through the existing image-intent pipeline.
+// photo-request message in the UI language that flows through the existing
+// image-intent pipeline, with the picked keys alongside for the image prompt.
 export function PhotoComposer({ strings: s, cost, gender, onSubmit, onClose }: Props) {
   const [outfit, setOutfit] = useState<string | undefined>()
   const [pose, setPose] = useState<string | undefined>()
@@ -44,15 +60,26 @@ export function PhotoComposer({ strings: s, cost, gender, onSubmit, onClose }: P
   }
 
   const handleSend = () => {
-    const fragments: { outfit?: string; pose?: string; setting?: string; extra?: string } = {}
+    const selection: PhotoSelection = {}
+    const phrases: Partial<Record<PhotoGroup, string>> = {}
     for (const g of groups) {
       const [selectedKey] = selByGroup[g.group]!
       if (!selectedKey) continue
       const opt = g.options.find((o) => o.key === selectedKey)
-      if (opt) fragments[g.group] = opt.prompt
+      if (!opt) continue
+      selection[g.group] = opt.key
+      phrases[g.group] = s.phrases[opt.labelKey] ?? opt.prompt
     }
-    if (extra.trim()) fragments.extra = extra.trim()
-    onSubmit(buildPhotoRequest(fragments))
+    const extraText = extra.trim()
+    if (extraText) selection.extra = extraText
+    const message = buildLocalizedPhotoRequest({
+      // Same order as the English scene: pose, outfit, setting.
+      details: [phrases.pose, phrases.outfit, phrases.setting].filter((p): p is string => !!p),
+      extra: extraText,
+      template: s.request,
+      selfie: s.requestSelfie,
+    })
+    onSubmit(message, selection)
   }
 
   return (
