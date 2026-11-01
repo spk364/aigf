@@ -183,6 +183,57 @@
           "shower": "En la ducha"
         }
       },
+      "phrases": {
+        "outfit": {
+          "casual": "con ropa casual",
+          "dress": "con un vestido elegante",
+          "suit": "con un traje a medida",
+          "cozy": "con un suéter amplio y acogedor",
+          "shirt": "con una camisa blanca oversize",
+          "openShirt": "con la camisa desabrochada, el pecho al descubierto",
+          "leather": "con una chaqueta de cuero",
+          "workout": "con ropa deportiva",
+          "pajamas": "en pijama",
+          "swimwear": "en traje de baño",
+          "swimwearMale": "en bañador, con el torso al descubierto",
+          "robe": "con una bata de seda, apenas atada",
+          "towel": "solo con una toalla, justo después de la ducha",
+          "shirtless": "sin camisa, con el torso al descubierto",
+          "lingerie": "en lencería",
+          "boxers": "en bóxers ajustados, sin camisa",
+          "nude": "sin nada de ropa, al desnudo"
+        },
+        "pose": {
+          "selfie": "un selfie sonriendo",
+          "mirror": "un selfie en el espejo",
+          "closeup": "un primer plano de la cara, mirando a la cámara",
+          "standing": "de pie, de cuerpo entero",
+          "sitting": "junto a la ventana",
+          "lying": "en la cama, relajándote",
+          "lookingBack": "mirando por encima del hombro",
+          "stretching": "estirándote al despertar",
+          "stretchingMale": "estirándote al despertar",
+          "flexing": "marcando músculos, presumiendo brazos y pecho",
+          "kiss": "lanzando un beso a la cámara",
+          "undressing": "desvistiéndote poco a poco"
+        },
+        "setting": {
+          "home": "en casa",
+          "bedroom": "en el dormitorio",
+          "kitchen": "en la cocina",
+          "balcony": "en el balcón a la hora dorada",
+          "cafe": "en un café acogedor",
+          "gym": "en el gimnasio",
+          "car": "en el coche",
+          "city": "en la ciudad de noche",
+          "beach": "en la playa al atardecer",
+          "pool": "junto a la piscina",
+          "bathroom": "en el baño",
+          "shower": "en la ducha, con la piel mojada"
+        }
+      },
+      "request": "Mándame una foto tuya: {details}",
+      "requestSelfie": "Mándame un selfie",
       "extraPlaceholder": "¿Algo más? (opcional)",
       "send": "Enviar petición de foto",
       "cancel": "Cerrar"

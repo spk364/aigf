@@ -319,12 +319,15 @@ export default async function ConversationPage({ params }: Props) {
   }
 
   // Photo composer strings — labels for every option in the catalog, resolved
-  // from i18n so the chips render in the user's language (the prompt fragments
-  // sent to the image pipeline stay English, see photo-options.ts).
+  // from i18n so the chips render in the user's language. The request message
+  // is built from translated phrases too; the image pipeline gets the chip keys
+  // and rebuilds the English scene server-side (see photo-options.ts).
   const tPhoto = await getTranslations('chat.photoComposer')
   const photoOptions: Record<string, string> = {}
+  const photoPhrases: Record<string, string> = {}
   for (const key of allPhotoOptionLabelKeys()) {
     photoOptions[key] = tPhoto(`options.${key}`)
+    photoPhrases[key] = tPhoto(`phrases.${key}`)
   }
   // Which chips the composer offers. The character doc is already loaded above
   // for the header photo; when it is gone (deleted character) the conversation's
@@ -344,6 +347,11 @@ export default async function ConversationPage({ params }: Props) {
       setting: tPhoto('groups.setting'),
     },
     options: photoOptions,
+    phrases: photoPhrases,
+    // next-intl resolves ICU eagerly — pass the slot back in as its own value
+    // so the client gets the template with a literal {details} to fill.
+    request: tPhoto('request', { details: '{details}' }),
+    requestSelfie: tPhoto('requestSelfie'),
     extraPlaceholder: tPhoto('extraPlaceholder'),
     send: tPhoto('send'),
     cancel: tPhoto('cancel'),

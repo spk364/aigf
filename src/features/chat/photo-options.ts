@@ -1,9 +1,10 @@
 // Preset options for the in-chat photo composer (T1-3). Each option carries a
-// localized `labelKey` (shown on the chip) and an English `prompt` fragment that
-// is spliced into the photo-request message. We send English scene tokens
-// regardless of UI language because the SD models the image pipeline uses
-// resolve English prompts far better — the chip label the user sees is still
-// translated. Mirrors the existing hardcoded "Send me a selfie" being English.
+// localized `labelKey` (shown on the chip; the same key under
+// chat.photoComposer.phrases gives it as a phrase for the request message) and
+// an English `prompt` fragment for the image scene. The image models resolve
+// English prompts far better, so the scene stays English whatever the UI
+// language — but the message the user sees and the character answers is
+// localized, and the server rebuilds the scene from the chip keys.
 //
 // Each group runs tasteful → spicy in display order, so the everyday picks sit
 // where the thumb lands and the explicit ones are a deliberate reach. The input
@@ -162,6 +163,65 @@ export function buildPhotoRequest(selected: {
   return base
 }
 
+// The composer used to send buildPhotoRequest's English text as the user's
+// message. That text was what the chat showed and what the LLM read, so a
+// Russian user got an English bubble and an English reply (the reply language
+// follows the message). Now the message is built from translated phrases and
+// the picked chip KEYS travel alongside it; the server rebuilds the English
+// scene from the keys with sceneFromPhotoSelection.
+
+/** What a composer submission picked: chip keys plus the free-text extra. */
+export type PhotoSelection = {
+  outfit?: string
+  pose?: string
+  setting?: string
+  /** Free text the user typed, in their own language. */
+  extra?: string
+}
+
+/**
+ * English scene for a composer selection, in buildPhotoRequest's fragment order
+ * (pose, outfit, setting, extra). Unknown keys and chips hidden for this
+ * subject's gender are dropped — the keys come from the client.
+ */
+export function sceneFromPhotoSelection(
+  selection: PhotoSelection,
+  gender: SubjectGender = 'female',
+): string {
+  const pick = (group: PhotoOptionGroup['group'], key: string | undefined) => {
+    if (!key) return undefined
+    const option = PHOTO_OPTION_GROUPS.find((g) => g.group === group)?.options.find(
+      (o) => o.key === key && (!o.gender || o.gender === gender),
+    )
+    return option ? optionPrompt(option, gender) : undefined
+  }
+  return [
+    pick('pose', selection.pose),
+    pick('outfit', selection.outfit),
+    pick('setting', selection.setting),
+    selection.extra?.trim(),
+  ]
+    .filter((f): f is string => !!f)
+    .join(', ')
+}
+
+/**
+ * The user-facing photo request in the UI language. `template` carries a
+ * `{details}` slot ("Пришли мне своё фото: {details}"); with nothing picked the
+ * plain `selfie` line is sent instead, as before.
+ */
+export function buildLocalizedPhotoRequest(args: {
+  details: string[]
+  extra?: string
+  template: string
+  selfie: string
+}): string {
+  const details = args.details.filter((d) => d.trim().length > 0)
+  const base = details.length > 0 ? args.template.replace('{details}', details.join(', ')) : args.selfie
+  const extra = args.extra?.trim()
+  return extra ? `${base}, ${extra}` : base
+}
+
 /** The fragment this option contributes for the given subject. */
 export function optionPrompt(option: PhotoOption, gender: SubjectGender = 'female'): string {
   return gender === 'male' && option.malePrompt ? option.malePrompt : option.prompt
@@ -219,7 +279,7 @@ const REQUEST_SUBJECT_CUT = /^.*?\b(?:of\s+your?self|of\s+you|yourself|de\s+ti(?
 // Otherwise strip a leading send/show verb + optional "me", article and photo
 // noun: "Send me a photo", "Отправь мне фото", "Mándame una foto".
 const REQUEST_VERB_LEAD =
-  /^\s*(?:please\s+|por\s+favor[,\s]+|пожалуйста[,\s]+)?(?:(?:can|could|would|will)\s+you\s+)?(?:send|show|share|take|snap|gimme|give\s+me|m[aá]nda(?:me)?|env[ií]ame|mu[eé]stra(?:me|te)|manda|env[ií]a|отправь?|пришли(?:те)?|скинь?|кинь?|шли|покажи(?:сь)?|сделай|сфоткай(?:ся)?)\s+(?:me\s+|мне\s+)?(?:a\s+|an\s+|una\s+|un\s+)?(?:photos?|pictures?|pics?|images?|selfies?|fotos?|fotito|im[aá]gen|сним[оккаи]+|фотк[ауи]|фото|селфи|картинк[ау])?\s*/i
+  /^\s*(?:please\s+|por\s+favor[,\s]+|пожалуйста[,\s]+)?(?:(?:can|could|would|will)\s+you\s+)?(?:send|show|share|take|snap|gimme|give\s+me|m[aá]nda(?:me)?|env[ií]ame|mu[eé]stra(?:me|te)|manda|env[ií]a|отправь?|пришли(?:те)?|скинь?|кинь?|шли|покажи(?:сь)?|сделай|сфоткай(?:ся)?)\s+(?:me\s+|мне\s+)?(?:a\s+|an\s+|una\s+|un\s+|сво[её]\s+|тво[её]\s+)?(?:photos?|pictures?|pics?|images?|selfies?|fotos?|fotito|im[aá]gen|сним[оккаи]+|фотк[ауи]|фото|селфи|картинк[ау])?(?:\s+tuy[ao])?\s*/i
 
 // A leftover bare subject word after the cuts above ("you", "себя"). Uses a
 // unicode letter lookahead instead of \b — JS \b is ASCII-only and never fires

@@ -183,6 +183,57 @@
           "shower": "Shower"
         }
       },
+      "phrases": {
+        "outfit": {
+          "casual": "in casual clothes",
+          "dress": "wearing an elegant dress",
+          "suit": "in a sharp tailored suit",
+          "cozy": "in a cozy oversized sweater",
+          "shirt": "in an oversized white shirt",
+          "openShirt": "in an unbuttoned shirt, bare chest showing",
+          "leather": "in a leather jacket",
+          "workout": "in workout clothes",
+          "pajamas": "in pajamas",
+          "swimwear": "in swimwear",
+          "swimwearMale": "in swim shorts, bare chest",
+          "robe": "in a silk robe, loosely tied",
+          "towel": "wrapped in a towel, fresh out of the shower",
+          "shirtless": "shirtless, bare chest, bare torso",
+          "lingerie": "in lingerie",
+          "boxers": "in tight boxer briefs, shirtless",
+          "nude": "wearing nothing at all, completely nude"
+        },
+        "pose": {
+          "selfie": "taking a selfie, smiling",
+          "mirror": "a mirror selfie",
+          "closeup": "a close-up of the face, looking at the camera",
+          "standing": "standing, full body, head to toe",
+          "sitting": "sitting by the window",
+          "lying": "lying on the bed, relaxed",
+          "lookingBack": "looking back over the shoulder",
+          "stretching": "stretching, just woke up",
+          "stretchingMale": "stretching, just woke up",
+          "flexing": "flexing, showing off the arms and chest",
+          "kiss": "blowing a kiss to the camera",
+          "undressing": "undressing, slowly taking clothes off"
+        },
+        "setting": {
+          "home": "at home",
+          "bedroom": "in the bedroom",
+          "kitchen": "in the kitchen",
+          "balcony": "on the balcony at golden hour",
+          "cafe": "in a cozy cafe",
+          "gym": "at the gym",
+          "car": "in the car",
+          "city": "in the city at night",
+          "beach": "on the beach at sunset",
+          "pool": "by the pool",
+          "bathroom": "in the bathroom",
+          "shower": "in the shower, wet skin"
+        }
+      },
+      "request": "Send me a photo of you {details}",
+      "requestSelfie": "Send me a selfie",
       "extraPlaceholder": "Anything else? (optional)",
       "send": "Send photo request",
       "cancel": "Close"

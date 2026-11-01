@@ -10,6 +10,7 @@ import type {
   PaywallTeaser,
 } from '@/widgets/paywall'
 import { PhotoComposer, type PhotoComposerStrings } from './PhotoComposer'
+import type { PhotoSelection } from '@/features/chat/photo-options'
 import type { SubjectGender } from '@/shared/ai/subject-gender'
 import { GalleryOverlay, type GalleryOverlayStrings } from './GalleryOverlay'
 
@@ -719,7 +720,7 @@ export function ChatInterface({
   }, [messages, refreshBalance])
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, opts?: { photoRequest?: PhotoSelection }) => {
       if (!text.trim() || streamingState !== 'idle') return
 
       setError(null)
@@ -736,7 +737,10 @@ export function ChatInterface({
         textareaRef.current.style.height = 'auto'
       }
 
-      const body: Record<string, string> = { message: text, locale }
+      const body: Record<string, unknown> = { message: text, locale }
+      // Photo-composer submissions: the message is in the UI language, so the
+      // server needs the chip keys to build the (English) image scene.
+      if (opts?.photoRequest) body['photoRequest'] = opts.photoRequest
       if (conversationIdRef.current) {
         body['conversationId'] = conversationIdRef.current
       } else if (initialCharacterId) {
@@ -1468,9 +1472,9 @@ export function ChatInterface({
             cost={TOKEN_COSTS.photo}
             gender={characterGender}
             onClose={() => setPhotoComposerOpen(false)}
-            onSubmit={(message) => {
+            onSubmit={(message, selection) => {
               setPhotoComposerOpen(false)
-              sendMessage(message)
+              sendMessage(message, { photoRequest: selection })
             }}
           />
         </div>
